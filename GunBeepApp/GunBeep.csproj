@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>GunBeep</AssemblyName>
+    <RootNamespace>GunBeep</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>GunBeep</Product>
+  </PropertyGroup>
+
+  <!-- publish = โฟลเดอร์ที่รวม .NET runtime ในตัว (เครื่องใหม่ไม่ต้องลงอะไรเพิ่ม)
+       ไม่ใช้แบบไฟล์เดียว (PublishSingleFile): บนเครื่องผู้ใช้ที่มี Malwarebytes ตัวไฟล์เดียวพังตอนเปิด (0xC0000005) -->
+  <PropertyGroup>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Speech" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- สคริปต์ G Hub ที่ GunBeep ใส่ให้ -->
+    <EmbeddedResource Include="..\recoil.lua" LogicalName="recoil.lua" />
+  </ItemGroup>
+
+</Project>

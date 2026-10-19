@@ -1,0 +1,45 @@
+# ทุกครั้งที่ push ขึ้น main → build GunBeep แล้วออก Release ใหม่ (v1.0.<ลำดับการรัน>)
+# GunBeep ในเครื่องผู้ใช้เช็ก Release ล่าสุดแล้วอัปเดตตัวเอง
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'GunBeepApp/**'
+      - 'recoil.lua'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      VERSION: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish
+        shell: pwsh
+        run: dotnet publish GunBeepApp/GunBeep.csproj -c Release -o publish -p:Version=$env:VERSION
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item recoil.lua, README.md, CLAUDE.md publish/
+          Compress-Archive -Path publish/* -DestinationPath GunBeep-win-x64.zip
+
+      - name: Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = git log -1 --pretty=%B
+          gh release create "v$env:VERSION" GunBeep-win-x64.zip --title "GunBeep v$env:VERSION" --notes "$notes"

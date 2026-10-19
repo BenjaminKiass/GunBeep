@@ -1,0 +1,14 @@
+# repo เก็บแค่ซอร์ส — โฟลเดอร์นี้เป็นที่ติดตั้งโปรแกรมด้วย จึงไม่เอาไฟล์อื่นขึ้น
+/*
+!/.gitignore
+!/.github/
+!/GunBeepApp/
+!/recoil.lua
+!/README.md
+!/CLAUDE.md
+!/build.ps1
+
+# ผลการ build
+GunBeepApp/bin/
+GunBeepApp/obj/
+GunBeepApp/out/
