@@ -120,6 +120,13 @@ namespace GunBeep
             osd = new Overlay();
             UpdateOsdButtons();
 
+            // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้) — เปิดอยู่ก่อน GunBeep = ไม่ยุ่ง
+            UpdateResButton();
+            gameWas = GameRunning();
+            gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            gameTimer.Tick += (s, e) => WatchGame();
+            gameTimer.Start();
+
             // เปิดโปรแกรมมาให้มาโครปิดไว้ก่อนเสมอ
             scroll = KeyHook.IsLockOn(VK_SCROLL);
             num = KeyHook.IsLockOn(VK_NUM);
@@ -183,6 +190,119 @@ namespace GunBeep
             LoadGunValues();
             CheckUpdate();
             osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+        }
+
+        // ---------------------------------------------------------------- จอยืดตอนเปิดเกม
+
+        DispatcherTimer gameTimer;
+        bool gameWas, resSwitched;
+
+        static bool GameRunning()
+        {
+            var ps = System.Diagnostics.Process.GetProcessesByName("TslGame");
+            foreach (var p in ps) p.Dispose();
+            return ps.Length > 0;
+        }
+
+        void WatchGame()
+        {
+            bool now = GameRunning();
+            if (now == gameWas) return;
+            gameWas = now;
+            if (now && cfg.AutoRes) SwitchRes();
+            else if (!now && resSwitched) RestoreRes();
+        }
+
+        void SwitchRes()
+        {
+            var r = Display.Switch(cfg.GameResW, cfg.GameResH);
+            string res = $"{cfg.GameResW}×{cfg.GameResH}";
+            switch (r)
+            {
+                case Display.Result.Ok:
+                    resSwitched = true;
+                    tray.ShowBalloonTip(2500, "GunBeep", $"เปลี่ยนจอเป็น {res} แล้ว (ปิดเกมแล้วคืนค่าเดิม)", System.Windows.Forms.ToolTipIcon.None);
+                    break;
+                case Display.Result.Missing:
+                    tray.ShowBalloonTip(5000, "GunBeep: ไม่มีความละเอียด " + res,
+                        "สร้างใน NVIDIA Control Panel → Change resolution → Customize ก่อน", System.Windows.Forms.ToolTipIcon.Warning);
+                    break;
+                case Display.Result.Failed:
+                    tray.ShowBalloonTip(4000, "GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", System.Windows.Forms.ToolTipIcon.Warning);
+                    break;
+            }
+        }
+
+        void RestoreRes()
+        {
+            Display.Restore();
+            resSwitched = false;
+        }
+
+        void UpdateResButton() =>
+            ResBtn.Content = cfg.AutoRes ? $"{cfg.GameResW}×{cfg.GameResH}" : "ปิด";
+
+        void Res_Click(object sender, RoutedEventArgs e)
+        {
+            var m = DarkMenu(ResBtn);
+            m.Items.Add(Item((cfg.AutoRes ? "     " : "✓  ") + "ปิด (ไม่เปลี่ยนความละเอียด)", () => SetRes(false, cfg.GameResW, cfg.GameResH)));
+            m.Items.Add(Sep());
+            var cur = Display.Current();
+            var list = Display.Resolutions();
+            foreach (var (w, h) in list.Where(r => r.w <= cur.w && r.h <= cur.h && r.w >= 1024).Take(14))
+            {
+                int ww = w, hh = h;
+                bool sel = cfg.AutoRes && w == cfg.GameResW && h == cfg.GameResH;
+                string note = w == cur.w && h == cur.h ? "  (ตอนนี้)" : "";
+                m.Items.Add(Item((sel ? "✓  " : "     ") + $"{w}×{h}{note}", () => SetRes(true, ww, hh)));
+            }
+            if (!list.Any(r => r.w == 1728 && r.h == 1080))
+            {
+                m.Items.Add(Sep());
+                m.Items.Add(Item("ไม่เห็น 1728×1080? สร้างใน NVIDIA Control Panel ก่อน", null, false));
+            }
+            m.IsOpen = true;
+        }
+
+        void SetRes(bool on, int w, int h)
+        {
+            cfg.AutoRes = on;
+            cfg.GameResW = w;
+            cfg.GameResH = h;
+            cfg.Save();
+            UpdateResButton();
+            Flash(on ? $"เปิด PUBG แล้วจะเปลี่ยนจอเป็น {w}×{h} ให้" : "ไม่เปลี่ยนความละเอียดจอแล้ว");
+            if (!on && resSwitched) RestoreRes();
+        }
+
+        // ---------------------------------------------------------------- อัดค่าแรงดึงอัตโนมัติ
+
+        Calibrator calibWin;
+
+        void Calib_Click(object sender, RoutedEventArgs e)
+        {
+            if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (calibWin != null) { calibWin.Activate(); return; }
+            calibWin = new Calibrator(cfg.Names.Take(vals.Length).ToArray(), gun, () => on, ApplyCalibration,
+                                      msg => { PopOsd(msg); Sfx.Play(Sfx.Pick, cfg.Sound); }) { Owner = this };
+            calibWin.Closed += (s, a) => calibWin = null;
+            calibWin.Show();
+        }
+
+        void ApplyCalibration(int g, Calibrator.Fit f)
+        {
+            if (vals == null || g >= vals.Length) return;
+            vals[g].Base = f.Base;
+            vals[g].X = f.X;
+            vals[g].Steps = f.Steps.ToArray();
+            UpdateGuns();
+            saveVals.Stop();
+            saveVals.Start();
+            liveFailed = false;
+            liveTimer.Stop();
+            liveTimer.Start();
+            Flash($"{cfg.Names[g]}: base {GHub.Fmt(f.Base)} · x {GHub.Fmt(f.X)} + กราฟใหม่");
+            PopOsd($"ใช้ค่าที่อัด: base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}");
         }
 
         // ---------------------------------------------------------------- ป้ายบนจอเกม
@@ -1440,6 +1560,8 @@ namespace GunBeep
             cfg.Save();
             hook?.Dispose();
             osd?.Close();
+            calibWin?.Close();
+            if (resSwitched) RestoreRes();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }
             base.OnClosing(e);
         }

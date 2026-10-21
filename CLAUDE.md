@@ -78,6 +78,21 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - `SendFrameAsync` retries a frame once if no ack. Verified: graph +0.5 on gun 1 sent live in ~4 s, same
   lghub_agent PID, file updated; then restored the detailed original from the backup.
 
+## Auto resolution (Display.cs)
+- `cfg.AutoRes/GameResW/GameResH`; MainWindow polls `TslGame` every 1.5 s; on start → `Display.Switch` with
+  CDS_FULLSCREEN (temporary, same refresh rate if available), on exit / GunBeep close → `Display.Restore()`.
+  Game already running when GunBeep starts → no switch. User's PC has 1728x1080@300 (custom NVIDIA mode).
+  Purpose: stretched 1728x1080 in Borderless so the overlay still shows (overlay can't draw over exclusive
+  fullscreen; DX hooking/injection into PUBG is refused — BattlEye).
+
+## Recoil recorder (Calibrator.cs + RawMouse.cs)
+- Raw Input (RIDEV_INPUTSINK, hidden HwndSource) gives physical mouse counts even while the game has focus —
+  same unit as G Hub MoveMouseRelative (assumed 1:1, not yet verified in game). Spray = left down → up, ≥500 ms,
+  macro must be OFF (sprays while ON are ignored). Bucketed per 10 ms; `Analyze`: drop sprays whose early total
+  differs >40 % from median (n≥3), average steps covered by ≥ half the sprays, quantize to 100 ms bars,
+  base = floor(min bar to 0.5), graph = bars − base (≤31.75), x = mean dx per 10 ms (0.5 steps).
+- Deliberately no screen capture / image analysis of the game.
+
 ## CPU
 - The window uses AllowsTransparency + blur/glow effects, so every animated frame re-renders the whole layered
   window. Endless animations (EdgeSpin border, LogoGlow, power Glow pulse) ran at ~60 fps → ~3.9 % of the
