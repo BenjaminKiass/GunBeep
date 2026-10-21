@@ -479,8 +479,9 @@
                     <StackPanel Grid.Column="1" Margin="10,0,10,0">
                         <DockPanel Margin="6,6,6,8">
                             <TextBlock Text="ชุดค่าปืน" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                            <TextBlock Text="ในเกม: ปุ่ม Back (4) ตอนเปิดอยู่" FontSize="11" Foreground="{StaticResource MutedBrush}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <Button x:Name="CycleBtn" Style="{StaticResource KeyBtn}" FontSize="11" Padding="9,2" MinWidth="0"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center" Click="Cycle_Click"
+                                    ToolTip="ปุ่มในเกม (ตอนเปิดมาโคร): กดเปล่า = วนปืน · Ctrl/Alt = base ±0.5 · Shift+Ctrl/Alt = ซ้าย/ขวา ±0.5"/>
                         </DockPanel>
                         <UniformGrid x:Name="GunGrid" Columns="3" Margin="-5,0,-5,0"
                                      ToolTip="คลิก = เลือกปืนที่จะปรับค่า · ดับเบิลคลิก = เปลี่ยนชื่อ"/>

@@ -22,6 +22,8 @@ namespace GunBeep
         public bool AutoRes { get; set; }           // เปิด PUBG แล้วเปลี่ยนความละเอียด Windows ให้เอง
         public int GameResW { get; set; } = 1728;
         public int GameResH { get; set; } = 1080;
+        public int CycleMouse { get; set; } = 4;    // ปุ่มเมาส์วนปืน/จูนในเกม (G Hub): 4 Back, 5 Forward, 3 กลาง, 0 = ไม่ใช้
+        public int CycleKey { get; set; }           // หรือปุ่มคีย์บอร์ด (GunBeep จัดการเอง), 0 = ไม่ใช้
         public bool ResAlways { get; set; }         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
         public double? Left { get; set; }
         public double? Top { get; set; }

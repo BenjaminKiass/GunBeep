@@ -13,6 +13,7 @@ namespace GunBeep
         [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
         [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
         [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+        [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
 
         // ปุ่มที่โปรแกรมกดเองจะติดเครื่องหมายนี้ไว้ เพื่อไม่ให้นับซ้ำ
         const ulong MAGIC = 0x47424545;

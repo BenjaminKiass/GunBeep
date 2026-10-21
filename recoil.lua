@@ -1,12 +1,12 @@
 -- ============================================================
 --  Recoil macro สำหรับ Logitech G Hub  (ใช้คู่กับโปรแกรม GunBeep.exe)
---  GunBeep-Script-Version: 6
+--  GunBeep-Script-Version: 7
 --  ความไวเดียวทุกสโคป + ตารางแรงดีดอิงเวลาจริง (ไม่เพี้ยนตาม Sleep)
 --
 --  เปิด/ปิดมาโคร : ปุ่มลัดที่ตั้งใน GunBeep (ค่าเริ่มต้น F8) หรือคลิกปุ่มใหญ่ในโปรแกรม
 --  สถานะส่งมาทางไฟ Scroll Lock + Num Lock:
 --    ดับ/ดับ = ปิด    Scroll ติด = ปืน 1    Num ติด = ปืน 2    ติดทั้งคู่ = ปืน 3
---  ปุ่มข้างเมาส์ (Back) ใช้ได้เฉพาะตอนเปิดมาโคร กันค่าเพี้ยนตอนไม่ได้ใช้
+--  ปุ่มข้างเมาส์ (CYCLE_BTN, ค่าเริ่มต้น Back — เปลี่ยนได้ใน GunBeep) ใช้ได้เฉพาะตอนเปิดมาโคร กันค่าเพี้ยนตอนไม่ได้ใช้
 --    กดเปล่าๆ = วนปืน (ถ้าปิด UNIFIED_SENS จะวนกล้องแทน)
 --    Ctrl+ปุ่ม = base +0.5 / Alt+ปุ่ม = base -0.5
 --    Shift+Ctrl+ปุ่ม = x +0.5 / Shift+Alt+ปุ่ม = x -0.5
@@ -14,7 +14,7 @@
 
 -- ===== ปุ่มและการทำงานหลัก =====
 local SCOPE_BUTTON = 5           -- ปุ่มเล็ง (Forward) ถ้าไม่ติดลองเปลี่ยนเป็น 4
-local CYCLE_BTN    = 4           -- ปุ่ม Back
+local CYCLE_BTN    = 4           -- 4 = Back, 5 = Forward, 3 = ปุ่มกลาง, 0 = ไม่ใช้ (GunBeep ตั้งให้)
 local GUN_MOD      = "lshift"    -- ใช้เฉพาะตอน UNIFIED_SENS = false: Shift ค้าง + CYCLE_BTN = วนปืน
 local REQUIRE_ADS  = false       -- true = ชดเชยเฉพาะตอนกดปุ่มเล็งค้าง (ไม่ลากตอนยิงสะโพก)
 
@@ -88,6 +88,7 @@ end
 -- Right Ctrl เปลี่ยนสถานะ = 1 จังหวะ, Caps Lock สลับในจังหวะนั้น = บิต 1 / ไม่สลับ = บิต 0
 -- เฟรม base/x (24 บิต): 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum(4)
 -- เฟรมกราฟ: 11 | ปืน(2) | จำนวนก้อน(5) | ก้อนละ: แรงดึง*4 (7) + จำนวนแท่ง 100 ms (5) | checksum(8)
+-- เฟรมตั้งค่า (24 บิต): 01 | ชนิด(2) | ค่า(8) | 0(8) | (ชนิด+ค่า)%16 (4)   ชนิด 0 = ปุ่มวนปืน (CYCLE_BTN)
 -- รับครบแล้วตอบกลับด้วย F18
 local rx_clk, rx_t, rx_caps, rx_bits, rx_need = false, 0, false, {}, 24
 
@@ -97,8 +98,21 @@ local function rx_take(i, n)
   return v
 end
 
+local function rx_apply_cfg()
+  local k, v, chk = rx_take(3, 2), rx_take(5, 8), rx_take(21, 4)
+  if chk ~= (k + v) % 16 or k ~= 0 or v > 5 or v == 1 or v == 2 then
+    OutputLogMessage("LIVE: ตั้งค่าเสีย ไม่รับ\n")
+    return
+  end
+  CYCLE_BTN = v
+  OutputLogMessage("LIVE: ปุ่มวนปืน = %d\n", v)
+  PressAndReleaseKey("f18")
+end
+
 local function rx_apply()
-  if rx_take(1, 2) ~= 2 then return end
+  local t = rx_take(1, 2)
+  if t == 1 then rx_apply_cfg() return end
+  if t ~= 2 then return end
   local g, b, xv, chk = rx_take(3, 2), rx_take(5, 8), rx_take(13, 8), rx_take(21, 4)
   if g < 1 or g > NGUNS or chk ~= (g + b + xv) % 16 then
     OutputLogMessage("LIVE: ข้อมูลเสีย ไม่รับ\n")
@@ -154,7 +168,7 @@ local function rx_poll()
   if n == 2 and rx_bits[1] == 1 and rx_bits[2] == 1 then rx_need = 9 end     -- เฟรมกราฟ: รอรู้จำนวนก้อนก่อน
   if n == 9 and rx_need == 9 then rx_need = 9 + rx_take(5, 5) * 12 + 8 end
   if n == rx_need then
-    if rx_bits[2] == 1 then rx_apply_segs() else rx_apply() end
+    if rx_bits[1] == 1 and rx_bits[2] == 1 then rx_apply_segs() else rx_apply() end
   end
 end
 
@@ -344,8 +358,8 @@ function OnEvent(a, b)
       end
     end
 
-    -- ปุ่ม Back: ทำงานเฉพาะตอนเปิดมาโคร
-    local cyc = IsMouseButtonPressed(CYCLE_BTN)
+    -- ปุ่มวนปืน (ค่าเริ่มต้น Back): ทำงานเฉพาะตอนเปิดมาโคร
+    local cyc = CYCLE_BTN > 0 and IsMouseButtonPressed(CYCLE_BTN)
     if cyc and not prev_cycle and on then
       local sh = IsModifierPressed("lshift")
       local ct = IsModifierPressed("lctrl")

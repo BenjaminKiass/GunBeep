@@ -411,6 +411,23 @@ namespace GunBeep
             Log.Info("wrote guns: " + string.Join(" | ", vals.Select(g => $"base {Fmt(g.Base)} x {Fmt(g.X)}")));
         }
 
+        // ปุ่มวนปืนในสคริปต์ (local CYCLE_BTN = N) — G Hub โหลดใหม่ครั้งหน้าจะได้ปุ่มเดียวกับที่ตั้งใน GunBeep
+        static readonly Regex CycleLine = new Regex(@"(local\s+CYCLE_BTN\s*=\s*)\d+");
+
+        public static void WriteCycleButton(int btn)
+        {
+            lock (ScriptLock)
+            {
+                var slot = PickScript(ListScripts());
+                if (slot == null || !slot.IsGunBeep || !CycleLine.IsMatch(slot.Text)) return;
+                string text = CycleLine.Replace(slot.Text, m => m.Groups[1].Value + btn, 1);
+                if (text == slot.Text) return;
+                WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
+                slot.Text = text;
+                Log.Info("wrote CYCLE_BTN = " + btn);
+            }
+        }
+
         public static int AgentPid()
         {
             var p = Process.GetProcessesByName("lghub_agent");

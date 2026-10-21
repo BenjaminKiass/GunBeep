@@ -484,6 +484,7 @@ namespace GunBeep
 
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
+            if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
 
             switch (vk)
             {
@@ -1175,6 +1176,82 @@ namespace GunBeep
             }
         }
 
+        // ---------------------------------------------------------------- ปุ่มวนปืน / จูนในเกม
+        //   ปุ่มเมาส์ 3/4/5 = สคริปต์ใน G Hub จัดการ (เร็วสุด) — เปลี่ยนแบบ real time ด้วยเฟรมตั้งค่า (สคริปต์ v7+)
+        //   ปุ่มคีย์บอร์ด = GunBeep จัดการเอง: วนปืนด้วยไฟ Lock, จูน base/x แล้วส่งเข้า G Hub แบบ real time
+
+        static string MouseName(int b) => b switch { 3 => "เมาส์ปุ่มกลาง", 4 => "เมาส์ Back", 5 => "เมาส์ Forward", _ => "ไม่ใช้" };
+
+        void UpdateCycleText() =>
+            CycleBtn.Content = "ในเกม: " + (cfg.CycleKey != 0 ? KeyName(cfg.CycleKey) : MouseName(cfg.CycleMouse)) + "  ▾";
+
+        void Cycle_Click(object sender, RoutedEventArgs e)
+        {
+            var m = DarkMenu(CycleBtn);
+            foreach (int b in new[] { 4, 5, 3 })
+                m.Items.Add(Item((cfg.CycleKey == 0 && cfg.CycleMouse == b ? "✓  " : "     ") + MouseName(b), () => SetCycle(b, 0)));
+            m.Items.Add(Item((cfg.CycleKey != 0 ? "✓  " + KeyName(cfg.CycleKey) + " (เปลี่ยน...)" : "     ปุ่มคีย์บอร์ด..."), () => BeginCapture(2)));
+            m.Items.Add(Item((cfg.CycleKey == 0 && cfg.CycleMouse == 0 ? "✓  " : "     ") + "ไม่ใช้", () => SetCycle(0, 0)));
+            m.Items.Add(Sep());
+            m.Items.Add(Item("กดเปล่า = วนปืน · Ctrl/Alt = base ±0.5 · Shift+Ctrl/Alt = ซ้าย/ขวา", null, false));
+            m.IsOpen = true;
+        }
+
+        void SetCycle(int mouse, int key)
+        {
+            cfg.CycleMouse = mouse;
+            cfg.CycleKey = key;
+            cfg.Save();
+            UpdateCycleText();
+            QueueFile("save cycle button", () => GHub.WriteCycleButton(mouse));
+            Flash("ปุ่มในเกม = " + (key != 0 ? KeyName(key) : MouseName(mouse)));
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+            _ = SendCycleAsync();
+        }
+
+        // บอกสคริปต์ใน G Hub ว่าใช้ปุ่มเมาส์ไหน (คีย์บอร์ด = 0 ปิดฝั่ง G Hub)
+        async Task SendCycleAsync()
+        {
+            if (scriptVersion < LiveLink.CFG_VERSION)
+            {
+                Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้ปุ่มใหม่");
+                return;
+            }
+            for (int i = 0; i < 100 && (liveBusy || setupBusy); i++) await Task.Delay(200);
+            if (liveBusy || setupBusy) return;
+            liveBusy = true;
+            RefreshApplyButton();
+            bool ok;
+            try { ok = await SendFrameAsync(LiveLink.CfgFrame(0, cfg.CycleMouse)); }
+            finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
+            Log.Info($"live cycle button {cfg.CycleMouse}: {(ok ? "ok" : "no ack")}");
+            Flash(ok ? "G Hub ใช้ปุ่มใหม่แล้ว" : "G Hub ไม่ตอบรับ — ปุ่มใหม่จะใช้ได้หลัง G Hub เปิดใหม่");
+        }
+
+        // ปุ่มคีย์บอร์ดในเกม (เฉพาะตอนเปิดมาโคร)
+        void CycleKeyPressed()
+        {
+            if (!on) return;
+            bool sh = KeyHook.GetAsyncKeyState(0x10) < 0, ct = KeyHook.GetAsyncKeyState(0x11) < 0, al = KeyHook.GetAsyncKeyState(0x12) < 0;
+            if ((ct || al) && vals != null && gun <= vals.Length)
+            {
+                string field = sh ? "x" : "base";
+                double d = ct ? 0.5 : -0.5;
+                var v = vals[gun - 1];
+                if (field == "base") v.Base = Math.Max(0, v.Base + d); else v.X += d;
+                double now = field == "base" ? v.Base : v.X;
+                Sfx.Play(d > 0 ? Sfx.Up : Sfx.Down, cfg.Sound);
+                string label = field == "base" ? "base = " + GHub.Fmt(now) : "ซ้าย/ขวา = " + XText(now);
+                Flash($"{(d > 0 ? "▲" : "▼")}  {cfg.Names[gun - 1]}  {label}");
+                PopOsd($"{(d > 0 ? "▲" : "▼")}  {label}");
+                UpdateGuns();
+                saveVals.Stop(); saveVals.Start();
+                liveTimer.Stop(); liveTimer.Start();             // ส่งเข้า G Hub ให้เอง
+                return;
+            }
+            SelectGun(gun % GUNS + 1);
+        }
+
         void UpdateHotkeyText()
         {
             HotkeyBtn.Content = KeyName(cfg.HotKey);
@@ -1182,23 +1259,25 @@ namespace GunBeep
             PresetKeyBtn.Content = cfg.PresetKey == 0 ? "ไม่ใช้" : KeyName(cfg.PresetKey);
             PresetKeyBtn.ClearValue(BorderBrushProperty);
             PowerHint.Text = "คลิกปุ่ม หรือกด " + KeyName(cfg.HotKey);
+            UpdateCycleText();
+            CycleBtn.ClearValue(BorderBrushProperty);
         }
 
-        bool capturePreset;      // กำลังรอปุ่มให้ "สลับโปรไฟล์" (ไม่งั้น = ปุ่มเปิด/ปิด)
+        int captureFor;          // กำลังรอปุ่มให้: 0 เปิด/ปิด, 1 สลับโปรไฟล์, 2 วนปืนในเกม
 
-        void Hotkey_Click(object sender, RoutedEventArgs e) => BeginCapture(false);
-        void PresetKey_Click(object sender, RoutedEventArgs e) => BeginCapture(true);
+        void Hotkey_Click(object sender, RoutedEventArgs e) => BeginCapture(0);
+        void PresetKey_Click(object sender, RoutedEventArgs e) => BeginCapture(1);
 
-        void BeginCapture(bool forPreset)
+        void BeginCapture(int target)
         {
-            bool same = capturing && capturePreset == forPreset;
+            bool same = capturing && captureFor == target;
             capturing = false;
             UpdateHotkeyText();
             if (same) return;                            // กดซ้ำ = ยกเลิก
             capturing = true;
-            capturePreset = forPreset;
-            var btn = forPreset ? PresetKeyBtn : HotkeyBtn;
-            btn.Content = forPreset ? "กดปุ่ม... (Del = ไม่ใช้)" : "กดปุ่ม...";
+            captureFor = target;
+            var btn = target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
+            btn.Content = target == 0 ? "กดปุ่ม..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
             btn.BorderBrush = accent;
         }
 
@@ -1206,7 +1285,7 @@ namespace GunBeep
         {
             const int VK_DELETE = 0x2E, VK_BACK = 0x08;
             if (vk == VK_ESC) { capturing = false; UpdateHotkeyText(); return; }
-            if (capturePreset && (vk == VK_DELETE || vk == VK_BACK))
+            if (captureFor == 1 && (vk == VK_DELETE || vk == VK_BACK))
             {
                 capturing = false;
                 cfg.PresetKey = 0;
@@ -1216,16 +1295,18 @@ namespace GunBeep
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            if (vk == (capturePreset ? cfg.HotKey : cfg.PresetKey))
+            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Where((k, i) => i != captureFor && k != 0);
+            if (taken.Contains(vk))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว ลองปุ่มอื่น");
                 return;
             }
             capturing = false;
-            if (capturePreset) cfg.PresetKey = vk; else cfg.HotKey = vk;
+            if (captureFor == 2) { SetCycle(0, vk); UpdateHotkeyText(); return; }
+            if (captureFor == 1) cfg.PresetKey = vk; else cfg.HotKey = vk;
             cfg.Save();
             UpdateHotkeyText();
-            Flash((capturePreset ? "ปุ่มสลับโปรไฟล์ = " : "ตั้งปุ่มลัดเป็น ") + KeyName(vk));
+            Flash((captureFor == 1 ? "ปุ่มสลับโปรไฟล์ = " : "ตั้งปุ่มลัดเป็น ") + KeyName(vk));
             Sfx.Play(Sfx.Pick, cfg.Sound);
         }
 
@@ -1386,10 +1467,11 @@ namespace GunBeep
                 if (saveVals.IsEnabled) saveVals.Stop();
                 if (vals != null) { var copy = Clone(vals); QueueFile("save guns", () => GHub.WriteGunValues(copy)); }
                 await fileWork;                       // ค่าล่าสุดลงไฟล์ก่อน ตัวติดตั้งจะได้เก็บค่านั้นไว้
+                int cycleBtn = cfg.CycleMouse;
                 await Task.Run(async () =>
                 {
                     await GHub.StopAsync();
-                    if (needScript) GHub.InstallScript(st.Script);
+                    if (needScript) { GHub.InstallScript(st.Script); GHub.WriteCycleButton(cycleBtn); }
                     if (needLock) GHub.LockPubgProfile();
                     GHub.StartBackground();
                     await GHub.WaitAgentAsync(25);

@@ -194,3 +194,12 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - `XSlider` uses `CenterSlider` (transparent track); the bar is drawn behind it in code (`UpdateXBar`): grey track,
   `XFill` from 0 to the value (left or right), `XMid` tick at 0. Range is kept symmetric (±max(5, |x|)).
   Label `XText`: "ซ้าย 1.5" / "ขวา 1.5" / "0". One net value only — the Lua script applies a single x.
+
+## In-game cycle button (script v7, 2026-10-22)
+- `cfg.CycleMouse` (3/4/5, 0 = none) → Lua `CYCLE_BTN`; `cfg.CycleKey` (keyboard vk, 0 = none) → handled by
+  GunBeep (`CycleKeyPressed`: plain = next gun via lock LEDs, Ctrl/Alt = base ±0.5, Shift+Ctrl/Alt = x ±0.5,
+  modifiers via GetAsyncKeyState, values pushed live). Choosing a key sets CycleMouse = 0 (Lua side off).
+- Config frame `01 | kind(2) | value(8) | 0(8) | (kind+value)%16`, kind 0 = CYCLE_BTN; Lua `rx_apply_cfg` acks F18.
+  rx_poll now routes to the graph handler only for `11`. `GHub.WriteCycleButton` rewrites `local CYCLE_BTN = N`
+  in script.lua (also right after InstallScript, since the template resets it to 4).
+- Lua `IsMouseButtonPressed` only covers buttons 1–5, so G-keys 6+ can't be offered (OnEvent never returns).
