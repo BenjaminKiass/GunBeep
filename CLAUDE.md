@@ -204,3 +204,14 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   rx_poll now routes to the graph handler only for `11`. `GHub.WriteCycleButton` rewrites `local CYCLE_BTN = N`
   in script.lua (also right after InstallScript, since the template resets it to 4).
 - Lua `IsMouseButtonPressed` only covers buttons 1–5, so G-keys 6+ can't be offered (OnEvent never returns).
+
+## Auto-tune v2 (2026-10-22, after the user's first in-game run)
+- Log of the user's run: ratio 1.00 (G Hub moves arrive as a separate device, units 1:1 — verified), mean hand
+  correction ≈ 0.1 (pull already right) but per-spray RMS 0.5–1.4 = normal hand shake. v1 judged that as
+  "กราฟยังไม่ตรง", never finished, and each refit re-derived base = floor(min noisy bar) → base walked 5→1.
+- v2 `Systematic`: per-bar mean correction across the round's sprays, hand noise = pooled SD over all bars,
+  mean smoothed with ±1 neighbour bar; a bar counts only if |m| ≥ 0.25 and > 3·SE. x: t-test (4.3·SE).
+  Good = RMS of significant fixes < 0.45 and |x fix| < 0.5. `Adjust` adds 0.7·fix to the CURRENT values and
+  keeps the current base unless the new curve goes below it (`FromTotal(keepBase)`).
+- Simulated with hand shake ≈ 0.9 per bar and gain error ±20 %: already-correct values finish in 2 rounds
+  without change; base 7/no graph converges and finishes in 4–6 rounds.

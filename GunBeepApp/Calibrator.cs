@@ -25,6 +25,7 @@ namespace GunBeep
             public bool Tuned;              // อัดตอนเปิดมาโคร
             public double Corr, CorrX;      // มือดึงแก้เฉลี่ยต่อ 10 ms (+ = ต้องดึงลงเพิ่ม)
             public double CorrRms;          // ความแกว่งของการดึงแก้ (ต่อแท่ง 100 ms)
+            public double[] CorrBars;       // มือดึงแก้ต่อแท่ง 100 ms
             public double Ratio = double.NaN;   // การขยับของมาโครที่วัดได้ / ที่ตั้งไว้ (เช็กหน่วย)
         }
 
@@ -219,12 +220,12 @@ namespace GunBeep
                 string fit = f != null ? $" · base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}" : "";
                 if (auto)
                 {
-                    if (sprays.Count < AUTO_N) pop($"ออโต้จูน {sprays.Count}/{AUTO_N} · {Verdict(s.Corr, s.CorrRms).short_}");
+                    if (sprays.Count < AUTO_N) pop($"ออโต้จูน {sprays.Count}/{AUTO_N} · มือแก้เฉลี่ย {s.Corr:+0.0;-0.0;0}");
                     Refresh();
                     AutoStep();
                     return;
                 }
-                pop(s.Tuned ? $"จูนชุดที่ {sprays.Count} · {Verdict(s.Corr, s.CorrRms).short_}{fit}"
+                pop(s.Tuned ? $"จูนชุดที่ {sprays.Count} · มือแก้เฉลี่ย {s.Corr:+0.0;-0.0;0}{fit}"
                             : $"อัดชุดที่ {sprays.Count} ({ms / 1000:0.0} วิ){fit}");
                 Refresh();
             }
@@ -284,17 +285,67 @@ namespace GunBeep
                 Y = y, X = x, Ms = ms, Tuned = true,
                 Corr = cy.Average(), CorrX = x.Average() - v.X,
                 CorrRms = Math.Sqrt(bars.Average(b => b * b)),
+                CorrBars = bars,
                 Ratio = ratio,
             };
         }
 
-        // ดึงแก้เองน้อยแค่ไหน = เป้านิ่งแค่ไหน (หน่วยเดียวกับ base: ต่อ 10 ms)
-        static (string text, string short_, bool good) Verdict(double corr, double rms)
+        // แยก "ค่าที่ผิดจริง" ออกจาก "มือสั่น": ส่วนที่มือแก้เหมือนกันทุกชุด = มาโครดึงผิดจริง
+        //   ส่วนที่แต่ละชุดไม่เหมือนกัน = มือสั่นตามธรรมชาติ ห้ามเอามาปรับ (ไม่งั้นค่าจะเดินไปเรื่อยๆ ไม่จบ)
+        //   ความสั่นของมือวัดรวมจากทุกแท่ง (แม่นกว่าดูทีละแท่ง) แล้วเฉลี่ยกับแท่งข้างเคียง (แรงดีดเปลี่ยนแบบค่อยเป็นค่อยไป)
+        //   ช่วงไหนค่าเฉลี่ยเกิน 3 เท่าของความคลาดเคลื่อน และ ≥ 0.25 ถึงนับว่าผิดจริง
+        public class Sys { public double[] Fix; public double FixX, Mean, Rms; public bool Good; }
+
+        static Sys Systematic(List<Spray> tuned)
         {
-            if (Math.Abs(corr) < 0.3 && rms < 0.75) return ("นิ่งแล้ว ✓ แทบไม่ต้องดึงแก้", "นิ่งแล้ว ✓", true);
-            string dir = corr > 0 ? "มาโครดึงไม่พอ" : "มาโครดึงเกิน";
-            return Math.Abs(corr) >= 0.3 ? ($"{dir} (มือแก้เฉลี่ย {Math.Abs(corr):0.0}/10ms)", dir, false)
-                                         : ("เฉลี่ยพอดีแต่ยังแกว่งตามช่วงเวลา (กราฟยังไม่ตรง)", "กราฟยังไม่ตรง", false);
+            int nb = tuned.Max(s => s.CorrBars.Length);
+            var mean = new double[nb];
+            var cnt = new int[nb];
+            double ss = 0;
+            int df = 0;
+            for (int b = 0; b < nb; b++)
+            {
+                var v = tuned.Where(s => s.CorrBars.Length > b).Select(s => s.CorrBars[b]).ToList();
+                cnt[b] = v.Count;
+                if (v.Count == 0) continue;
+                mean[b] = v.Average();
+                ss += v.Sum(a => (a - mean[b]) * (a - mean[b]));
+                df += v.Count - 1;
+            }
+            double sd = df > 0 ? Math.Sqrt(ss / df) : double.MaxValue;
+            var fix = new double[nb];
+            for (int b = 0; b < nb; b++)
+            {
+                double sum = 0;
+                int n = 0, w = 0;
+                for (int j = Math.Max(0, b - 1); j <= Math.Min(nb - 1, b + 1); j++)
+                    if (cnt[j] >= 2) { sum += mean[j] * cnt[j]; n += cnt[j]; w++; }
+                if (n == 0) continue;
+                double m = sum / n, se = sd / Math.Sqrt(n);
+                if (Math.Abs(m) >= 0.25 && Math.Abs(m) > 3 * se) fix[b] = m;
+            }
+            double rms = Math.Sqrt(fix.Average(f => f * f));
+            var xs = tuned.Select(s => s.CorrX).ToList();
+            double mx = xs.Average(), sx = xs.Count > 1 ? Math.Sqrt(xs.Sum(a => (a - mx) * (a - mx)) / (xs.Count - 1)) : double.MaxValue;
+            double fixX = Math.Abs(mx) >= 0.25 && Math.Abs(mx) > 4.3 * sx / Math.Sqrt(xs.Count) ? mx : 0;
+            return new Sys
+            {
+                Fix = fix, FixX = fixX, Mean = tuned.Average(s => s.Corr), Rms = rms,
+                Good = rms < 0.45 && Math.Abs(fixX) < 0.5,     // เศษเล็กกว่าขั้น base (0.5) ปรับต่อก็ไม่ดีขึ้น
+            };
+        }
+
+        static string SysText(Sys s)
+        {
+            if (s.Good) return "นิ่งแล้ว ✓ ที่มือแก้เหลือแค่มือสั่นปกติ";
+            var parts = new List<string>();
+            if (s.Rms >= 0.45)
+            {
+                double up = s.Fix.Where(f => f > 0).Sum(), down = -s.Fix.Where(f => f < 0).Sum();
+                parts.Add(up > down * 2 ? "มาโครดึงไม่พอบางช่วง" : down > up * 2 ? "มาโครดึงเกินบางช่วง" : "กราฟยังไม่ตรงบางช่วง");
+            }
+            if (Math.Abs(s.FixX) >= 0.5) parts.Add($"มือแก้ไป{(s.FixX > 0 ? "ขวา" : "ซ้าย")}ทุกชุด");
+            return string.Join(" · ", parts);
         }
 
         // เฉลี่ยทุกชุด → base / x / กราฟ
@@ -338,11 +389,12 @@ namespace GunBeep
         }
 
         // แรงดึงรวมต่อ 10 ms → base (ส่วนต่ำสุด) + กราฟ (ส่วนที่เกิน) + x
-        static Fit FromTotal(double[] total, double x)
+        //   keepBase = ใช้ base เดิมถ้ายังไม่เกินช่วงต่ำสุด (กัน base เดินตามเสียงรบกวนทีละนิด)
+        static Fit FromTotal(double[] total, double x, double? keepBase = null)
         {
             var bars = LiveLink.Quantize(total);
             double min = bars.Min(), max = bars.Max();
-            double baseV = Math.Max(0, Math.Floor(min * 2) / 2);
+            double baseV = keepBase.HasValue && keepBase.Value <= min + 1e-9 ? keepBase.Value : Math.Max(0, Math.Floor(min * 2) / 2);
             if (max - baseV > 31.75) baseV = Math.Ceiling((max - 31.75) * 2) / 2;   // กราฟส่งได้สูงสุด 31.75
             var steps = LiveLink.Fit(bars.Select(v => Math.Clamp(v - baseV, 0, 31.75)).ToArray());
             return new Fit { Base = baseV, X = Math.Round(x * 2) / 2, Steps = steps, Avg = total };
@@ -351,20 +403,14 @@ namespace GunBeep
         static double At(GHub.GunVals v, int k) =>
             v.Base + (v.Steps == null || v.Steps.Length == 0 ? 0 : v.Steps[Math.Min(k, v.Steps.Length - 1)]);
 
-        // ออโต้จูน: ขยับจากค่าเดิมไปทางผลที่วัดได้ทีละ gain (ไม่กระโดดทีเดียว กันแกว่งจากชุดที่มือพลาด)
-        static Fit Blend(GHub.GunVals cur, Fit f, double gain)
+        // ออโต้จูน: แก้ค่าเดิมเฉพาะช่วงที่ผิดจริง ทีละ gain (ไม่กระโดดทีเดียว)
+        static Fit Adjust(GHub.GunVals cur, Sys s, double gain)
         {
-            int len = f.Steps.Length;
+            int len = Math.Max(cur.Steps?.Length ?? 0, s.Fix.Length * 10);
             var total = new double[len];
             for (int k = 0; k < len; k++)
-            {
-                double c = At(cur, k), t = f.Base + f.Steps[k];
-                total[k] = c + gain * (t - c);
-            }
-            var b = FromTotal(total, cur.X + gain * (f.X - cur.X));
-            // ขยับน้อยจนปัดแล้วไม่เปลี่ยน → ใช้ผลที่วัดได้ตรงๆ จะได้ไม่ค้าง
-            bool same = b.Base == cur.Base && b.X == cur.X && cur.Steps != null && LiveLink.SameGraph(b.Steps, cur.Steps);
-            return same ? f : b;
+                total[k] = At(cur, k) + gain * (k / 10 < s.Fix.Length ? s.Fix[k / 10] : 0);
+            return FromTotal(total, cur.X + gain * s.FixX, cur.Base);
         }
 
         // ---------------------------------------------------------------- ออโต้จูน
@@ -391,11 +437,12 @@ namespace GunBeep
             var tuned = sprays.Where(s => s.Tuned).ToList();
             if (tuned.Count < AUTO_N || lastUsed == null) return;
             autoRounds++;
-            var (_, short_, good) = Verdict(tuned.Average(s => s.Corr), tuned.Average(s => s.CorrRms));
-            if (Math.Abs(tuned.Average(s => s.CorrX)) >= 0.3) good = false;
+            var sys = Systematic(tuned);
+            string short_ = SysText(sys);
+            Log.Info($"calib auto check {names[gun]}: mean {sys.Mean:0.00} sys {sys.Rms:0.00} x {sys.FixX:0.00} good {sys.Good}");
             sprays.Clear();
             round++;
-            if (good)
+            if (sys.Good)
             {
                 goodRounds++;
                 if (goodRounds >= 2)
@@ -409,9 +456,7 @@ namespace GunBeep
                 return;
             }
             goodRounds = 0;
-            var f = Analyze(tuned);
-            if (f == null) { Refresh(); return; }
-            var b = Blend(lastUsed, f, AUTO_GAIN);
+            var b = Adjust(lastUsed, sys, AUTO_GAIN);
             apply(gun, b);
             Log.Info($"calib auto round {autoRounds} {names[gun]}: {short_} base {GHub.Fmt(lastUsed.Base)}→{GHub.Fmt(b.Base)} x {GHub.Fmt(lastUsed.X)}→{GHub.Fmt(b.X)}");
             pop($"ออโต้จูนรอบ {autoRounds}: {short_} · base {GHub.Fmt(lastUsed.Base)}→{GHub.Fmt(b.Base)}");
@@ -465,9 +510,15 @@ namespace GunBeep
             var tuned = sprays.Where(s => s.Tuned).ToList();
             if (tuned.Count > 0)
             {
-                var (text, _, good) = Verdict(tuned.Average(s => s.Corr), tuned.Average(s => s.CorrRms));
-                double cx = tuned.Average(s => s.CorrX);
-                if (Math.Abs(cx) >= 0.3) { text += $" · ซ้าย/ขวา: มือแก้ไป{(cx > 0 ? "ขวา" : "ซ้าย")} {Math.Abs(cx):0.0}"; good = false; }
+                string text;
+                bool good = false;
+                if (tuned.Count < 2) text = "ยิงอีกอย่างน้อย 1 ชุด ถึงจะแยกได้ว่าผิดจริงหรือแค่มือสั่น";
+                else
+                {
+                    var sys = Systematic(tuned);
+                    good = sys.Good;
+                    text = SysText(sys);
+                }
                 var ratios = tuned.Select(s => s.Ratio).Where(r => !double.IsNaN(r)).ToList();
                 if (ratios.Count > 0 && Math.Abs(ratios.Average() - 1) > 0.25)
                     text += $"\nหมายเหตุ: มาโครขยับจริง ×{ratios.Average():0.00} ของค่าที่ตั้ง — ระบบแปลงหน่วยให้แล้ว";
