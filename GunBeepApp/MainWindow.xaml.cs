@@ -98,7 +98,7 @@ namespace GunBeep
             gun = Math.Clamp(cfg.Gun, 1, GUNS);
             BuildCards();
             BaseSlider.ValueChanged += (s, e) => SliderMoved("base", e.NewValue);
-            XSlider.ValueChanged += (s, e) => SliderMoved("x", e.NewValue);
+            XSlider.ValueChanged += (s, e) => { UpdateXBar(); SliderMoved("x", e.NewValue); };
             UpdateHotkeyText();
 
             SoundSwitch.IsChecked = cfg.Sound;
@@ -599,19 +599,44 @@ namespace GunBeep
                 var v = vals[gun - 1];
                 BaseSlider.Maximum = Math.Max(20, Math.Ceiling(v.Base));
                 BaseSlider.Minimum = Math.Min(0, Math.Floor(v.Base));
-                XSlider.Maximum = Math.Max(5, Math.Ceiling(v.X));
-                XSlider.Minimum = Math.Min(-5, Math.Floor(v.X));
+                double xr = Math.Max(5, Math.Ceiling(Math.Abs(v.X)));   // สมมาตร 0 อยู่กลางหลอดเสมอ
+                XSlider.Maximum = xr;
+                XSlider.Minimum = -xr;
                 BaseSlider.Value = v.Base;
                 XSlider.Value = v.X;
                 BaseValue.Text = GHub.Fmt(v.Base);
-                XValue.Text = GHub.Fmt(v.X);
+                XValue.Text = XText(v.X);
             }
             else
             {
                 BaseValue.Text = XValue.Text = "–";
             }
             syncingSliders = false;
+            UpdateXBar();
             RefreshApplyButton();
+        }
+
+        // x: − = ดึงซ้าย, + = ดึงขวา (มาโครใช้ค่ารวมค่าเดียว)
+        static string XText(double x) =>
+            Math.Abs(x) < 1e-9 ? "0" : (x < 0 ? "ซ้าย " : "ขวา ") + GHub.Fmt(Math.Abs(x));
+
+        static readonly Brush XRightBrush = new LinearGradientBrush(Color.FromRgb(0x1D, 0x6B, 0xFF), Color.FromRgb(0x5C, 0xE1, 0xFF), 0);
+        static readonly Brush XLeftBrush = new LinearGradientBrush(Color.FromRgb(0x5C, 0xE1, 0xFF), Color.FromRgb(0x1D, 0x6B, 0xFF), 0);
+
+        void XBar_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateXBar();
+
+        // เติมสีจาก 0 (กลาง) ไปถึงค่าปัจจุบัน — ซ้ายหรือขวาเห็นทันที
+        void UpdateXBar()
+        {
+            double w = XSlider.ActualWidth - 16;                    // ช่วงที่จุดกลางปุ่มวิ่งได้ (ปุ่มกว้าง 16)
+            double span = XSlider.Maximum - XSlider.Minimum;
+            if (w <= 0 || span <= 0) return;
+            double Px(double v) => 8 + (Math.Clamp(v, XSlider.Minimum, XSlider.Maximum) - XSlider.Minimum) / span * w;
+            double c = Px(0), p = Px(XSlider.Value);
+            XMid.Margin = new Thickness(c - 1, 0, 0, 0);
+            XFill.Margin = new Thickness(Math.Min(c, p), 0, 0, 0);
+            XFill.Width = Math.Abs(p - c);
+            XFill.Background = p < c ? XLeftBrush : XRightBrush;
         }
 
         void RefreshApplyButton()
@@ -908,7 +933,7 @@ namespace GunBeep
             value = Math.Round(value * 2) / 2;                       // ทีละ 0.5
             var v = vals[gun - 1];
             if (field == "base") { if (v.Base == value) return; v.Base = value; BaseValue.Text = GHub.Fmt(value); }
-            else { if (v.X == value) return; v.X = value; XValue.Text = GHub.Fmt(value); }
+            else { if (v.X == value) return; v.X = value; XValue.Text = XText(value); }
             UpdateValueTexts();
             RefreshApplyButton();
             saveVals.Stop();
@@ -1022,6 +1047,7 @@ namespace GunBeep
             double d = tag.EndsWith("+") ? 0.5 : -0.5;
             if (!slider.IsEnabled) return;
             double target = slider.Value + d;
+            if (slider == XSlider && Math.Abs(target) > XSlider.Maximum) { XSlider.Maximum = Math.Abs(target); XSlider.Minimum = -Math.Abs(target); }
             if (target > slider.Maximum) slider.Maximum = target;
             if (target < slider.Minimum) slider.Minimum = target;
             slider.Value = target;

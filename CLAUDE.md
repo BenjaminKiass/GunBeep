@@ -189,3 +189,8 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - No Lua interpreter on the machine; recoil.lua was only checked by G Hub loading it.
 - Tray/window icon = GunBeep logo (gradient + crosshair, grey when OFF) with a green/red status dot.
 - base/x mirroring + auto-save added 2026-10-14 evening; built, not yet tried in-game by the user.
+
+## x slider (2026-10-22)
+- `XSlider` uses `CenterSlider` (transparent track); the bar is drawn behind it in code (`UpdateXBar`): grey track,
+  `XFill` from 0 to the value (left or right), `XMid` tick at 0. Range is kept symmetric (±max(5, |x|)).
+  Label `XText`: "ซ้าย 1.5" / "ขวา 1.5" / "0". One net value only — the Lua script applies a single x.

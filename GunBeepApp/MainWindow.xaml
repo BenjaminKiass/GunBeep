@@ -187,6 +187,58 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SliderTrackClear" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- หลอดซ้าย/ขวา: ตัวหลอดไม่วาดเส้นเอง (วาดจากโค้ด เติมสีจากตรงกลาง 0 ไปทางซ้ายหรือขวา) -->
+        <Style x:Key="CenterSlider" TargetType="Slider">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsSnapToTickEnabled" Value="True"/>
+            <Setter Property="TickFrequency" Value="0.5"/>
+            <Setter Property="SmallChange" Value="0.5"/>
+            <Setter Property="LargeChange" Value="0.5"/>
+            <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="24" Background="Transparent">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderTrackClear}" Command="{x:Static Slider.DecreaseLarge}"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderTrackClear}" Command="{x:Static Slider.IncreaseLarge}"/>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Width="16" Height="16" Fill="White">
+                                                    <Ellipse.Effect>
+                                                        <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#1D6BFF" Opacity="0.9"/>
+                                                    </Ellipse.Effect>
+                                                </Ellipse>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="NiceSlider" TargetType="Slider">
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="IsSnapToTickEnabled" Value="True"/>
@@ -448,7 +500,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="44"/>
+                                        <ColumnDefinition Width="62"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="แรงดึงลง" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="base-" Click="Step_Click"/>
@@ -464,11 +516,17 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="44"/>
+                                        <ColumnDefinition Width="62"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="ซ้าย / ขวา" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="x-" Click="Step_Click"/>
-                                    <Slider x:Name="XSlider" Grid.Column="2" Style="{StaticResource NiceSlider}" Minimum="-5" Maximum="5" Margin="8,0"/>
+                                    <Grid Grid.Column="2" Margin="8,0" SizeChanged="XBar_SizeChanged">
+                                        <Border Height="5" CornerRadius="2.5" Background="#1A2440" Margin="8,0" VerticalAlignment="Center"/>
+                                        <Border x:Name="XFill" Height="5" CornerRadius="2.5" HorizontalAlignment="Left" VerticalAlignment="Center" Width="0"/>
+                                        <Border x:Name="XMid" Width="2" Height="11" CornerRadius="1" Background="#5A6C94"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                        <Slider x:Name="XSlider" Style="{StaticResource CenterSlider}" Minimum="-5" Maximum="5"/>
+                                    </Grid>
                                     <Button Grid.Column="3" Style="{StaticResource StepBtn}" Content="&#xE710;" Tag="x+" Click="Step_Click"/>
                                     <TextBlock x:Name="XValue" Grid.Column="4" FontSize="13" FontWeight="Bold" FontFamily="Consolas"
                                                Foreground="#8FDBFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
