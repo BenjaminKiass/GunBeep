@@ -29,6 +29,14 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Lua acks with F18; Caps Lock is restored afterwards. Avoided Ctrl+Shift (language hotkey) and Shift
   alone (Sticky Keys). Verified 2026-10-19 on the user's PC: base and negative x applied without restart.
 
+## Autostart / single instance
+- "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
+  registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if
+  the folder moved.
+- `--tray`: window is created but never shown; `StartInTray()` runs the Loaded work (`Started()`).
+  OnClosing skips saving Left/Top when they are NaN (never shown).
+- Second launch sets named event `GunBeep_show` → running instance calls `ShowFromTray()`.
+
 ## GitHub + self-update
 - Repo: github.com/BenjaminKiass/GunBeep (public). Working copy = the user's install folder
   `%USERPROFILE%\Downloads\มาโครพับจี\GunBeep` (.gitignore whitelists only source/docs; runtime files,

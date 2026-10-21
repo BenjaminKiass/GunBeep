@@ -90,6 +90,15 @@ namespace GunBeep
             SoundSwitch.Click += (s, e) => { cfg.Sound = SoundSwitch.IsChecked == true; cfg.Save(); };
             TopSwitch.Click += (s, e) => { cfg.TopMost = TopSwitch.IsChecked == true; Topmost = cfg.TopMost; cfg.Save(); };
 
+            // เปิดพร้อม Windows: ค่าอยู่ใน registry (Run) ไม่ได้อยู่ใน settings — ย้ายโฟลเดอร์แล้วแก้ path ให้เอง
+            AutoStart.Refresh();
+            AutoStartSwitch.IsChecked = AutoStart.Enabled;
+            AutoStartSwitch.Click += (s, e) =>
+            {
+                if (!AutoStart.Set(AutoStartSwitch.IsChecked == true))
+                    AutoStartSwitch.IsChecked = AutoStart.Enabled;
+            };
+
             try { tts = new SpeechSynthesizer { Rate = 1, Volume = 100 }; } catch { tts = null; }
 
             SetupTray();
@@ -144,7 +153,25 @@ namespace GunBeep
             updateTimer.Tick += (s, e) => CheckUpdate();
             updateTimer.Start();
 
-            Loaded += (s, e) => { Sfx.Play(Sfx.Ready, cfg.Sound); RefreshGHub(); LoadGunValues(); CheckUpdate(); };
+            Loaded += (s, e) => Started();
+        }
+
+        bool started;
+        void Started()
+        {
+            if (started) return;
+            started = true;
+            Sfx.Play(Sfx.Ready, cfg.Sound);
+            RefreshGHub();
+            LoadGunValues();
+            CheckUpdate();
+        }
+
+        // เปิดตอนเข้า Windows (--tray): ไม่โชว์หน้าต่าง อยู่ที่ถาดอย่างเดียว
+        public void StartInTray()
+        {
+            hintShown = true;
+            Started();
         }
 
         static T Freeze<T>(T b) where T : Freezable { b.Freeze(); return b; }
@@ -898,7 +925,7 @@ namespace GunBeep
             tray.Text = t.Length > 63 ? t.Substring(0, 63) : t;
         }
 
-        void ShowFromTray()
+        public void ShowFromTray()
         {
             Show();
             WindowState = WindowState.Normal;
@@ -946,8 +973,11 @@ namespace GunBeep
             if (saveVals.IsEnabled) FlushGunValues();
             on = false;
             ApplyState();
-            cfg.Left = Left;
-            cfg.Top = Top;
+            if (!double.IsNaN(Left) && !double.IsNaN(Top))   // เปิดจากถาดแล้วไม่เคยโชว์หน้าต่าง = ไม่มีตำแหน่ง
+            {
+                cfg.Left = Left;
+                cfg.Top = Top;
+            }
             cfg.Save();
             hook?.Dispose();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }

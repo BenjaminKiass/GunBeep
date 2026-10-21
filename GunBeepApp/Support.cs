@@ -5,6 +5,7 @@ using System.Media;
 using System.Runtime.InteropServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Microsoft.Win32;
 
 namespace GunBeep
 {
@@ -54,6 +55,41 @@ namespace GunBeep
                 }
                 catch { }
             }
+        }
+    }
+
+    // เปิดพร้อม Windows ผ่าน HKCU\...\Run (ไม่ต้องใช้สิทธิ์ admin)
+    public static class AutoStart
+    {
+        const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        const string Name = "GunBeep";
+        static string Command => "\"" + Environment.ProcessPath + "\" --tray";
+
+        static string Current()
+        {
+            try { using var k = Registry.CurrentUser.OpenSubKey(RunKey); return k?.GetValue(Name) as string; }
+            catch { return null; }
+        }
+
+        public static bool Enabled => Current() != null;
+
+        public static bool Set(bool on)
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.CreateSubKey(RunKey);
+                if (on) k.SetValue(Name, Command);
+                else k.DeleteValue(Name, false);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // ย้ายโฟลเดอร์ GunBeep แล้ว ให้ชี้ไปที่ตัวที่เปิดอยู่
+        public static void Refresh()
+        {
+            string cur = Current();
+            if (cur != null && !string.Equals(cur, Command, StringComparison.OrdinalIgnoreCase)) Set(true);
         }
     }
 
