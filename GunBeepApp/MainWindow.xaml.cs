@@ -509,6 +509,7 @@ namespace GunBeep
         void LoadPreset(Preset p)
         {
             if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (setupBusy || liveBusy) { Flash("กำลังส่งค่าเข้า G Hub อยู่ — ลองใหม่อีกครั้ง"); return; }
             if (p.Matches(cfg.Names, vals)) { currentPreset = p; cfg.Preset = p.Name; cfg.Save(); UpdatePresetButton(); return; }
             bool unsaved = currentPreset == null || !currentPreset.Matches(cfg.Names, vals);
             if (unsaved && !Ask($"ค่าปืนตอนนี้ยังไม่ได้บันทึกเป็นโปรไฟล์\nจะโหลด \"{p.Name}\" ทับเลยไหม?")) return;
@@ -733,6 +734,7 @@ namespace GunBeep
             catch (Exception ex)
             {
                 Tell("ใช้ค่าใหม่ไม่สำเร็จ: " + ex.Message);
+                if (segs != null) LoadGunValues();     // กราฟอาจไม่ได้เขียนลงไฟล์ → อ่านของจริงกลับมา
             }
             finally
             {
