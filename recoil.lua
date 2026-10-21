@@ -1,6 +1,6 @@
 -- ============================================================
 --  Recoil macro สำหรับ Logitech G Hub  (ใช้คู่กับโปรแกรม GunBeep.exe)
---  GunBeep-Script-Version: 5
+--  GunBeep-Script-Version: 6
 --  ความไวเดียวทุกสโคป + ตารางแรงดีดอิงเวลาจริง (ไม่เพี้ยนตาม Sleep)
 --
 --  เปิด/ปิดมาโคร : ปุ่มลัดที่ตั้งใน GunBeep (ค่าเริ่มต้น F8) หรือคลิกปุ่มใหญ่ในโปรแกรม
@@ -84,11 +84,12 @@ local function signal(key)
   if SIGNAL_ON then PressAndReleaseKey(key) end
 end
 
--- ===== รับค่า base / x จาก GunBeep แบบ real time (ไม่ต้องรีสตาร์ท G Hub) =====
+-- ===== รับค่าจาก GunBeep แบบ real time (ไม่ต้องรีสตาร์ท G Hub) =====
 -- Right Ctrl เปลี่ยนสถานะ = 1 จังหวะ, Caps Lock สลับในจังหวะนั้น = บิต 1 / ไม่สลับ = บิต 0
--- เฟรม 24 บิต: 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum(4)  ตอบกลับด้วย F18
-local RX_BITS = 24
-local rx_clk, rx_t, rx_caps, rx_bits = false, 0, false, {}
+-- เฟรม base/x (24 บิต): 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum(4)
+-- เฟรมกราฟ: 11 | ปืน(2) | จำนวนก้อน(5) | ก้อนละ: แรงดึง*4 (7) + จำนวนแท่ง 100 ms (5) | checksum(8)
+-- รับครบแล้วตอบกลับด้วย F18
+local rx_clk, rx_t, rx_caps, rx_bits, rx_need = false, 0, false, {}, 24
 
 local function rx_take(i, n)
   local v = 0
@@ -109,6 +110,29 @@ local function rx_apply()
   PressAndReleaseKey("f18")
 end
 
+local function rx_apply_segs()
+  local g, nr = rx_take(3, 2), rx_take(5, 5)
+  local sum, p, runs = g + nr, 10, {}
+  for r = 1, nr do
+    local v, c = rx_take(p, 7), rx_take(p + 7, 5)
+    sum = sum + v + c
+    runs[r] = { v / 4, c }
+    p = p + 12
+  end
+  if g < 1 or g > NGUNS or nr < 1 or rx_take(p, 8) ~= sum % 256 then
+    OutputLogMessage("LIVE: กราฟเสีย ไม่รับ\n")
+    return
+  end
+  local t = {}
+  for _, r in ipairs(runs) do
+    for _ = 1, r[2] * 10 do t[#t + 1] = r[1] end
+  end
+  GUNS[g].rc = t
+  GUNS[g].count = #t
+  OutputLogMessage("LIVE %s: กราฟใหม่ %d ms\n", GUNS[g].name, #t * STEP_MS)
+  PressAndReleaseKey("f18")
+end
+
 local function rx_poll()
   local clk = IsModifierPressed("rctrl")
   if clk == rx_clk then return end
@@ -117,15 +141,21 @@ local function rx_poll()
   local caps = IsKeyLockOn("capslock")
   if now - rx_t > 150 then          -- จังหวะแรกหลังเงียบ = เริ่มเฟรม
     rx_bits = {}
+    rx_need = 24
     rx_caps = caps
     rx_t = now
     return
   end
   rx_t = now
-  if #rx_bits >= RX_BITS then return end
+  if #rx_bits >= rx_need then return end
   rx_bits[#rx_bits + 1] = (caps ~= rx_caps) and 1 or 0
   rx_caps = caps
-  if #rx_bits == RX_BITS then rx_apply() end
+  local n = #rx_bits
+  if n == 2 and rx_bits[1] == 1 and rx_bits[2] == 1 then rx_need = 9 end     -- เฟรมกราฟ: รอรู้จำนวนก้อนก่อน
+  if n == 9 and rx_need == 9 then rx_need = 9 + rx_take(5, 5) * 12 + 8 end
+  if n == rx_need then
+    if rx_bits[2] == 1 then rx_apply_segs() else rx_apply() end
+  end
 end
 
 -- ===== สถานะจาก GunBeep (0 = ปิด, 1-3 = เปิด + เลขปืน) =====
@@ -217,6 +247,7 @@ local function spray()
       if now - release_at >= RELEASE_GRACE_MS then reason = "mouse released" break end
       pending = true
     end
+    rx_poll()                       -- รับค่าใหม่ได้แม้กำลังยิง (ใช้กับชุดถัดไป)
     if read_state() == 0 then reason = "macro off" break end
     if REQUIRE_ADS and not IsMouseButtonPressed(SCOPE_BUTTON) then reason = "ads released" break end
 

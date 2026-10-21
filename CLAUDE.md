@@ -65,6 +65,19 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Verified 2026-10-21: +0.5 on gun 1 → SEGS_MAIN/SEGS_2 written, G Hub restarted and acked a live frame;
   −0.5 restored identical values (only line wrapping differs). Mouse painting not yet tried by the user.
 
+## Live graph (script v6, 2026-10-21)
+- Timing measured on the user's PC: the script sees Right Ctrl changes every ~16 ms (12 ms/bit lost frames,
+  18 ms passed 10/10). Default Windows timer rounds Sleep to 15.6 ms, so `LiveLink.Send` uses timeBeginPeriod(1),
+  ONE sleep per bit (Caps toggle + edge, then sleep) and BIT_MS = 28 → base/x frame ~0.7 s.
+- Graph frame `11 | gun(2) | runs(5) | runs × (value*4 (7) + bars (5)) | sum%256 (8)`; bar = 10 steps (100 ms).
+  Lua `rx_poll` grows `rx_need` after bit 2 (type 11 → 9) and bit 9 (→ 9 + runs*12 + 8); `rx_apply_segs` rebuilds
+  GUNS[g].rc/count and acks F18. `rx_poll` is also called inside `spray()` (new graph used by the next spray).
+- Edited/loaded graphs are quantized (`LiveLink.Quantize`, bar average, 0.25 steps, max 31.75); comparisons use
+  `SameGraph` (quantized). `appliedSteps` = what G Hub has; `SegsPending` feeds HasPending; after a live send the
+  graph is written to script.lua (`WriteSegs`). Script < v6 → `NeedRestart` → restart path.
+- `SendFrameAsync` retries a frame once if no ack. Verified: graph +0.5 on gun 1 sent live in ~4 s, same
+  lghub_agent PID, file updated; then restored the detailed original from the backup.
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

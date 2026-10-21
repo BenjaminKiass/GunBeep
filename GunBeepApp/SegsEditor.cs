@@ -39,7 +39,7 @@ namespace GunBeep
 
         public double[][] Result { get; private set; }
 
-        public SegsEditor(string[] gunNames, double[][] current, double[] baseVals, int startGun)
+        public SegsEditor(string[] gunNames, double[][] current, double[] baseVals, int startGun, bool live)
         {
             names = gunNames;
             bases = baseVals;
@@ -93,14 +93,15 @@ namespace GunBeep
             tools.Children.Add(Btn("ย้อนกลับ (Ctrl+Z)", Undo, 6));
 
             // ปุ่มล่าง
-            saveBtn = Btn("บันทึก + รีสตาร์ท G Hub", Save, 8);
+            saveBtn = Btn(live ? "บันทึก + ใช้เลย" : "บันทึก + รีสตาร์ท G Hub", Save, 8);
             saveBtn.BorderBrush = new SolidColorBrush(Blue);
             var bottom = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
             bottom.Children.Add(Btn("ยกเลิก", () => { DialogResult = false; }, 0));
             bottom.Children.Add(saveBtn);
             var note = new TextBlock
             {
-                Text = "กราฟส่งเข้า G Hub แบบ real time ไม่ได้ — บันทึกแล้ว GunBeep จะรีสตาร์ท G Hub ให้ (~10 วิ)",
+                Text = live ? "ส่งเข้า G Hub แบบ real time (~2-10 วิ ไม่ต้องรีสตาร์ท) · ค่าปัดเป็นแท่งละ 0.1 วิ ละเอียด 0.25"
+                            : "สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — บันทึกแล้วต้องรีสตาร์ท G Hub (~10 วิ) · กด ตั้งค่าอัตโนมัติ เพื่ออัปเดต",
                 FontSize = 11, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center
             };
             var foot = new DockPanel();
@@ -251,7 +252,7 @@ namespace GunBeep
         void Rescale()
         {
             double max = steps.SelectMany(s => s).DefaultIfEmpty(0).Max();
-            ymax = Math.Max(6, Math.Ceiling(max + 2));
+            ymax = Math.Min(31.75, Math.Max(6, Math.Ceiling(max + 2)));      // ส่งได้สูงสุด 31.75
         }
 
         void Paint(Point p)
@@ -342,9 +343,9 @@ namespace GunBeep
             plot.Children.Add(t);
         }
 
-        public static double[][] Edit(Window owner, string[] names, double[][] current, double[] bases, int gun)
+        public static double[][] Edit(Window owner, string[] names, double[][] current, double[] bases, int gun, bool live)
         {
-            var d = new SegsEditor(names, current, bases, gun) { Owner = owner };
+            var d = new SegsEditor(names, current, bases, gun, live) { Owner = owner };
             return d.ShowDialog() == true ? d.Result : null;
         }
     }

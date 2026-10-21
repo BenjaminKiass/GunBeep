@@ -1,19 +1,31 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace GunBeep
 {
-    // ส่งค่า base / x เข้าสคริปต์ G Hub แบบ real time (สคริปต์ v5+ ตอบกลับด้วย F18)
+    // ส่งค่าเข้าสคริปต์ G Hub แบบ real time (สคริปต์ตอบกลับด้วย F18)
     //   Right Ctrl เปลี่ยนสถานะ = 1 จังหวะ (จังหวะแรก = เริ่มเฟรม)
     //   Caps Lock สลับก่อนจังหวะนั้น = บิต 1, ไม่สลับ = บิต 0 → จบแล้วคืน Caps Lock ให้เหมือนเดิม
-    //   เฟรม 24 บิต: 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum (ปืน+base+x) % 16 (4)
+    //   เฟรม base/x (v5+): 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum (ปืน+base+x) % 16 (4)
+    //   เฟรมกราฟ (v6+):   11 | ปืน(2) | จำนวนก้อน(5) | ก้อนละ แรงดึง*4 (7) + จำนวนแท่ง 100 ms (5) | checksum % 256 (8)
     // ไม่ใช้ Ctrl+Shift (มักเป็นปุ่มสลับภาษา) และไม่ใช้ Shift ล้วน (กดรัวแล้ว Sticky Keys เด้ง)
     public static class LiveLink
     {
         const byte VK_RCONTROL = 0xA3, VK_CAPITAL = 0x14;
-        const int GAP_MS = 25;
+        // สคริปต์อ่านสัญญาณทุก ~16 ms (วัดแล้ว: 12 ms หลุด, 18 ms ผ่านทุกครั้ง) → เผื่อไว้ตอนเกมกินเครื่อง
+        const int BIT_MS = 28;
         public const int FRAME_GAP_MS = 250;    // เงียบระหว่างเฟรม (สคริปต์นับ >150 ms เป็นเฟรมใหม่)
+        public const int SEGS_VERSION = 6;      // สคริปต์ตั้งแต่ v6 รับกราฟได้
+        public const int BAR_STEPS = 10;        // 1 แท่ง = 10 ช่วง x 10 ms
+        const int MAX_RUNS = 31, MAX_RUN_BARS = 31, MAX_VAL = 127;
+
+        [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint p);
+        [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint p);
+
+        static void Put(List<int> bits, int v, int n) { for (int i = n - 1; i >= 0; i--) bits.Add((v >> i) & 1); }
 
         public static int[] Frame(int gun, double baseVal, double x)
         {
@@ -21,12 +33,53 @@ namespace GunBeep
             int xv = Math.Clamp((int)Math.Round(x * 2) + 128, 0, 255);
             int chk = (gun + b + xv) % 16;
             var bits = new List<int> { 1, 0 };
-            void Put(int v, int n) { for (int i = n - 1; i >= 0; i--) bits.Add((v >> i) & 1); }
-            Put(gun, 2); Put(b, 8); Put(xv, 8); Put(chk, 4);
+            Put(bits, gun, 2); Put(bits, b, 8); Put(bits, xv, 8); Put(bits, chk, 4);
             return bits.ToArray();
         }
 
-        // ใช้เวลาประมาณ 1.3 วินาที — เรียกจากเธรดเบื้องหลัง
+        // กราฟส่งเป็นแท่งละ 100 ms ค่าละเอียด 0.25 → ทำให้ค่าในโปรแกรม/ไฟล์ตรงกับที่ส่งจริง
+        public static double[] Quantize(double[] steps)
+        {
+            if (steps == null) return null;
+            int bars = (steps.Length + BAR_STEPS - 1) / BAR_STEPS;
+            var q = new double[bars * BAR_STEPS];
+            for (int b = 0; b < bars; b++)
+            {
+                int a = b * BAR_STEPS, z = Math.Min(steps.Length, a + BAR_STEPS);
+                double avg = 0;
+                for (int i = a; i < z; i++) avg += steps[i];
+                avg = Math.Clamp(Math.Round(avg / (z - a) * 4) / 4, 0, MAX_VAL / 4.0);
+                for (int i = a; i < a + BAR_STEPS; i++) q[i] = avg;
+            }
+            return q;
+        }
+
+        public static bool SameGraph(double[] a, double[] b) =>
+            a != null && b != null && GHub.SameSteps(Quantize(a), Quantize(b));
+
+        // null = ส่งไม่ได้ (ก้อนเยอะเกิน) → ต้องรีสตาร์ท G Hub แทน
+        public static int[] SegsFrame(int gun, double[] steps)
+        {
+            var q = Quantize(steps);
+            var runs = new List<(int v, int n)>();
+            for (int b = 0; b < q.Length / BAR_STEPS; b++)
+            {
+                int v = (int)Math.Round(q[b * BAR_STEPS] * 4);
+                if (runs.Count > 0 && runs[^1].v == v && runs[^1].n < MAX_RUN_BARS) runs[^1] = (v, runs[^1].n + 1);
+                else runs.Add((v, 1));
+            }
+            if (runs.Count < 1 || runs.Count > MAX_RUNS) return null;
+            var bits = new List<int> { 1, 1 };
+            Put(bits, gun, 2); Put(bits, runs.Count, 5);
+            int sum = gun + runs.Count;
+            foreach (var (v, n) in runs) { Put(bits, v, 7); Put(bits, n, 5); sum += v + n; }
+            Put(bits, sum % 256, 8);
+            return bits.ToArray();
+        }
+
+        public static int Millis(int[] bits) => (bits.Length + 2) * BIT_MS;
+
+        // เรียกจากเธรดเบื้องหลัง: base/x ~0.7 วิ, กราฟ ~2-10 วิ
         public static void Send(int[] bits)
         {
             bool down = false;
@@ -34,23 +87,23 @@ namespace GunBeep
             void Caps() => KeyHook.Tap(VK_CAPITAL, 0x3A, false);
 
             int ones = 0;
+            timeBeginPeriod(1);              // ให้ Sleep ตรงเวลา (ปกติปัดเป็น 15.6 ms)
             try
             {
                 Edge();                         // เริ่มเฟรม
-                Thread.Sleep(GAP_MS * 2);
+                Thread.Sleep(BIT_MS);
                 foreach (int bit in bits)
                 {
                     if (bit == 1) { Caps(); ones++; }
-                    Thread.Sleep(GAP_MS);
                     Edge();
-                    Thread.Sleep(GAP_MS);
+                    Thread.Sleep(BIT_MS);
                 }
             }
             finally
             {
                 if (down) Edge();               // ปล่อย Right Ctrl (สคริปต์ไม่นับ เฟรมเต็มแล้ว)
-                Thread.Sleep(GAP_MS);
                 if (ones % 2 == 1) Caps();      // คืน Caps Lock
+                timeEndPeriod(1);
             }
         }
     }

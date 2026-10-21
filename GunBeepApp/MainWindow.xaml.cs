@@ -339,6 +339,7 @@ namespace GunBeep
         {
             vals = await Task.Run(GHub.ReadGunValues);
             applied = Clone(vals);                                  // G Hub โหลดค่าจากไฟล์เดียวกันนี้
+            appliedSteps = vals?.Select(v => v.Steps?.ToArray()).ToArray();
             liveFailed = false;
             UpdateGuns();
         }
@@ -346,9 +347,21 @@ namespace GunBeep
         static GHub.GunVals[] Clone(GHub.GunVals[] src) =>
             src?.Select(v => new GHub.GunVals { Base = v.Base, X = v.X }).ToArray();
 
+        double[][] appliedSteps;       // กราฟที่ G Hub ใช้อยู่ในหน่วยความจำ
+        int scriptVersion;             // เวอร์ชันสคริปต์ใน G Hub (v6+ รับกราฟแบบ real time)
+
+        bool SegsPending =>
+            vals != null && appliedSteps != null &&
+            Enumerable.Range(0, Math.Min(vals.Length, appliedSteps.Length)).Any(i =>
+                vals[i].Steps != null && appliedSteps[i] != null && !LiveLink.SameGraph(vals[i].Steps, appliedSteps[i]));
+
         bool HasPending =>
             vals != null && applied != null &&
-            vals.Zip(applied).Any(p => Math.Abs(p.First.Base - p.Second.Base) > 1e-9 || Math.Abs(p.First.X - p.Second.X) > 1e-9);
+            (vals.Zip(applied).Any(p => Math.Abs(p.First.Base - p.Second.Base) > 1e-9 || Math.Abs(p.First.X - p.Second.X) > 1e-9)
+             || SegsPending);
+
+        // ค้างอยู่แต่ส่งแบบ real time ไม่ได้ → ต้องรีสตาร์ท G Hub
+        bool NeedRestart => liveFailed || (SegsPending && scriptVersion < LiveLink.SEGS_VERSION);
 
         // ---------------------------------------------------------------- หลอดเลื่อน
 
@@ -386,7 +399,7 @@ namespace GunBeep
             ApplyBtn.IsEnabled = pending && !setupBusy && !liveBusy;
             ApplyBtn.Content = setupBusy ? "กำลังรีสตาร์ท G Hub..."
                              : liveBusy ? "กำลังส่งค่าเข้า G Hub..."
-                             : pending && liveFailed ? "ใช้ค่านี้  (รีสตาร์ท G Hub ~10 วิ)"
+                             : pending && NeedRestart ? "ใช้ค่านี้  (รีสตาร์ท G Hub ~10 วิ)"
                              : pending ? "ส่งค่าเข้า G Hub"
                              : have ? "✓  G Hub ใช้ค่านี้อยู่" : "ยังไม่พบสคริปต์ใน G Hub";
             if (pending) ApplyBtn.BorderBrush = accent; else ApplyBtn.ClearValue(BorderBrushProperty);
@@ -511,27 +524,35 @@ namespace GunBeep
             bool unsaved = currentPreset == null || !currentPreset.Matches(cfg.Names, vals);
             if (unsaved && !Ask($"ค่าปืนตอนนี้ยังไม่ได้บันทึกเป็นโปรไฟล์\nจะโหลด \"{p.Name}\" ทับเลยไหม?")) return;
 
-            // กราฟแรงดีดในโปรไฟล์ต่างจากที่ใช้อยู่ → ต้องรีสตาร์ท G Hub (ส่งแบบ real time ไม่ได้)
-            var segs = vals.Select(v => v.Steps).ToArray();
-            bool segsDiffer = false;
-            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
-            {
-                var st = p.Guns[i].StepArray();
-                if (st != null && !GHub.SameSteps(st, vals[i].Steps)) { segs[i] = st; segsDiffer = true; }
-            }
-            bool withSegs = segsDiffer && Ask($"\"{p.Name}\" มีกราฟแรงดีดต่างจากที่ใช้อยู่\n" +
-                                              "ต้องรีสตาร์ท G Hub (~10 วิ) จะใช้กราฟด้วยเลยไหม?\n\n(ไม่ = ใช้แค่ base / x)");
+            // กราฟแรงดีดในโปรไฟล์ต่างจากที่ใช้อยู่: สคริปต์ v6+ ส่งแบบ real time ได้, รุ่นเก่าต้องรีสตาร์ท G Hub
+            var segs = PresetSegs(p, out bool segsDiffer);
+            bool live = scriptVersion >= LiveLink.SEGS_VERSION;
+            bool withSegs = segsDiffer && (live || Ask($"\"{p.Name}\" มีกราฟแรงดีดต่างจากที่ใช้อยู่\n" +
+                                              "ต้องรีสตาร์ท G Hub (~10 วิ) จะใช้กราฟด้วยเลยไหม?\n\n(ไม่ = ใช้แค่ base / x)"));
             ApplyPreset(p, withSegs ? segs : null, null);
         }
 
-        // ใส่ค่าโปรไฟล์: base/x ส่งแบบ real time, กราฟ (ถ้าให้มา) เขียนแล้วรีสตาร์ท G Hub
+        // กราฟของแต่ละปืนหลังโหลดโปรไฟล์ (ปืนที่ต่างจากตอนนี้ = ปัดเป็นแท่งแบบที่ส่งเข้า G Hub)
+        double[][] PresetSegs(Preset p, out bool differ)
+        {
+            var segs = vals.Select(v => v.Steps).ToArray();
+            differ = false;
+            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
+            {
+                var st = p.Guns[i].StepArray();
+                if (st != null && !LiveLink.SameGraph(st, vals[i].Steps)) { segs[i] = LiveLink.Quantize(st); differ = true; }
+            }
+            return segs;
+        }
+
+        // ใส่ค่าโปรไฟล์แล้วส่งเข้า G Hub แบบ real time (กราฟด้วยถ้าสคริปต์ v6+, ไม่งั้นรีสตาร์ท G Hub)
         void ApplyPreset(Preset p, double[][] segs, string osdNote)
         {
             for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
             {
                 vals[i].Base = p.Guns[i].Base;
                 vals[i].X = p.Guns[i].X;
-                if (segs != null) vals[i].Steps = segs[i];
+                if (segs != null && segs[i] != null) vals[i].Steps = segs[i];
                 if (p.Guns[i].Name.Length > 0 && i < cfg.Names.Length) cfg.Names[i] = p.Guns[i].Name;
             }
             currentPreset = p;
@@ -541,7 +562,7 @@ namespace GunBeep
             Flash("โหลดโปรไฟล์ \"" + p.Name + "\" แล้ว");
             Sfx.Play(Sfx.Pick, cfg.Sound);
             PopOsd("โปรไฟล์: " + p.Name + (osdNote ?? ""));
-            if (segs != null)
+            if (segs != null && scriptVersion < LiveLink.SEGS_VERSION)
             {
                 _ = ApplyRestartAsync(segs);
                 return;
@@ -577,13 +598,10 @@ namespace GunBeep
             int cur = currentPreset == null ? -1 : list.FindIndex(x => x.Name == currentPreset.Name);
             var p = list[(cur + 1) % list.Count];
 
-            bool segsDiffer = false;
-            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
-            {
-                var st = p.Guns[i].StepArray();
-                if (st != null && !GHub.SameSteps(st, vals[i].Steps)) segsDiffer = true;
-            }
-            ApplyPreset(p, null, $"  ({list.IndexOf(p) + 1}/{list.Count})" + (segsDiffer ? "\nกราฟยังไม่ใช้ — เลือกในหน้าต่าง" : ""));
+            var segs = PresetSegs(p, out bool segsDiffer);
+            bool live = scriptVersion >= LiveLink.SEGS_VERSION;
+            ApplyPreset(p, segsDiffer && live ? segs : null,
+                        $"  ({list.IndexOf(p) + 1}/{list.Count})" + (segsDiffer && !live ? "\nกราฟยังไม่ใช้ — เลือกในหน้าต่าง" : ""));
         }
 
         // ---------------------------------------------------------------- กราฟแรงดีด (segs)
@@ -592,12 +610,22 @@ namespace GunBeep
         {
             if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
             if (setupBusy || liveBusy) return;
+            bool live = scriptVersion >= LiveLink.SEGS_VERSION;
             var res = SegsEditor.Edit(this, cfg.Names.Take(vals.Length).ToArray(),
-                                      vals.Select(v => v.Steps).ToArray(), vals.Select(v => v.Base).ToArray(), gun);
+                                      vals.Select(v => v.Steps).ToArray(), vals.Select(v => v.Base).ToArray(), gun, live);
             if (res == null) return;
-            for (int i = 0; i < vals.Length; i++) vals[i].Steps = res[i];
+            // ปืนที่แก้ = ปัดเป็นแท่งละ 100 ms ค่าละเอียด 0.25 (แบบเดียวกับที่ส่งเข้า G Hub)
+            for (int i = 0; i < vals.Length; i++)
+                if (!GHub.SameSteps(res[i], vals[i].Steps)) vals[i].Steps = LiveLink.Quantize(res[i]);
             UpdatePresetButton();
-            await ApplyRestartAsync(res);
+            RefreshApplyButton();
+            if (live)
+            {
+                liveFailed = false;
+                if (await ApplyLiveAsync() && !HasPending) return;
+                if (!Ask("ส่งกราฟเข้า G Hub แบบ real time ไม่สำเร็จ\nจะใช้วิธีรีสตาร์ท G Hub (~10 วินาที) แทนไหม?")) return;
+            }
+            await ApplyRestartAsync();
         }
 
         void ImportPreset()
@@ -681,26 +709,40 @@ namespace GunBeep
             if (setupBusy || vals == null || applied == null) return false;
             liveBusy = true;
             RefreshApplyButton();
-            bool ok = true;
+            bool ok = true, segsSent = false;
             try
             {
                 bool sent = false;
                 do
                 {
                     liveAgain = false;
-                    for (int i = 0; i < Math.Min(vals.Length, applied.Length); i++)
+                    for (int i = 0; i < Math.Min(vals.Length, applied.Length) && ok; i++)
                     {
                         var want = Snap(vals[i]);
-                        if (Same(want, applied[i])) continue;
-                        // สคริปต์เริ่มเฟรมใหม่เมื่อ Right Ctrl เงียบเกิน 150 ms → เว้นก่อนส่งปืนถัดไป
+                        if (!Same(want, applied[i]))
+                        {
+                            // สคริปต์เริ่มเฟรมใหม่เมื่อ Right Ctrl เงียบเกิน 150 ms → เว้นก่อนส่งเฟรมถัดไป
+                            if (sent) await Task.Delay(LiveLink.FRAME_GAP_MS);
+                            sent = true;
+                            if (!await SendFrameAsync(LiveLink.Frame(i + 1, want.Base, want.X))) { ok = false; break; }
+                            applied[i] = want;
+                        }
+
+                        // กราฟ (สคริปต์ v6+)
+                        var st = vals[i].Steps;
+                        if (scriptVersion < LiveLink.SEGS_VERSION || st == null || appliedSteps == null
+                            || i >= appliedSteps.Length || appliedSteps[i] == null || LiveLink.SameGraph(st, appliedSteps[i])) continue;
+                        var bits = LiveLink.SegsFrame(i + 1, st);
+                        if (bits == null) { ok = false; break; }
+                        st = st.ToArray();
+                        int secs = (int)Math.Ceiling(LiveLink.Millis(bits) / 1000.0);
+                        Flash($"กำลังส่งกราฟ {cfg.Names[i]} เข้า G Hub (~{secs} วิ)...");
+                        PopOsd($"กำลังส่งกราฟ {cfg.Names[i]} (~{secs} วิ)");
                         if (sent) await Task.Delay(LiveLink.FRAME_GAP_MS);
                         sent = true;
-                        var bits = LiveLink.Frame(i + 1, want.Base, want.X);
-                        liveAck = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                        await Task.Run(() => LiveLink.Send(bits));
-                        var done = await Task.WhenAny(liveAck.Task, Task.Delay(1000));
-                        if (done != liveAck.Task) { ok = false; break; }
-                        applied[i] = want;
+                        if (!await SendFrameAsync(bits)) { ok = false; break; }
+                        appliedSteps[i] = st;
+                        segsSent = true;
                     }
                 } while (ok && liveAgain);
             }
@@ -709,20 +751,41 @@ namespace GunBeep
                 liveAck = null;
                 liveBusy = false;
             }
+            // กราฟที่ส่งแล้วเขียนลงไฟล์สคริปต์ด้วย (เปิด G Hub ใหม่ครั้งหน้าจะได้ค่าเดียวกัน)
+            if (segsSent && vals.All(v => v.Steps != null))
+            {
+                var all = vals.Select(v => v.Steps.ToArray()).ToArray();
+                _ = Task.Run(() => { try { GHub.WriteSegs(all); } catch { } });
+            }
             liveFailed = !ok;
-            Flash(ok ? "ส่งค่าเข้า G Hub แล้ว (ไม่ต้องรีสตาร์ท)" : "G Hub ไม่ตอบรับ — สคริปต์อาจยังไม่ใช่ v5");
+            Flash(ok ? "ส่งค่าเข้า G Hub แล้ว (ไม่ต้องรีสตาร์ท)" : "G Hub ไม่ตอบรับ — สคริปต์อาจยังเป็นรุ่นเก่า");
             if (ok) Sfx.Play(Sfx.Pick, cfg.Sound);
             PopOsd(ok ? "✓  ส่งค่าเข้า G Hub แล้ว" : "✗  G Hub ไม่ตอบรับ");
             RefreshApplyButton();
             return ok;
         }
 
+        // ส่งหนึ่งเฟรมแล้วรอ F18 (ไม่ได้รับ → ลองใหม่อีกครั้ง เผื่อสคริปต์ไม่ว่างตอนนั้น)
+        async Task<bool> SendFrameAsync(int[] bits)
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(LiveLink.FRAME_GAP_MS);
+                liveAck = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                await Task.Run(() => LiveLink.Send(bits));
+                if (await Task.WhenAny(liveAck.Task, Task.Delay(1000)) == liveAck.Task) return true;
+            }
+            return false;
+        }
+
         async void Apply_Click(object sender, RoutedEventArgs e)
         {
             if (!HasPending) return;
-            if (!liveFailed && await ApplyLiveAsync()) return;
-            if (Ask("ส่งค่าเข้า G Hub แบบ real time ไม่สำเร็จ\n(สคริปต์ใน G Hub อาจยังไม่ใช่ v5 — กด \"ตั้งค่าอัตโนมัติ\" เพื่ออัปเดต)\n\n" +
-                    "จะใช้วิธีรีสตาร์ท G Hub (~10 วินาที) แทนไหม?"))
+            if (!liveFailed && await ApplyLiveAsync() && !HasPending) return;
+            string why = liveFailed
+                ? "ส่งค่าเข้า G Hub แบบ real time ไม่สำเร็จ\n(สคริปต์ใน G Hub อาจยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่ออัปเดต)"
+                : $"สคริปต์ใน G Hub ยังเป็น v{scriptVersion} ส่งกราฟแบบ real time ไม่ได้\n(กด \"ตั้งค่าอัตโนมัติ\" เพื่ออัปเดตเป็น v{LiveLink.SEGS_VERSION})";
+            if (Ask(why + "\n\nจะใช้วิธีรีสตาร์ท G Hub (~10 วินาที) แทนไหม?"))
                 await ApplyRestartAsync();
         }
 
@@ -742,6 +805,8 @@ namespace GunBeep
         async Task ApplyRestartAsync(double[][] segs = null)
         {
             if (setupBusy || liveBusy || vals == null || (!HasPending && segs == null)) return;
+            if (segs == null && SegsPending && vals.All(v => v.Steps != null))
+                segs = vals.Select(v => v.Steps.ToArray()).ToArray();
             setupBusy = true;
             UpdateTunePanel();
             var copy = Clone(vals);
@@ -762,6 +827,7 @@ namespace GunBeep
                 stopped = false;
                 agentPid = GHub.AgentPid();
                 applied = Clone(copy);
+                if (segs != null) appliedSteps = segs.Select(s => s?.ToArray()).ToArray();
                 liveFailed = false;
                 Flash("ใช้ค่าใหม่แล้ว");
                 Sfx.Play(Sfx.Ready, cfg.Sound);
@@ -951,6 +1017,8 @@ namespace GunBeep
         async void RefreshGHub()
         {
             var st = await Task.Run(GHub.GetStatus);
+            scriptVersion = st.Script?.IsGunBeep == true ? st.Script.Version : 0;
+            RefreshApplyButton();
             GHubRows.Children.Clear();
 
             if (!st.Installed)

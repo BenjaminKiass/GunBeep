@@ -54,7 +54,7 @@ namespace GunBeep
         public bool Matches(string[] names, GHub.GunVals[] vals) =>
             vals != null && Guns.Count == vals.Length &&
             Guns.Select((g, i) => g.Name == names[i] && Math.Abs(g.Base - vals[i].Base) < 1e-9 && Math.Abs(g.X - vals[i].X) < 1e-9
-                                  && (g.Segs == null || GHub.SameSteps(g.StepArray(), vals[i].Steps))).All(b => b);
+                                  && (g.Segs == null || LiveLink.SameGraph(g.StepArray(), vals[i].Steps))).All(b => b);
 
         public string ToJson() => JsonSerializer.Serialize(this, Json);
 
