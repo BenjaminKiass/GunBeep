@@ -121,10 +121,11 @@ namespace GunBeep
             osd = new Overlay();
             UpdateOsdButtons();
 
-            // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้) — เปิดอยู่ก่อน GunBeep = ไม่ยุ่ง (ยกเว้นโหมดยืดตลอด)
+            // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้)
+            //   เกมเปิดอยู่แล้วตอน GunBeep เริ่ม (เช่นอัปเดต/รีสตาร์ท GunBeep กลางเกม ตัวเก่าคืนจอไปแล้ว) → ยืดให้เลย
             UpdateResButton();
             gameWas = GameRunning();
-            if (cfg.AutoRes && cfg.ResAlways) SwitchRes();
+            if (cfg.AutoRes && (cfg.ResAlways || gameWas)) SwitchRes();
             gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
             gameTimer.Tick += (s, e) => WatchGame();
             gameTimer.Start();
