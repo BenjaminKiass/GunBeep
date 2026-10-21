@@ -59,7 +59,8 @@ namespace GunBeep
         }
 
         // โหลดและเตรียมไฟล์ แล้วสั่งตัวคัดลอกให้รอโปรแกรมปิด — ผู้เรียกต้องปิดโปรแกรมต่อทันที
-        public static async Task StageAsync(Release r)
+        //   tray = เปิดตัวใหม่แบบ --tray (ไม่โชว์หน้าต่าง ไม่แย่งโฟกัสจากเกม)
+        public static async Task StageAsync(Release r, bool tray = false)
         {
             string work = Path.Combine(Path.GetTempPath(), "GunBeep_update_" + r.Version);
             if (Directory.Exists(work)) Directory.Delete(work, true);
@@ -79,11 +80,13 @@ namespace GunBeep
                 throw new InvalidDataException("ไฟล์อัปเดตไม่มี GunBeep.exe");
 
             string ps1 = Path.Combine(work, "apply.ps1");
-            File.WriteAllText(ps1, @"param([int]$ProcId, [string]$Src, [string]$Dst)
+            File.WriteAllText(ps1, @"param([int]$ProcId, [string]$Src, [string]$Dst, [int]$Tray = 0)
 Wait-Process -Id $ProcId -Timeout 30 -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 700
 robocopy $Src $Dst /E /XD saved /R:5 /W:1 /NFL /NDL /NJH /NJS | Out-Null
-Start-Process (Join-Path $Dst 'GunBeep.exe') -WorkingDirectory $Dst
+$exe = Join-Path $Dst 'GunBeep.exe'
+if ($Tray) { Start-Process $exe -ArgumentList '--tray' -WorkingDirectory $Dst }
+else { Start-Process $exe -WorkingDirectory $Dst }
 ", new UTF8Encoding(true));
 
             var psi = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
@@ -93,6 +96,7 @@ Start-Process (Join-Path $Dst 'GunBeep.exe') -WorkingDirectory $Dst
                 "-ProcId", Environment.ProcessId.ToString(),
                 "-Src", files,
                 "-Dst", AppContext.BaseDirectory.TrimEnd('\\'),
+                "-Tray", tray ? "1" : "0",
             }) psi.ArgumentList.Add(a);
             Process.Start(psi);
         }

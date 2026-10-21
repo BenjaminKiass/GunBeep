@@ -110,7 +110,7 @@ namespace GunBeep
         {
             Directory.CreateDirectory(Dir);
             Saved = DateTime.Now;
-            File.WriteAllText(PathFor(Name), ToJson());
+            SafeFile.Write(PathFor(Name), ToJson());
         }
 
         public static void Delete(string name)

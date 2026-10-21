@@ -99,6 +99,22 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   20-thread CPU with the window open (user saw ~10 %). `UpdateAmbient()` now runs them only while the window is
   visible AND active, at 24 fps (`Slow`) → measured 0.8 % active, 0.02 % inactive/hidden (2026-10-21).
 
+## Stability (2026-10-22)
+- All script.lua read-modify-writes (`WriteGunValues`, `WriteSegs`, `InstallScript`, `ReadGunValues`) hold
+  `GHub.ScriptLock`. Before this, the slider save (saveVals → Task.Run) and the live-graph save (WriteSegs →
+  Task.Run) could run at once and the later one wrote back the older text → file reverted to old base/x, and
+  the next G Hub restart (agent PID change → LoadGunValues) loaded the stale values. Best explanation found
+  for the one-off "base 20" seen earlier (gun 1 used to be 20).
+- MainWindow queues background writes on `fileWork` (`QueueFile`) in order; OnClosing waits up to 4 s;
+  `ApplyRestartAsync`/setup await it first; `LoadGunValues` keeps values that were changed but not yet saved.
+- `SafeFile.Write` = write `.tmp` then `File.Move(overwrite)` (fallback: direct write if the target is locked).
+  Used for script.lua, saved\guns.lua, settings.json, presets.
+- `Log` → `saved\log.txt` (rolls to log.old.txt at 512 KB): start/exit, values read/written/sent live,
+  PUBG start/stop, display switch, unhandled exceptions (UI exceptions are logged and handled, app keeps running).
+- In game: `Notify()` defers tray balloons while TslGame runs (shown after the game closes); resolution
+  switch success shows nothing, failures use the overlay. The in-app updater relaunches with `--tray` when the
+  game is running or the window is hidden. Update balloon shown once per tag.
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

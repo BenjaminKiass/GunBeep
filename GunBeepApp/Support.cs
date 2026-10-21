@@ -58,10 +58,54 @@ namespace GunBeep
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(p));
-                    File.WriteAllText(p, text);
+                    SafeFile.Write(p, text);
                 }
-                catch { }
+                catch (Exception ex) { Log.Error("save settings " + p, ex); }
             }
+        }
+    }
+
+    // เขียนไฟล์ลงไฟล์ชั่วคราวก่อนแล้วค่อยแทนที่ — ไฟดับ/โปรแกรมพังกลางทาง ไฟล์เดิมยังอยู่ครบ
+    public static class SafeFile
+    {
+        public static void Write(string path, string text, System.Text.Encoding enc = null)
+        {
+            string tmp = path + ".tmp";
+            enc ??= new System.Text.UTF8Encoding(false);
+            File.WriteAllText(tmp, text, enc);
+            try { File.Move(tmp, path, true); }
+            catch (IOException)                   // ไฟล์ปลายทางถูกเปิดค้างไว้ → เขียนทับตรงๆ แทน
+            {
+                File.WriteAllText(path, text, enc);
+                try { File.Delete(tmp); } catch { }
+            }
+        }
+    }
+
+    // บันทึกเหตุการณ์ + ตอนโปรแกรมพัง ลง saved\log.txt (ส่งให้ช่วยดูได้เลย)
+    public static class Log
+    {
+        static readonly string FilePath = Path.Combine(Settings.KitDir, "log.txt");
+        static readonly object gate = new();
+
+        public static void Info(string msg) => Write("     ", msg);
+        public static void Error(string msg, Exception ex = null) =>
+            Write("ERROR", ex == null ? msg : msg + ": " + ex);
+
+        static void Write(string level, string msg)
+        {
+            try
+            {
+                lock (gate)
+                {
+                    Directory.CreateDirectory(Settings.KitDir);
+                    var fi = new FileInfo(FilePath);
+                    if (fi.Exists && fi.Length > 512 * 1024)
+                        File.Move(FilePath, Path.Combine(Settings.KitDir, "log.old.txt"), true);
+                    File.AppendAllText(FilePath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {level} {msg}{Environment.NewLine}");
+                }
+            }
+            catch { }
         }
     }
 

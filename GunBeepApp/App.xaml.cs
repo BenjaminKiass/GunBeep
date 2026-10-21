@@ -21,6 +21,12 @@ namespace GunBeep
                 Shutdown();
                 return;
             }
+            // พังเมื่อไหร่ เขียนสาเหตุลง saved\log.txt — error ในหน้าต่างไม่ทำให้ทั้งโปรแกรมปิด
+            Log.Info($"start v{Updater.Current} args=[{string.Join(" ", e.Args)}]");
+            DispatcherUnhandledException += (s, a) => { Log.Error("UI", a.Exception); a.Handled = true; };
+            AppDomain.CurrentDomain.UnhandledException += (s, a) => Log.Error("crash", a.ExceptionObject as Exception);
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, a) => { Log.Error("task", a.Exception); a.SetObserved(); };
+
             ShutdownMode = ShutdownMode.OnMainWindowClose;   // ป้ายบนจอเกมเป็นหน้าต่างที่สอง
             var w = new MainWindow();
             MainWindow = w;

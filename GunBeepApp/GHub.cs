@@ -293,6 +293,17 @@ namespace GunBeep
         //   ปืนที่กราฟเหมือนกันใช้ตารางเดียวกัน: SEGS_MAIN, SEGS_2, SEGS_3
         public static void WriteSegs(double[][] steps)
         {
+            lock (ScriptLock) WriteSegsCore(steps);
+        }
+
+        // งานเขียน script.lua (base/x, กราฟ, ติดตั้ง) อ่าน-แก้-เขียนทั้งไฟล์ ถ้ารันพร้อมกันจะเอาค่าเก่าเขียนทับค่าใหม่
+        //   → ทำทีละงานเท่านั้น และเขียนผ่านไฟล์ชั่วคราว (โปรแกรมปิดกลางทาง ไฟล์ไม่ขาดครึ่ง)
+        static readonly object ScriptLock = new();
+
+        static void WriteScript(string path, string text) => SafeFile.Write(path, text);
+
+        static void WriteSegsCore(double[][] steps)
+        {
             var slot = PickScript(ListScripts());
             if (slot == null || !slot.IsGunBeep) throw new InvalidOperationException("ไม่พบสคริปต์ GunBeep ใน G Hub");
             var sec = GunSection.Match(slot.Text);
@@ -329,9 +340,10 @@ namespace GunBeep
             string text = slot.Text.Substring(0, sec.Index) + s + slot.Text.Substring(sec.Index + sec.Length);
             if (text == slot.Text) return;
             Backup(Path.Combine(slot.Folder, "script.lua"), "script");
-            File.WriteAllText(Path.Combine(slot.Folder, "script.lua"), text, new UTF8Encoding(false));
+            WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
             slot.Text = text;
             SaveGunSection(slot);
+            Log.Info("wrote segs");
         }
 
         static double Num(string s) => double.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
@@ -340,7 +352,19 @@ namespace GunBeep
         // อ่านค่าจากสคริปต์ใน G Hub (ถ้าไม่มี ใช้ saved\guns.lua)
         public static GunVals[] ReadGunValues()
         {
+            lock (ScriptLock)
+            {
+                var v = ReadGunValuesCore(out string from);
+                Log.Info($"read guns from {from}: " +
+                         (v == null ? "none" : string.Join(" | ", v.Select(g => $"base {Fmt(g.Base)} x {Fmt(g.X)}"))));
+                return v;
+            }
+        }
+
+        static GunVals[] ReadGunValuesCore(out string from)
+        {
             var slot = PickScript(ListScripts());
+            from = slot != null && slot.IsGunBeep ? "script " + Path.GetFileName(slot.Folder) : "saved\\guns.lua";
             string text = slot != null && slot.IsGunBeep ? slot.Text
                         : File.Exists(SavedGuns) ? File.ReadAllText(SavedGuns, Encoding.UTF8) : null;
             var sec = GunSection.Match(text ?? "");
@@ -363,6 +387,11 @@ namespace GunBeep
         // เขียนค่าที่จูนลงไฟล์สคริปต์ของ G Hub (G Hub ใช้ค่านี้อยู่ในหน่วยความจำแล้ว ไม่ต้องรีสตาร์ท)
         public static void WriteGunValues(GunVals[] vals)
         {
+            lock (ScriptLock) WriteGunValuesCore(vals);
+        }
+
+        static void WriteGunValuesCore(GunVals[] vals)
+        {
             var slot = PickScript(ListScripts());
             if (slot == null || !slot.IsGunBeep) return;
             var sec = GunSection.Match(slot.Text);
@@ -376,9 +405,10 @@ namespace GunBeep
             });
             string text = slot.Text.Substring(0, sec.Index) + newSec + slot.Text.Substring(sec.Index + sec.Length);
             if (text == slot.Text) return;
-            File.WriteAllText(Path.Combine(slot.Folder, "script.lua"), text, new UTF8Encoding(false));
+            WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
             slot.Text = text;
             SaveGunSection(slot);
+            Log.Info("wrote guns: " + string.Join(" | ", vals.Select(g => $"base {Fmt(g.Base)} x {Fmt(g.X)}")));
         }
 
         public static int AgentPid()
@@ -399,27 +429,34 @@ namespace GunBeep
             {
                 if (File.Exists(SavedGuns) && File.ReadAllText(SavedGuns, Encoding.UTF8) == m.Value) return;
                 Directory.CreateDirectory(Settings.KitDir);
-                File.WriteAllText(SavedGuns, m.Value, new UTF8Encoding(false));
+                SafeFile.Write(SavedGuns, m.Value);
             }
-            catch { }
+            catch (Exception ex) { Log.Error("save guns.lua", ex); }
         }
 
         // ใส่สคริปต์ล่าสุด โดยเก็บตารางปืนเดิมของผู้ใช้ไว้ (เรียกตอน G Hub ปิดอยู่)
         //   ตารางปืนเอาจากสคริปต์เดิมใน G Hub ก่อน ถ้าไม่มี (เครื่องใหม่) เอาจาก saved\guns.lua
         public static void InstallScript(ScriptSlot slot)
         {
+            lock (ScriptLock) InstallScriptCore(slot);
+        }
+
+        static void InstallScriptCore(ScriptSlot slot)
+        {
             string template = Template();
             string merged = template;
             var tpl = GunSection.Match(template);
-            var old = GunSection.Match(slot.Text ?? "");
+            string lua = Path.Combine(slot.Folder, "script.lua");
+            string cur = File.Exists(lua) ? File.ReadAllText(lua, Encoding.UTF8) : slot.Text;   // อ่านใหม่ ไม่ใช้ของที่อ่านไว้ก่อนหน้า
+            var old = GunSection.Match(cur ?? "");
             string guns = old.Success ? old.Value
                         : File.Exists(SavedGuns) ? File.ReadAllText(SavedGuns, Encoding.UTF8) : null;
             if (guns != null && tpl.Success)
                 merged = template.Substring(0, tpl.Index) + guns + template.Substring(tpl.Index + tpl.Length);
 
-            string lua = Path.Combine(slot.Folder, "script.lua");
             Backup(lua, "script");
-            File.WriteAllText(lua, merged, new UTF8Encoding(false));
+            WriteScript(lua, merged);
+            Log.Info("installed script into " + Path.GetFileName(slot.Folder));
         }
 
         // ---------------------------------------------------------------- โปรไฟล์ PUBG

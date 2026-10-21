@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -146,7 +147,7 @@ namespace GunBeep
                 saveVals.Stop();
                 if (vals == null) return;
                 var copy = vals.Select(v => new GHub.GunVals { Base = v.Base, X = v.X }).ToArray();
-                Task.Run(() => { try { GHub.WriteGunValues(copy); } catch { } });
+                QueueFile("save guns", () => GHub.WriteGunValues(copy));
             };
 
             // เลื่อนหลอดเสร็จ → ส่งค่าเข้า G Hub แบบ real time
@@ -209,32 +210,56 @@ namespace GunBeep
             bool now = GameRunning();
             if (now == gameWas) return;
             gameWas = now;
+            Log.Info(now ? "PUBG started" : "PUBG closed");
             if (now && cfg.AutoRes) SwitchRes();
             else if (!now && resSwitched) RestoreRes();
+            if (!now) ShowDeferred();
+        }
+
+        // ระหว่างเล่นห้ามมีแจ้งเตือนของ Windows เด้งทับเกม — เก็บไว้บอกตอนปิดเกม (ในเกมใช้ป้ายบนจอแทน)
+        readonly List<(string title, string text)> deferred = new();
+
+        void Notify(string title, string text, bool warn = false)
+        {
+            Log.Info($"notify: {title} — {text}");
+            if (GameRunning()) { if (!deferred.Contains((title, text))) deferred.Add((title, text)); return; }
+            tray?.ShowBalloonTip(4000, title, text,
+                warn ? System.Windows.Forms.ToolTipIcon.Warning : System.Windows.Forms.ToolTipIcon.None);
+        }
+
+        void ShowDeferred()
+        {
+            if (deferred.Count == 0 || tray == null) return;
+            var (title, text) = deferred[^1];
+            if (deferred.Count > 1) text += $"\n(+ อีก {deferred.Count - 1} เรื่อง ดูในหน้าต่าง GunBeep)";
+            deferred.Clear();
+            tray.ShowBalloonTip(5000, title, text, System.Windows.Forms.ToolTipIcon.None);
         }
 
         void SwitchRes()
         {
             var r = Display.Switch(cfg.GameResW, cfg.GameResH);
             string res = $"{cfg.GameResW}×{cfg.GameResH}";
+            Log.Info($"switch display to {res}: {r}");
             switch (r)
             {
                 case Display.Result.Ok:
                     resSwitched = true;
-                    tray.ShowBalloonTip(2500, "GunBeep", $"เปลี่ยนจอเป็น {res} แล้ว (ปิดเกมแล้วคืนค่าเดิม)", System.Windows.Forms.ToolTipIcon.None);
                     break;
                 case Display.Result.Missing:
-                    tray.ShowBalloonTip(5000, "GunBeep: ไม่มีความละเอียด " + res,
-                        "สร้างใน NVIDIA Control Panel → Change resolution → Customize ก่อน", System.Windows.Forms.ToolTipIcon.Warning);
+                    PopOsd("✗  ไม่มีความละเอียด " + res);
+                    Notify("GunBeep: ไม่มีความละเอียด " + res, "สร้างใน NVIDIA Control Panel → Change resolution → Customize ก่อน", true);
                     break;
                 case Display.Result.Failed:
-                    tray.ShowBalloonTip(4000, "GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", System.Windows.Forms.ToolTipIcon.Warning);
+                    PopOsd("✗  เปลี่ยนจอเป็น " + res + " ไม่สำเร็จ");
+                    Notify("GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", true);
                     break;
             }
         }
 
         void RestoreRes()
         {
+            Log.Info("restore display");
             Display.Restore();
             resSwitched = false;
         }
@@ -455,12 +480,36 @@ namespace GunBeep
 
         async void LoadGunValues()
         {
+            // ค่าที่ปรับแล้วแต่ยังไม่ได้เซฟ (เช่น G Hub รีสตาร์ทตอนกำลังเลื่อนหลอด) ห้ามหาย → ใส่กลับแล้วส่งเข้า G Hub ใหม่
+            var pending = saveVals.IsEnabled && vals != null ? Clone(vals) : null;
+            saveVals.Stop();
+            await fileWork;
             vals = await Task.Run(GHub.ReadGunValues);
             applied = Clone(vals);                                  // G Hub โหลดค่าจากไฟล์เดียวกันนี้
             appliedSteps = vals?.Select(v => v.Steps?.ToArray()).ToArray();
             liveFailed = false;
+            if (pending != null && vals != null)
+            {
+                for (int i = 0; i < Math.Min(vals.Length, pending.Length); i++)
+                {
+                    vals[i].Base = pending[i].Base;
+                    vals[i].X = pending[i].X;
+                }
+                saveVals.Start();
+                liveTimer.Start();
+            }
             UpdateGuns();
         }
+
+        // งานเขียนไฟล์สคริปต์เบื้องหลัง: เรียงคิวทีละงาน และตอนปิดโปรแกรมรอให้เขียนเสร็จก่อน
+        Task fileWork = Task.CompletedTask;
+
+        void QueueFile(string what, Action write) =>
+            fileWork = fileWork.ContinueWith(_ =>
+            {
+                try { write(); }
+                catch (Exception ex) { Log.Error(what, ex); }
+            }, TaskScheduler.Default);
 
         static GHub.GunVals[] Clone(GHub.GunVals[] src) =>
             src?.Select(v => new GHub.GunVals { Base = v.Base, X = v.X }).ToArray();
@@ -873,9 +922,11 @@ namespace GunBeep
             if (segsSent && vals.All(v => v.Steps != null))
             {
                 var all = vals.Select(v => v.Steps.ToArray()).ToArray();
-                _ = Task.Run(() => { try { GHub.WriteSegs(all); } catch { } });
+                QueueFile("save segs", () => GHub.WriteSegs(all));
             }
             liveFailed = !ok;
+            if (ok) Log.Info("live: " + string.Join(" | ", applied.Select(g => $"base {GHub.Fmt(g.Base)} x {GHub.Fmt(g.X)}")) + (segsSent ? " + segs" : ""));
+            else Log.Error("live: G Hub did not ack");
             Flash(ok ? "ส่งค่าเข้า G Hub แล้ว (ไม่ต้องรีสตาร์ท)" : "G Hub ไม่ตอบรับ — สคริปต์อาจยังเป็นรุ่นเก่า");
             if (ok) Sfx.Play(Sfx.Pick, cfg.Sound);
             PopOsd(ok ? "✓  ส่งค่าเข้า G Hub แล้ว" : "✗  G Hub ไม่ตอบรับ");
@@ -934,6 +985,7 @@ namespace GunBeep
                 saveVals.Stop();
                 Flash("กำลังรีสตาร์ท G Hub เพื่อใช้ค่าใหม่...");
                 stopped = true;
+                await fileWork;                       // งานเขียนไฟล์เก่าที่ค้างคิวห้ามมาเขียนทับทีหลัง
                 await Task.Run(async () =>
                 {
                     if (segs != null) GHub.WriteSegs(segs);
@@ -966,9 +1018,12 @@ namespace GunBeep
         void FlushGunValues()
         {
             saveVals.Stop();
-            if (vals == null) return;
-            var copy = vals.Select(v => new GHub.GunVals { Base = v.Base, X = v.X }).ToArray();
-            try { GHub.WriteGunValues(copy); } catch { }
+            if (vals != null)
+            {
+                var copy = vals.Select(v => new GHub.GunVals { Base = v.Base, X = v.X }).ToArray();
+                QueueFile("save guns", () => GHub.WriteGunValues(copy));
+            }
+            if (!fileWork.Wait(4000)) Log.Error("file writes still running at exit");
         }
 
         void ToggleOn()
@@ -1100,10 +1155,12 @@ namespace GunBeep
             pendingUpdate = r;
             UpdateBtn.Content = "⬆  อัปเดต " + r.Tag;
             UpdateBtn.Visibility = Visibility.Visible;
-            if (tray != null)
-                tray.ShowBalloonTip(3000, "GunBeep มีเวอร์ชันใหม่", r.Tag + " — กดปุ่มอัปเดตที่หน้าต่างโปรแกรม",
-                                    System.Windows.Forms.ToolTipIcon.None);
+            if (notifiedTag == r.Tag) return;              // เช็กซ้ำทุก 6 ชม. ไม่ต้องบอกเรื่องเดิมอีก
+            notifiedTag = r.Tag;
+            Notify("GunBeep มีเวอร์ชันใหม่", r.Tag + " — กดปุ่มอัปเดตที่หน้าต่างโปรแกรม");
         }
+
+        string notifiedTag;
 
         async void Update_Click(object sender, RoutedEventArgs e)
         {
@@ -1115,7 +1172,10 @@ namespace GunBeep
             UpdateBtn.Content = "กำลังดาวน์โหลด...";
             try
             {
-                await Updater.StageAsync(r);
+                // เกมเปิดอยู่ → เปิดตัวใหม่ไว้ที่ถาดเงียบๆ ไม่แย่งจอเกม
+                bool quiet = GameRunning() || !IsVisible;
+                await Updater.StageAsync(r, quiet);
+                Log.Info($"update to {r.Tag} (quiet={quiet})");
                 Close();                     // OnClosing ปิดมาโคร + เซฟค่า แล้วตัวคัดลอกทำงานต่อ
             }
             catch (Exception ex)
@@ -1240,6 +1300,9 @@ namespace GunBeep
                 if (on) ToggleOn();
                 Flash("กำลังรีสตาร์ท G Hub...");
                 stopped = true;
+                if (saveVals.IsEnabled) saveVals.Stop();
+                if (vals != null) { var copy = Clone(vals); QueueFile("save guns", () => GHub.WriteGunValues(copy)); }
+                await fileWork;                       // ค่าล่าสุดลงไฟล์ก่อน ตัวติดตั้งจะได้เก็บค่านั้นไว้
                 await Task.Run(async () =>
                 {
                     await GHub.StopAsync();
@@ -1550,6 +1613,8 @@ namespace GunBeep
         {
             // ปิดโปรแกรม = ปิดมาโครด้วย (ดับไฟทั้งสองดวง)
             if (saveVals.IsEnabled) FlushGunValues();
+            else if (!fileWork.Wait(4000)) Log.Error("file writes still running at exit");
+            Log.Info("exit");
             on = false;
             ApplyState();
             if (!double.IsNaN(Left) && !double.IsNaN(Top))   // เปิดจากถาดแล้วไม่เคยโชว์หน้าต่าง = ไม่มีตำแหน่ง
