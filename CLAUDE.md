@@ -101,6 +101,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   merged: correction = hand stream − expected. Spray Y = expected + correction (same shape as a manual spray),
   so `Analyze` is unchanged. Verdict "นิ่งแล้ว" when |mean corr| < 0.3 and RMS of 100 ms correction bars < 0.75.
   "ใช้ค่านี้" clears sprays and starts the next round. Not yet tried in game.
+- Auto-tune (▶ ออโต้จูน): follows the macro's active gun; every 3 tuned sprays → `Analyze` → `Blend(lastUsed,
+  fit, 0.7)` (move 70 % of the way in total-pull space, then re-split into base/graph; if rounding leaves it
+  unchanged, use the fit) → apply live → next round. Verdict good twice in a row = done; stops after 12 rounds.
+  Simulated (hand gain 0.8–1.2 + noise, start base 7 / no graph): converged to the true curve in ~3 rounds.
 - `LiveLink.Fit`: graphs with >31 runs (every recorded bar differs slightly) could not be sent live; the user's
   first recording failed with a misleading "G Hub ไม่ตอบรับ". Fit merges the adjacent runs with the least
   |Δv|·min(n) until ≤31; used by Calibrator, presets, SegsEditor results and ApplyLiveAsync.

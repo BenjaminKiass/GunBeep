@@ -51,7 +51,7 @@ namespace GunBeep
         readonly Action<string> pop;
         readonly Style keyBtn;
         readonly Button[] tabs = new Button[3];
-        readonly Button applyBtn, undoBtn;
+        readonly Button applyBtn, undoBtn, autoBtn;
         readonly TextBlock status = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4), TextWrapping = TextWrapping.Wrap };
         readonly TextBlock result = new TextBlock { FontSize = 12.5, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
         readonly Canvas plot = new Canvas { Width = PW, Height = PH, ClipToBounds = true };
@@ -106,16 +106,20 @@ namespace GunBeep
                 Text = "เข้าห้องซ้อม ถือปืน + กล้องที่จะใช้จริง เล็งจุดหนึ่งบนกำแพง ยิงค้างจนเกือบหมดแม็ก ให้เป้าอยู่จุดเดิมให้มากที่สุด\n" +
                        "• ครั้งแรก (ปิดมาโคร): ลากเมาส์ลงเองทั้งหมด 3–5 ชุด แล้วกด \"ใช้ค่านี้\"\n" +
                        "• จูนละเอียด (เปิดมาโคร ปืนเดียวกับแท็บนี้): ยิงแล้วดึงแก้เฉพาะส่วนที่มาโครยังขาด/เกิน 3 ชุด → \"ใช้ค่านี้\" → " +
-                       "ทำซ้ำจนขึ้นว่า \"นิ่งแล้ว\" — ค่าจะเข้ากับมือ เมาส์ และ sens ของคุณเอง"
+                       "ทำซ้ำจนขึ้นว่า \"นิ่งแล้ว\" — ค่าจะเข้ากับมือ เมาส์ และ sens ของคุณเอง\n" +
+                       "• ออโต้จูน: กด ▶ ออโต้จูน แล้วเปิดมาโครยิงไปเรื่อยๆ (ดึงแก้เฉพาะส่วนที่เป้าขยับ) — ทุก 3 ชุดปรับค่าเอง หยุดเองเมื่อนิ่ง"
             };
 
             undoBtn = Btn("ลบชุดล่าสุด", () => { if (sprays.Count > 0) sprays.RemoveAt(sprays.Count - 1); Refresh(); }, 0);
             var clearBtn = Btn("เริ่มใหม่", () => { sprays.Clear(); Refresh(); }, 6);
             applyBtn = Btn("ใช้ค่านี้", Apply, 8);
             applyBtn.BorderBrush = new SolidColorBrush(Blue);
+            autoBtn = Btn("", ToggleAuto, 6);
+            autoBtn.BorderBrush = new SolidColorBrush(Gold);
             var left = new StackPanel { Orientation = Orientation.Horizontal };
             left.Children.Add(undoBtn);
             left.Children.Add(clearBtn);
+            left.Children.Add(autoBtn);
             var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             right.Children.Add(Btn("ปิด", Close, 0));
             right.Children.Add(applyBtn);
@@ -183,6 +187,13 @@ namespace GunBeep
                 macroVals = null;
                 ignoreThis = false;
                 int mg = macroGun();
+                if (auto && mg != 0 && mg - 1 != gun && mg - 1 < names.Length)
+                {
+                    gun = mg - 1;                               // ออโต้จูนตามปืนที่มาโครใช้อยู่
+                    sprays.Clear();
+                    goodRounds = autoRounds = 0;
+                    Refresh();
+                }
                 if (mg != 0)
                 {
                     macroVals = mg - 1 == gun ? inMacro(gun) : null;
@@ -198,12 +209,21 @@ namespace GunBeep
                 double ms = now - t0;
                 if (ignoreThis) return;
                 if (ms < MIN_MS) return;                        // แตะยิง / คลิกทั่วไป
+                if (auto && macroVals == null) { pop("ออโต้จูน: เปิดมาโครก่อนยิง (ชุดนี้ไม่นับ)"); return; }
                 var s = macroVals == null ? Bucket(cur, ms) : Tune(cur, ms, macroVals);
                 sprays.Add(s);
+                if (macroVals != null) lastUsed = macroVals;
                 Log.Info($"calib {names[gun]} #{sprays.Count} {ms:0}ms" + (s.Tuned
                     ? $" tuned corr {s.Corr:0.00} x {s.CorrX:0.00} rms {s.CorrRms:0.00} ratio {s.Ratio:0.00}" : ""));
                 var f = Analyze(sprays);
                 string fit = f != null ? $" · base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}" : "";
+                if (auto)
+                {
+                    if (sprays.Count < AUTO_N) pop($"ออโต้จูน {sprays.Count}/{AUTO_N} · {Verdict(s.Corr, s.CorrRms).short_}");
+                    Refresh();
+                    AutoStep();
+                    return;
+                }
                 pop(s.Tuned ? $"จูนชุดที่ {sprays.Count} · {Verdict(s.Corr, s.CorrRms).short_}{fit}"
                             : $"อัดชุดที่ {sprays.Count} ({ms / 1000:0.0} วิ){fit}");
                 Refresh();
@@ -311,13 +331,96 @@ namespace GunBeep
                 foreach (var s in cov) { sumX += s.X[k]; cntX++; }
             }
 
-            var bars = LiveLink.Quantize(avg);
+            var f = FromTotal(avg, cntX > 0 ? sumX / cntX : 0);
+            f.Used = use.Count;
+            f.Dropped = dropped;
+            return f;
+        }
+
+        // แรงดึงรวมต่อ 10 ms → base (ส่วนต่ำสุด) + กราฟ (ส่วนที่เกิน) + x
+        static Fit FromTotal(double[] total, double x)
+        {
+            var bars = LiveLink.Quantize(total);
             double min = bars.Min(), max = bars.Max();
             double baseV = Math.Max(0, Math.Floor(min * 2) / 2);
             if (max - baseV > 31.75) baseV = Math.Ceiling((max - 31.75) * 2) / 2;   // กราฟส่งได้สูงสุด 31.75
             var steps = LiveLink.Fit(bars.Select(v => Math.Clamp(v - baseV, 0, 31.75)).ToArray());
-            double x = cntX > 0 ? Math.Round(sumX / cntX * 2) / 2 : 0;
-            return new Fit { Base = baseV, X = x, Steps = steps, Avg = avg, Used = use.Count, Dropped = dropped };
+            return new Fit { Base = baseV, X = Math.Round(x * 2) / 2, Steps = steps, Avg = total };
+        }
+
+        static double At(GHub.GunVals v, int k) =>
+            v.Base + (v.Steps == null || v.Steps.Length == 0 ? 0 : v.Steps[Math.Min(k, v.Steps.Length - 1)]);
+
+        // ออโต้จูน: ขยับจากค่าเดิมไปทางผลที่วัดได้ทีละ gain (ไม่กระโดดทีเดียว กันแกว่งจากชุดที่มือพลาด)
+        static Fit Blend(GHub.GunVals cur, Fit f, double gain)
+        {
+            int len = f.Steps.Length;
+            var total = new double[len];
+            for (int k = 0; k < len; k++)
+            {
+                double c = At(cur, k), t = f.Base + f.Steps[k];
+                total[k] = c + gain * (t - c);
+            }
+            var b = FromTotal(total, cur.X + gain * (f.X - cur.X));
+            // ขยับน้อยจนปัดแล้วไม่เปลี่ยน → ใช้ผลที่วัดได้ตรงๆ จะได้ไม่ค้าง
+            bool same = b.Base == cur.Base && b.X == cur.X && cur.Steps != null && LiveLink.SameGraph(b.Steps, cur.Steps);
+            return same ? f : b;
+        }
+
+        // ---------------------------------------------------------------- ออโต้จูน
+        //   เปิดมาโครแล้วยิงไปเรื่อยๆ ทุก AUTO_N ชุด → ปรับค่า + ส่งเข้า G Hub เอง → วัดรอบใหม่
+        //   นิ่ง (มือแทบไม่ต้องแก้) ติดกัน 2 รอบ = เสร็จ หยุดเอง
+        const int AUTO_N = 3, AUTO_MAX_ROUNDS = 12;
+        const double AUTO_GAIN = 0.7;
+        bool auto;
+        int goodRounds, autoRounds;
+        GHub.GunVals lastUsed;
+
+        void ToggleAuto()
+        {
+            auto = !auto;
+            goodRounds = autoRounds = 0;
+            sprays.RemoveAll(s => !s.Tuned);
+            Log.Info("calib auto " + (auto ? "on" : "off"));
+            pop(auto ? "ออโต้จูน: เปิด — เปิดมาโครแล้วยิงได้เลย" : "ออโต้จูน: ปิด");
+            Refresh();
+        }
+
+        void AutoStep()
+        {
+            var tuned = sprays.Where(s => s.Tuned).ToList();
+            if (tuned.Count < AUTO_N || lastUsed == null) return;
+            autoRounds++;
+            var (_, short_, good) = Verdict(tuned.Average(s => s.Corr), tuned.Average(s => s.CorrRms));
+            if (Math.Abs(tuned.Average(s => s.CorrX)) >= 0.3) good = false;
+            sprays.Clear();
+            round++;
+            if (good)
+            {
+                goodRounds++;
+                if (goodRounds >= 2)
+                {
+                    auto = false;
+                    Log.Info($"calib auto done {names[gun]}: base {GHub.Fmt(lastUsed.Base)} x {GHub.Fmt(lastUsed.X)}");
+                    pop($"✓  ออโต้จูนเสร็จ — {names[gun]} นิ่งแล้ว");
+                }
+                else pop($"ออโต้จูน: นิ่งแล้ว ✓ ยิงยืนยันอีก {AUTO_N} ชุด");
+                Refresh();
+                return;
+            }
+            goodRounds = 0;
+            var f = Analyze(tuned);
+            if (f == null) { Refresh(); return; }
+            var b = Blend(lastUsed, f, AUTO_GAIN);
+            apply(gun, b);
+            Log.Info($"calib auto round {autoRounds} {names[gun]}: {short_} base {GHub.Fmt(lastUsed.Base)}→{GHub.Fmt(b.Base)} x {GHub.Fmt(lastUsed.X)}→{GHub.Fmt(b.X)}");
+            pop($"ออโต้จูนรอบ {autoRounds}: {short_} · base {GHub.Fmt(lastUsed.Base)}→{GHub.Fmt(b.Base)}");
+            if (autoRounds >= AUTO_MAX_ROUNDS)
+            {
+                auto = false;
+                pop("ออโต้จูน: ครบ 12 รอบแล้ว หยุดก่อน (มือแต่ละชุดต่างกันมาก ลองยิงนิ่งๆ แล้วเริ่มใหม่)");
+            }
+            Refresh();
         }
 
         void Apply()
@@ -371,6 +474,16 @@ namespace GunBeep
                 status.Text = $"รอบ {round} · จูนแล้ว {tuned.Count} ชุด — {text}";
                 status.Foreground = new SolidColorBrush(good ? Color.FromRgb(0x22, 0xC5, 0x5E) : Gold);
                 if (good) applyBtn.IsEnabled = false;          // นิ่งแล้ว ไม่ต้องเปลี่ยนค่า
+            }
+
+            autoBtn.Content = auto ? "■  หยุดออโต้จูน" : "▶  ออโต้จูน";
+            if (auto)
+            {
+                applyBtn.IsEnabled = false;                     // ออโต้จูนใช้ค่าเอง
+                status.Text = $"ออโต้จูน {names[gun]} · รอบ {autoRounds + 1} · ยิงแล้ว {tuned.Count}/{AUTO_N}" +
+                              (goodRounds > 0 ? " · นิ่งแล้ว รอยืนยัน" : "") +
+                              " — เปิดมาโคร ยิงค้าง แล้วดึงแก้เฉพาะส่วนที่เป้ายังขยับ";
+                status.Foreground = new SolidColorBrush(Gold);
             }
             Draw(f);
         }
