@@ -78,6 +78,12 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - `SendFrameAsync` retries a frame once if no ack. Verified: graph +0.5 on gun 1 sent live in ~4 s, same
   lghub_agent PID, file updated; then restored the detailed original from the backup.
 
+## CPU
+- The window uses AllowsTransparency + blur/glow effects, so every animated frame re-renders the whole layered
+  window. Endless animations (EdgeSpin border, LogoGlow, power Glow pulse) ran at ~60 fps → ~3.9 % of the
+  20-thread CPU with the window open (user saw ~10 %). `UpdateAmbient()` now runs them only while the window is
+  visible AND active, at 24 fps (`Slow`) → measured 0.8 % active, 0.02 % inactive/hidden (2026-10-21).
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

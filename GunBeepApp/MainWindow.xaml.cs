@@ -70,14 +70,12 @@ namespace GunBeep
                 LogoImg.Visibility = Visibility.Visible;
                 LogoFallback.Visibility = Visibility.Collapsed;
             }
-            // ขอบไฟฟ้าหมุนช้าๆ + โลโก้เรืองแสงเป็นจังหวะ
-            EdgeSpin.BeginAnimation(RotateTransform.AngleProperty,
-                new DoubleAnimation(0, 360, TimeSpan.FromSeconds(9)) { RepeatBehavior = RepeatBehavior.Forever });
-            LogoGlow.BeginAnimation(OpacityProperty, new DoubleAnimation(0.25, 0.65, TimeSpan.FromSeconds(1.8))
-            {
-                AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-            });
+            // อนิเมชันวนตลอด (ขอบหมุน / โลโก้ / ปุ่ม ON เรืองแสง) กิน CPU เพราะหน้าต่างโปร่งใสต้องวาดใหม่ทั้งบาน
+            // → วิ่งเฉพาะตอนหน้าต่างถูกเลือกอยู่ และไม่เกิน 24 เฟรม/วินาที
+            Activated += (s, e) => UpdateAmbient();
+            Deactivated += (s, e) => UpdateAmbient();
+            IsVisibleChanged += (s, e) => UpdateAmbient();
+            StateChanged += (s, e) => UpdateAmbient();
             Loaded += (s, e) => AnimateIn();
 
             if (cfg.Left.HasValue && cfg.Top.HasValue
@@ -1159,21 +1157,42 @@ namespace GunBeep
             PowerText.Text = on ? "ON" : "OFF";
             StatusText.Text = on ? "มาโครทำงานอยู่" : "มาโครปิดอยู่";
 
-            if (on)
+            ambientOn = null;                // ให้ UpdateAmbient ตั้งเรืองแสงของปุ่มใหม่ตามสถานะ
+            UpdateAmbient();
+            UpdateTray();
+        }
+
+        bool? ambientOn;
+
+        static T Slow<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, 24); return t; }
+
+        void UpdateAmbient()
+        {
+            bool run = IsVisible && IsActive && WindowState != WindowState.Minimized;
+            if (ambientOn == run) return;
+            ambientOn = run;
+            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+            if (run)
             {
-                var pulse = new DoubleAnimation(0.35, 0.75, TimeSpan.FromSeconds(1.4))
-                {
-                    AutoReverse = true,
-                    RepeatBehavior = RepeatBehavior.Forever,
-                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                };
-                Glow.BeginAnimation(OpacityProperty, pulse);
+                EdgeSpin.BeginAnimation(RotateTransform.AngleProperty, Slow(new DoubleAnimation(EdgeSpin.Angle, EdgeSpin.Angle + 360,
+                    TimeSpan.FromSeconds(9)) { RepeatBehavior = RepeatBehavior.Forever }));
+                LogoGlow.BeginAnimation(OpacityProperty, Slow(new DoubleAnimation(0.25, 0.65, TimeSpan.FromSeconds(1.8))
+                    { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }));
+                Glow.BeginAnimation(OpacityProperty, on
+                    ? Slow(new DoubleAnimation(0.35, 0.75, TimeSpan.FromSeconds(1.4))
+                        { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease })
+                    : new DoubleAnimation(0.18, TimeSpan.FromMilliseconds(300)));
             }
             else
             {
-                Glow.BeginAnimation(OpacityProperty, new DoubleAnimation(0.18, TimeSpan.FromMilliseconds(300)));
+                // หยุดนิ่งตรงตำแหน่งปัจจุบัน
+                double angle = EdgeSpin.Angle;
+                EdgeSpin.BeginAnimation(RotateTransform.AngleProperty, null);
+                EdgeSpin.Angle = angle % 360;
+                LogoGlow.BeginAnimation(OpacityProperty, null);
+                LogoGlow.Opacity = 0.45;
+                Glow.BeginAnimation(OpacityProperty, new DoubleAnimation(on ? 0.6 : 0.18, TimeSpan.FromMilliseconds(300)));
             }
-            UpdateTray();
         }
 
         void BuildCards()
