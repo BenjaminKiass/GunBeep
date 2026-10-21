@@ -29,6 +29,17 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Lua acks with F18; Caps Lock is restored afterwards. Avoided Ctrl+Shift (language hotkey) and Shift
   alone (Sticky Keys). Verified 2026-10-19 on the user's PC: base and negative x applied without restart.
 
+## Branding / overlay
+- Name shown: "all@Ben-GunBeep" (user's brand). Theme = black/navy + electric blue #1D6BFF → ice #5CE1FF,
+  gold #C9A54A accents (from the user's all@Ben logo: ice letters, gold crown). Window border gradient
+  rotates (`EdgeSpin`), open/minimize animate (`AnimateIn`/`AnimateOut`), KeyBtn hover glow.
+- Logo: `Branding` (Support.cs) loads `<exe dir>\logo.png` first, else embedded resource `logo.png`
+  (csproj embeds `..\logo.png` if it exists; .gitignore whitelists `/logo.png`). Used for title-bar image
+  (circle clip) and tray icon (grey when OFF). Fallback = gold ♛ tile / crosshair tray icon.
+- `Overlay.cs`: click-through topmost tool window (WS_EX_TRANSPARENT|TOOLWINDOW|NOACTIVATE), primary
+  screen corner, modes off / pop 2.5 s / always (`cfg.OsdMode`, `cfg.OsdCorner`). Re-asserts HWND_TOPMOST
+  every 1.5 s while shown. Not visible over exclusive fullscreen. App uses ShutdownMode.OnMainWindowClose.
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

@@ -15,6 +15,8 @@ namespace GunBeep
         public int HotKey { get; set; } = 0x77;     // F8
         public int Gun { get; set; } = 1;
         public bool TopMost { get; set; }
+        public int OsdMode { get; set; } = 1;       // ป้ายบนจอเกม: 0 ปิด, 1 ตอนเปลี่ยน, 2 ตลอด
+        public int OsdCorner { get; set; }          // 0 ซ้ายบน, 1 ขวาบน, 2 ซ้ายล่าง, 3 ขวาล่าง
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };
@@ -144,6 +146,64 @@ namespace GunBeep
 
     // วาดไอคอนถาด: โลโก้ GunBeep (สี่เหลี่ยมมุมมนไล่สี + เป้าเล็ง) + จุดสถานะมุมขวาล่าง
     //   เปิด = โลโก้สี + จุดเขียว / ปิด = โลโก้เทา + จุดแดง
+    // โลโก้ all@Ben: logo.png ข้าง GunBeep.exe (เปลี่ยนเองได้ไม่ต้อง build) หรือที่ฝังมาในโปรแกรม
+    public static class Branding
+    {
+        public static byte[] LogoBytes { get; } = Load();
+
+        static byte[] Load()
+        {
+            try
+            {
+                string p = Path.Combine(AppContext.BaseDirectory, "logo.png");
+                if (File.Exists(p)) return File.ReadAllBytes(p);
+                using var s = typeof(Branding).Assembly.GetManifestResourceStream("logo.png");
+                if (s == null) return null;
+                using var ms = new MemoryStream();
+                s.CopyTo(ms);
+                return ms.ToArray();
+            }
+            catch { return null; }
+        }
+
+        public static System.Windows.Media.ImageSource LogoImage()
+        {
+            if (LogoBytes == null) return null;
+            try
+            {
+                var bi = new System.Windows.Media.Imaging.BitmapImage();
+                bi.BeginInit();
+                bi.StreamSource = new MemoryStream(LogoBytes);
+                bi.DecodePixelWidth = 160;
+                bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bi.EndInit();
+                bi.Freeze();
+                return bi;
+            }
+            catch { return null; }
+        }
+
+        static System.Drawing.Bitmap small;
+        public static System.Drawing.Bitmap Small32()
+        {
+            if (small != null || LogoBytes == null) return small;
+            try
+            {
+                using var src = new System.Drawing.Bitmap(new MemoryStream(LogoBytes));
+                small = new System.Drawing.Bitmap(32, 32);
+                using var g = System.Drawing.Graphics.FromImage(small);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                // ตัดขอบดำรอบโลโก้ออกนิดหน่อยให้ตัวโลโก้ใหญ่ขึ้นในไอคอนเล็ก
+                int cut = src.Width / 14;
+                g.DrawImage(src, new System.Drawing.Rectangle(0, 0, 32, 32),
+                            cut, cut, src.Width - cut * 2, src.Height - cut * 2, System.Drawing.GraphicsUnit.Pixel);
+            }
+            catch { small = null; }
+            return small;
+        }
+    }
+
     public static class TrayArt
     {
         [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
@@ -156,6 +216,31 @@ namespace GunBeep
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.Clear(System.Drawing.Color.Transparent);
 
+                var logo = Branding.Small32();
+                if (logo != null)
+                {
+                    // โลโก้จริง (ตอนปิดมาโครทำเป็นสีเทาจางๆ)
+                    using var attrs = new System.Drawing.Imaging.ImageAttributes();
+                    if (!on)
+                    {
+                        float l = 0.3f, a = 0.59f, b = 0.11f;
+                        attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(new[]
+                        {
+                            new[] { l, l, l, 0f, 0f }, new[] { a, a, a, 0f, 0f }, new[] { b, b, b, 0f, 0f },
+                            new[] { 0f, 0f, 0f, 0.8f, 0f }, new[] { 0f, 0f, 0f, 0f, 1f }
+                        }));
+                    }
+                    using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
+                    {
+                        clip.AddEllipse(0, 0, 32, 32);
+                        g.SetClip(clip);
+                        g.DrawImage(logo, new System.Drawing.Rectangle(0, 0, 32, 32), 0, 0, 32, 32,
+                                    System.Drawing.GraphicsUnit.Pixel, attrs);
+                        g.ResetClip();
+                    }
+                }
+                else
+                {
                 // พื้นโลโก้
                 var rect = new System.Drawing.RectangleF(1, 1, 30, 30);
                 using var path = new System.Drawing.Drawing2D.GraphicsPath();
@@ -165,8 +250,8 @@ namespace GunBeep
                 path.AddArc(rect.Right - r, rect.Bottom - r, r, r, 0, 90);
                 path.AddArc(rect.X, rect.Bottom - r, r, r, 90, 90);
                 path.CloseFigure();
-                var c1 = on ? System.Drawing.Color.FromArgb(99, 102, 241) : System.Drawing.Color.FromArgb(82, 82, 91);
-                var c2 = on ? System.Drawing.Color.FromArgb(34, 211, 238) : System.Drawing.Color.FromArgb(113, 113, 122);
+                var c1 = on ? System.Drawing.Color.FromArgb(29, 107, 255) : System.Drawing.Color.FromArgb(70, 78, 96);
+                var c2 = on ? System.Drawing.Color.FromArgb(92, 225, 255) : System.Drawing.Color.FromArgb(104, 112, 130);
                 using (var bg = new System.Drawing.Drawing2D.LinearGradientBrush(rect, c1, c2, 45f))
                     g.FillPath(bg, path);
 
@@ -179,6 +264,7 @@ namespace GunBeep
                     g.DrawLine(pen, cx, cy + gap, cx, cy + l);
                     g.DrawLine(pen, cx - l, cy, cx - gap, cy);
                     g.DrawLine(pen, cx + gap, cy, cx + l, cy);
+                }
                 }
 
                 // จุดสถานะ

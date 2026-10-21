@@ -34,10 +34,12 @@ namespace GunBeep
         readonly TextBox[] nameEdits = new TextBox[GUNS];
 
         readonly Brush accent, activeBg, cardBg, cardLine, badgeIdle, nameIdle, accentText;
+        readonly Brush cardHover = Freeze(new SolidColorBrush(Color.FromRgb(0x2C, 0x4A, 0x80)));
 
         KeyHook hook;
         SpeechSynthesizer tts;
         System.Windows.Forms.NotifyIcon tray;
+        Overlay osd;
         DispatcherTimer lockSettle, saveVals, agentWatch;
         GHub.GunVals[] vals;       // ค่าที่โชว์ / ตั้งใจจะใช้ (เซฟลงไฟล์แล้ว)
         GHub.GunVals[] applied;    // ค่าที่ G Hub ใช้อยู่ในหน่วยความจำตอนนี้
@@ -54,13 +56,30 @@ namespace GunBeep
         {
             InitializeComponent();
 
-            accent = Freeze(new LinearGradientBrush(Color.FromRgb(0x63, 0x66, 0xF1), Color.FromRgb(0x22, 0xD3, 0xEE), 45));
-            activeBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x2A, 0x2D, 0x52), Color.FromRgb(0x1A, 0x1C, 0x26), 90));
-            cardBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x22, 0x24, 0x2E), Color.FromRgb(0x18, 0x19, 0x20), 90));
-            cardLine = Freeze(new SolidColorBrush(Color.FromRgb(0x2A, 0x2D, 0x38)));
-            badgeIdle = Freeze(new SolidColorBrush(Color.FromRgb(0x2E, 0x31, 0x3C)));
-            nameIdle = Freeze(new SolidColorBrush(Color.FromRgb(0xA9, 0xAC, 0xB8)));
-            accentText = Freeze(new SolidColorBrush(Color.FromRgb(0x7D, 0xD3, 0xFC)));
+            accent = Freeze(new LinearGradientBrush(Color.FromRgb(0x1D, 0x6B, 0xFF), Color.FromRgb(0x5C, 0xE1, 0xFF), 45));
+            activeBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x10, 0x2C, 0x5C), Color.FromRgb(0x0A, 0x12, 0x24), 90));
+            cardBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x11, 0x1A, 0x2E), Color.FromRgb(0x0A, 0x0F, 0x1C), 90));
+            cardLine = Freeze(new SolidColorBrush(Color.FromRgb(0x1B, 0x27, 0x42)));
+            badgeIdle = Freeze(new SolidColorBrush(Color.FromRgb(0x1A, 0x24, 0x40)));
+            nameIdle = Freeze(new SolidColorBrush(Color.FromRgb(0x9F, 0xB0, 0xD4)));
+            accentText = Freeze(new SolidColorBrush(Color.FromRgb(0x8F, 0xDB, 0xFF)));
+
+            var logo = Branding.LogoImage();
+            if (logo != null)
+            {
+                LogoImg.Source = logo;
+                LogoImg.Visibility = Visibility.Visible;
+                LogoFallback.Visibility = Visibility.Collapsed;
+            }
+            // ขอบไฟฟ้าหมุนช้าๆ + โลโก้เรืองแสงเป็นจังหวะ
+            EdgeSpin.BeginAnimation(RotateTransform.AngleProperty,
+                new DoubleAnimation(0, 360, TimeSpan.FromSeconds(9)) { RepeatBehavior = RepeatBehavior.Forever });
+            LogoGlow.BeginAnimation(OpacityProperty, new DoubleAnimation(0.25, 0.65, TimeSpan.FromSeconds(1.8))
+            {
+                AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            });
+            Loaded += (s, e) => AnimateIn();
 
             if (cfg.Left.HasValue && cfg.Top.HasValue
                 && cfg.Left.Value > SystemParameters.VirtualScreenLeft - 100
@@ -102,6 +121,8 @@ namespace GunBeep
             try { tts = new SpeechSynthesizer { Rate = 1, Volume = 100 }; } catch { tts = null; }
 
             SetupTray();
+            osd = new Overlay();
+            UpdateOsdButtons();
 
             // เปิดโปรแกรมมาให้มาโครปิดไว้ก่อนเสมอ
             scroll = KeyHook.IsLockOn(VK_SCROLL);
@@ -165,6 +186,50 @@ namespace GunBeep
             RefreshGHub();
             LoadGunValues();
             CheckUpdate();
+            osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+        }
+
+        // ---------------------------------------------------------------- ป้ายบนจอเกม
+
+        void UpdateOsdButtons()
+        {
+            OsdModeBtn.Content = Overlay.ModeNames[Math.Clamp(cfg.OsdMode, 0, 2)];
+            OsdCornerBtn.Content = Overlay.CornerNames[Math.Clamp(cfg.OsdCorner, 0, 3)];
+            OsdCornerBtn.IsEnabled = cfg.OsdMode != Overlay.MODE_OFF;
+            OsdCornerBtn.Opacity = OsdCornerBtn.IsEnabled ? 1 : 0.45;
+        }
+
+        void OsdMode_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.OsdMode = (cfg.OsdMode + 1) % 3;
+            cfg.Save();
+            UpdateOsdButtons();
+            UpdateOsd();
+            osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+        }
+
+        void OsdCorner_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.OsdCorner = (cfg.OsdCorner + 1) % 4;
+            cfg.Save();
+            UpdateOsdButtons();
+            osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+        }
+
+        // อัปเดตข้อมูลในป้าย (ไม่เด้งโชว์) — เรียกจาก UpdateGuns ทุกครั้ง
+        void UpdateOsd()
+        {
+            if (osd == null) return;
+            string v = vals != null && gun <= vals.Length
+                ? $"base {GHub.Fmt(vals[gun - 1].Base)} · x {GHub.Fmt(vals[gun - 1].X)}"
+                : "base – · x –";
+            osd.SetState(on, gun, cfg.Names[gun - 1], v);
+        }
+
+        void PopOsd(string message = null)
+        {
+            UpdateOsd();
+            osd?.Pop(message);
         }
 
         // เปิดตอนเข้า Windows (--tray): ไม่โชว์หน้าต่าง อยู่ที่ถาดอย่างเดียว
@@ -203,6 +268,7 @@ namespace GunBeep
                 UpdatePower();
                 UpdateGuns();
                 Sfx.Play(on ? Sfx.On : Sfx.Off, cfg.Sound);
+                PopOsd();
             }
             if (st > 0 && st != gun)
             {
@@ -211,6 +277,7 @@ namespace GunBeep
                 cfg.Save();
                 UpdateGuns();
                 Announce();
+                PopOsd();
             }
         }
 
@@ -238,6 +305,7 @@ namespace GunBeep
                 case 0x83: Tune("x", -0.5); break;      // F20
                 case 0x86:                              // F23 = เปลี่ยนกล้อง
                     Flash("เปลี่ยนกล้อง");
+                    PopOsd("เปลี่ยนกล้อง");
                     Sfx.Play(Sfx.Scope, cfg.Sound);
                     break;
             }
@@ -264,6 +332,7 @@ namespace GunBeep
             double now = field == "base" ? v.Base : v.X;
             Flash($"{arrow}  {cfg.Names[gun - 1]}  {field} = {GHub.Fmt(now)}");
             UpdateGuns();
+            PopOsd($"{arrow}  {field} = {GHub.Fmt(now)}");
             saveVals.Stop();
             saveVals.Start();
         }
@@ -389,6 +458,7 @@ namespace GunBeep
             liveFailed = !ok;
             Flash(ok ? "ส่งค่าเข้า G Hub แล้ว (ไม่ต้องรีสตาร์ท)" : "G Hub ไม่ตอบรับ — สคริปต์อาจยังไม่ใช่ v5");
             if (ok) Sfx.Play(Sfx.Pick, cfg.Sound);
+            PopOsd(ok ? "✓  ส่งค่าเข้า G Hub แล้ว" : "✗  G Hub ไม่ตอบรับ");
             RefreshApplyButton();
             return ok;
         }
@@ -468,6 +538,7 @@ namespace GunBeep
             UpdatePower();
             UpdateGuns();
             Sfx.Play(on ? Sfx.On : Sfx.Off, cfg.Sound);
+            PopOsd();
         }
 
         void SelectGun(int g)
@@ -487,7 +558,7 @@ namespace GunBeep
             cfg.Save();
             ApplyState();
             UpdateGuns();
-            if (changed) Announce();
+            if (changed) { Announce(); PopOsd(); }
         }
 
         void Announce()
@@ -800,7 +871,7 @@ namespace GunBeep
                 {
                     Visibility = Visibility.Collapsed, FontSize = 13.5, Margin = new Thickness(8, 22, 8, 0),
                     VerticalAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center,
-                    Background = new SolidColorBrush(Color.FromRgb(0x10, 0x11, 0x16)), Foreground = Brushes.White,
+                    Background = new SolidColorBrush(Color.FromRgb(0x07, 0x0B, 0x16)), Foreground = Brushes.White,
                     CaretBrush = Brushes.White, BorderBrush = accent, Padding = new Thickness(2, 3, 2, 3), MaxLength = 14
                 };
                 edit.KeyDown += (s, e) =>
@@ -822,6 +893,8 @@ namespace GunBeep
                     Height = 88, Margin = new Thickness(5), CornerRadius = new CornerRadius(16),
                     BorderThickness = new Thickness(1.5), Child = grid, Cursor = Cursors.Hand
                 };
+                card.MouseEnter += (s, e) => { if (idx != gun) card.BorderBrush = cardHover; };
+                card.MouseLeave += (s, e) => { if (idx != gun) card.BorderBrush = cardLine; };
                 card.MouseLeftButtonDown += (s, e) =>
                 {
                     if (e.ClickCount >= 2) BeginRename(idx);
@@ -842,7 +915,7 @@ namespace GunBeep
                 card.Background = active ? activeBg : cardBg;
                 card.BorderBrush = active ? accent : cardLine;
                 card.Effect = active && on
-                    ? new DropShadowEffect { Color = Color.FromRgb(0x63, 0x66, 0xF1), BlurRadius = 22, ShadowDepth = 0, Opacity = 0.65 }
+                    ? new DropShadowEffect { Color = Color.FromRgb(0x1D, 0x6B, 0xFF), BlurRadius = 22, ShadowDepth = 0, Opacity = 0.65 }
                     : new DropShadowEffect { Color = Colors.Black, BlurRadius = 12, ShadowDepth = 4, Direction = 270, Opacity = 0.45 };
                 badges[i].Background = active ? accent : badgeIdle;
                 nameTexts[i].Foreground = active ? Brushes.White : nameIdle;
@@ -867,6 +940,7 @@ namespace GunBeep
             UpdateValueTexts();
             UpdateTunePanel();
             UpdateTray();
+            UpdateOsd();
         }
 
         void BeginRename(int idx)
@@ -921,15 +995,40 @@ namespace GunBeep
             tray.Icon = TrayArt.Make(on, gun, out var winIcon);
             Icon = winIcon;
             old?.Dispose();
-            string t = "GunBeep · " + (on ? "ON" : "OFF") + " · " + cfg.Names[gun - 1];
+            string t = "all@Ben-GunBeep · " + (on ? "ON" : "OFF") + " · " + cfg.Names[gun - 1];
             tray.Text = t.Length > 63 ? t.Substring(0, 63) : t;
         }
 
         public void ShowFromTray()
         {
+            bool wasHidden = !IsVisible;
             Show();
             WindowState = WindowState.Normal;
             Activate();
+            if (wasHidden) AnimateIn();
+        }
+
+        // เปิดหน้าต่าง: ค่อยๆ ลอยขึ้น + จางเข้า
+        void AnimateIn()
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var t = TimeSpan.FromMilliseconds(280);
+            Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, t) { EasingFunction = ease });
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.965, 1, t) { EasingFunction = ease });
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.965, 1, t) { EasingFunction = ease });
+            RootShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(14, 0, t) { EasingFunction = ease });
+        }
+
+        void AnimateOut(Action done)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+            var t = TimeSpan.FromMilliseconds(170);
+            var fade = new DoubleAnimation(0, t) { EasingFunction = ease };
+            fade.Completed += (s, e) => done();
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.97, t) { EasingFunction = ease });
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.97, t) { EasingFunction = ease });
+            RootShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, t) { EasingFunction = ease });
+            Root.BeginAnimation(OpacityProperty, fade);
         }
 
         // ---------------------------------------------------------------- ปุ่มในหน้าต่าง
@@ -941,7 +1040,7 @@ namespace GunBeep
 
         void Min_Click(object sender, RoutedEventArgs e)
         {
-            Hide();
+            AnimateOut(Hide);
             if (!hintShown)
             {
                 hintShown = true;
@@ -980,6 +1079,7 @@ namespace GunBeep
             }
             cfg.Save();
             hook?.Dispose();
+            osd?.Close();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }
             base.OnClosing(e);
         }

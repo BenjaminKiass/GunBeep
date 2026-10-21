@@ -21,7 +21,9 @@ namespace GunBeep
                 Shutdown();
                 return;
             }
+            ShutdownMode = ShutdownMode.OnMainWindowClose;   // ป้ายบนจอเกมเป็นหน้าต่างที่สอง
             var w = new MainWindow();
+            MainWindow = w;
             ThreadPool.RegisterWaitForSingleObject(showSignal,
                 (s, t) => w.Dispatcher.BeginInvoke(new Action(w.ShowFromTray)), null, -1, false);
             if (Array.IndexOf(e.Args, "--tray") >= 0) w.StartInTray();
