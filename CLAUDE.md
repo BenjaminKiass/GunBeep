@@ -44,6 +44,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - `Preset` JSON {App, Format, Name, Saved, Guns[{Name, Base, X}]} in `saved\presets\<name>.json`; Parse validates
   (1-3 guns, base 0..60, x -30..30, snapped to 0.5). `cfg.Preset` = last used name; button shows " •" when
   current names/values differ. Loading writes vals + names, then the normal save + live path (resets liveFailed).
+- Preset hotkey `cfg.PresetKey` (default F9 0x78, 0 = off) → `CyclePreset()`: no dialogs; unsaved current values are
+  saved first as preset "ก่อนสลับ (อัตโนมัติ)" (excluded from the cycle); applies base/x live only, segs differences
+  are reported on the overlay (needs restart). Capture shares `CaptureKey` with the on/off hotkey (`capturePreset`).
 - `InputDialog` = dark themed name prompt. Menus are code-built ContextMenus using the implicit dark
   ContextMenu/MenuItem/Separator styles in MainWindow.xaml (assigned explicitly via TryFindResource).
 - Bug fixed 2026-10-21: live frames for several guns were sent back-to-back; the script only starts a new frame

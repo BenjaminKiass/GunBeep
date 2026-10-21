@@ -517,6 +517,14 @@
                                     <TextBlock Text="ปุ่มลัดเปิด/ปิด" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="46" ToolTip="กดในเกมเพื่อวนโปรไฟล์ค่าปืนที่บันทึกไว้ (ส่งค่าเข้า G Hub ทันที)">
+                                    <Button x:Name="PresetKeyBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="PresetKey_Click"/>
+                                    <TextBlock Text="&#xE8AB;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="ปุ่มสลับโปรไฟล์" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="46">
                                     <ToggleButton x:Name="SoundSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
                                     <TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"

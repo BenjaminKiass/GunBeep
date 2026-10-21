@@ -289,6 +289,7 @@ namespace GunBeep
             if (capturing) { CaptureKey(vk); return; }
 
             if (vk == cfg.HotKey) { ToggleOn(); return; }
+            if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
 
             switch (vk)
             {
@@ -524,12 +525,17 @@ namespace GunBeep
             }
             bool withSegs = segsDiffer && Ask($"\"{p.Name}\" มีกราฟแรงดีดต่างจากที่ใช้อยู่\n" +
                                               "ต้องรีสตาร์ท G Hub (~10 วิ) จะใช้กราฟด้วยเลยไหม?\n\n(ไม่ = ใช้แค่ base / x)");
+            ApplyPreset(p, withSegs ? segs : null, null);
+        }
 
+        // ใส่ค่าโปรไฟล์: base/x ส่งแบบ real time, กราฟ (ถ้าให้มา) เขียนแล้วรีสตาร์ท G Hub
+        void ApplyPreset(Preset p, double[][] segs, string osdNote)
+        {
             for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
             {
                 vals[i].Base = p.Guns[i].Base;
                 vals[i].X = p.Guns[i].X;
-                if (withSegs) vals[i].Steps = segs[i];
+                if (segs != null) vals[i].Steps = segs[i];
                 if (p.Guns[i].Name.Length > 0 && i < cfg.Names.Length) cfg.Names[i] = p.Guns[i].Name;
             }
             currentPreset = p;
@@ -538,8 +544,8 @@ namespace GunBeep
             UpdateGuns();
             Flash("โหลดโปรไฟล์ \"" + p.Name + "\" แล้ว");
             Sfx.Play(Sfx.Pick, cfg.Sound);
-            PopOsd("โปรไฟล์: " + p.Name);
-            if (withSegs)
+            PopOsd("โปรไฟล์: " + p.Name + (osdNote ?? ""));
+            if (segs != null)
             {
                 _ = ApplyRestartAsync(segs);
                 return;
@@ -549,6 +555,48 @@ namespace GunBeep
             liveFailed = false;              // ลองส่งแบบ real time ใหม่ทุกครั้งที่โหลดโปรไฟล์
             liveTimer.Stop();                // ส่งเข้า G Hub เหมือนเลื่อนหลอดเอง
             liveTimer.Start();
+        }
+
+        // ปุ่มลัดในเกม: วนโปรไฟล์ถัดไปทันที ไม่มีหน้าต่างถาม (เด้งกล่องกลางเกมไม่ได้)
+        //   ค่าตอนนี้ยังไม่ได้บันทึก → เก็บเป็นโปรไฟล์ "ก่อนสลับ (อัตโนมัติ)" ให้ก่อน จะได้ไม่หาย
+        //   กราฟต่าง → ใช้แค่ base/x (รีสตาร์ท G Hub กลางเกมไม่ได้) แล้วบอกบนป้าย
+        const string AutoPresetName = "ก่อนสลับ (อัตโนมัติ)";
+
+        void CyclePreset()
+        {
+            if (vals == null) { PopOsd("ยังไม่พบสคริปต์ใน G Hub"); return; }
+            if (setupBusy) return;
+            var list = Preset.List().Where(x => x.Name != AutoPresetName).ToList();
+            if (list.Count == 0)
+            {
+                Flash("ยังไม่มีโปรไฟล์ — กด \"บันทึก\" ในโปรแกรมก่อน");
+                PopOsd("ยังไม่มีโปรไฟล์");
+                Sfx.Play(Sfx.Down, cfg.Sound);
+                return;
+            }
+            if (currentPreset == null || !currentPreset.Matches(cfg.Names, vals))
+            {
+                try { Preset.From(AutoPresetName, cfg.Names, vals).Save(); } catch { }
+            }
+            int cur = currentPreset == null ? -1 : list.FindIndex(x => x.Name == currentPreset.Name);
+            var p = list[(cur + 1) % list.Count];
+
+            bool segsDiffer = false;
+            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
+            {
+                var st = p.Guns[i].StepArray();
+                if (st != null && !GHub.SameSteps(st, vals[i].Steps)) segsDiffer = true;
+            }
+            ApplyPreset(p, null, $"  ({list.IndexOf(p) + 1}/{list.Count})" + (segsDiffer ? "\nกราฟยังไม่ใช้ — เลือกในหน้าต่าง" : ""));
+            AnnouncePreset(p, list.IndexOf(p) + 1);
+        }
+
+        void AnnouncePreset(Preset p, int index)
+        {
+            if (!cfg.Sound || tts == null) return;
+            bool ascii = p.Name.All(c => c < 128) && p.Name.Trim().Length > 0;
+            tts.SpeakAsyncCancelAll();
+            tts.SpeakAsync(ascii ? p.Name : "Profile " + index);
         }
 
         // ---------------------------------------------------------------- กราฟแรงดีด (segs)
@@ -832,26 +880,53 @@ namespace GunBeep
         {
             HotkeyBtn.Content = KeyName(cfg.HotKey);
             HotkeyBtn.ClearValue(BorderBrushProperty);
+            PresetKeyBtn.Content = cfg.PresetKey == 0 ? "ไม่ใช้" : KeyName(cfg.PresetKey);
+            PresetKeyBtn.ClearValue(BorderBrushProperty);
             PowerHint.Text = "คลิกปุ่ม หรือกด " + KeyName(cfg.HotKey);
         }
 
-        void Hotkey_Click(object sender, RoutedEventArgs e)
+        bool capturePreset;      // กำลังรอปุ่มให้ "สลับโปรไฟล์" (ไม่งั้น = ปุ่มเปิด/ปิด)
+
+        void Hotkey_Click(object sender, RoutedEventArgs e) => BeginCapture(false);
+        void PresetKey_Click(object sender, RoutedEventArgs e) => BeginCapture(true);
+
+        void BeginCapture(bool forPreset)
         {
-            if (capturing) { capturing = false; UpdateHotkeyText(); return; }
+            bool same = capturing && capturePreset == forPreset;
+            capturing = false;
+            UpdateHotkeyText();
+            if (same) return;                            // กดซ้ำ = ยกเลิก
             capturing = true;
-            HotkeyBtn.Content = "กดปุ่ม...";
-            HotkeyBtn.BorderBrush = accent;
+            capturePreset = forPreset;
+            var btn = forPreset ? PresetKeyBtn : HotkeyBtn;
+            btn.Content = forPreset ? "กดปุ่ม... (Del = ไม่ใช้)" : "กดปุ่ม...";
+            btn.BorderBrush = accent;
         }
 
         void CaptureKey(int vk)
         {
+            const int VK_DELETE = 0x2E, VK_BACK = 0x08;
             if (vk == VK_ESC) { capturing = false; UpdateHotkeyText(); return; }
+            if (capturePreset && (vk == VK_DELETE || vk == VK_BACK))
+            {
+                capturing = false;
+                cfg.PresetKey = 0;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash("ปิดปุ่มลัดสลับโปรไฟล์แล้ว");
+                return;
+            }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
+            if (vk == (capturePreset ? cfg.HotKey : cfg.PresetKey))
+            {
+                Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว ลองปุ่มอื่น");
+                return;
+            }
             capturing = false;
-            cfg.HotKey = vk;
+            if (capturePreset) cfg.PresetKey = vk; else cfg.HotKey = vk;
             cfg.Save();
             UpdateHotkeyText();
-            Flash("ตั้งปุ่มลัดเป็น " + KeyName(vk));
+            Flash((capturePreset ? "ปุ่มสลับโปรไฟล์ = " : "ตั้งปุ่มลัดเป็น ") + KeyName(vk));
             Sfx.Play(Sfx.Pick, cfg.Sound);
         }
 
