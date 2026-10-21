@@ -356,7 +356,9 @@ namespace GunBeep
         {
             if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
             if (calibWin != null) { calibWin.Activate(); return; }
-            calibWin = new Calibrator(cfg.Names.Take(vals.Length).ToArray(), gun, () => on ? gun : 0, InMacro, ApplyCalibration,
+            calibWin = new Calibrator(cfg.Names.Take(vals.Length).ToArray(), gun, () => on ? gun : 0, InMacro,
+                                      g => vals != null && g < vals.Length ? new GHub.GunVals { Base = vals[g].Base, X = vals[g].X, Steps = vals[g].Steps?.ToArray() } : null,
+                                      ApplyCalibration,
                                       msg => { PopOsd(msg); Sfx.Play(Sfx.Pick, cfg.Sound); }) { Owner = this };
             calibWin.Closed += (s, a) => calibWin = null;
             calibWin.Show();

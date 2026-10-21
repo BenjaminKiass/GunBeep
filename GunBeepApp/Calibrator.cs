@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -48,6 +49,7 @@ namespace GunBeep
         readonly string[] names;
         readonly Func<int> macroGun;                    // ปืนที่มาโครใช้อยู่ (1-3), 0 = ปิดมาโคร
         readonly Func<int, GHub.GunVals> inMacro;       // ค่าที่สคริปต์ใน G Hub ใช้อยู่จริงของปืนนั้น
+        readonly Func<int, GHub.GunVals> wanted;        // ค่าใน GunBeep ตอนนี้ (อาจยังส่งเข้า G Hub ไม่เสร็จ)
         readonly Action<int, Fit> apply;
         readonly Action<string> pop;
         readonly Style keyBtn;
@@ -68,12 +70,13 @@ namespace GunBeep
         List<(double t, int dx, int dy, bool hand)> cur;
 
         public Calibrator(string[] gunNames, int startGun, Func<int> activeGun, Func<int, GHub.GunVals> macroValues,
-                          Action<int, Fit> onApply, Action<string> onPop)
+                          Func<int, GHub.GunVals> currentValues, Action<int, Fit> onApply, Action<string> onPop)
         {
             names = gunNames;
             gun = Math.Clamp(startGun - 1, 0, names.Length - 1);
             macroGun = activeGun;
             inMacro = macroValues;
+            wanted = currentValues;
             apply = onApply;
             pop = onPop;
             keyBtn = Application.Current.MainWindow?.TryFindResource("KeyBtn") as Style;
@@ -141,6 +144,7 @@ namespace GunBeep
             stack.Children.Add(status);
             stack.Children.Add(plotBox);
             stack.Children.Add(result);
+            stack.Children.Add(BuildHolesPanel());
             stack.Children.Add(foot);
 
             Content = new Border
@@ -165,6 +169,95 @@ namespace GunBeep
             Closed += (s, e) => raw?.Dispose();
             Refresh();
         }
+
+        // ---------------------------------------------------------------- จูนจากรอยกระสุน
+        //   เปิดมาโคร มือนิ่ง ยิงหมดแม็กใส่กำแพง แล้วดูรอย: ช่วงไหนหลุดขึ้น = ช่วงนั้นดึงเพิ่ม, หลุดลง = ดึงน้อยลง
+        //   ไม่ต้องดึงแก้เอง (มือที่ดึงขึ้นลงตามแรงดีดทำให้ค่าแกว่ง) และไม่อ่านภาพจากเกม — ใช้ตาคนดู
+        static readonly (string name, double from, double to)[] Parts =
+        {
+            ("ต้นแม็ก", 0, 0.8), ("กลางแม็ก", 0.8, 2.0), ("ท้ายแม็ก", 2.0, double.MaxValue),
+        };
+        const double HOLE_STEP = 0.5;
+        readonly Stack<(int gun, GHub.GunVals v)> holeUndo = new();
+        Button holeUndoBtn;
+
+        UIElement BuildHolesPanel()
+        {
+            var box = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
+            box.Children.Add(new TextBlock
+            {
+                Text = "จูนจากรอยกระสุน (ไม่ต้องดึงแก้)", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Text
+            });
+            box.Children.Add(new TextBlock
+            {
+                FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 4, 0, 8), TextWrapping = TextWrapping.Wrap, MaxWidth = PW + 16,
+                Text = "เปิดมาโคร (ปืนเดียวกับแท็บนี้) เล็งจุดเดียว มือนิ่ง ยิงหมดแม็ก แล้วดูรอยบนกำแพง → กดช่วงที่หลุด ทีละ 0.5 " +
+                       "→ ยิงดูใหม่ ทำซ้ำจนรอยเป็นกระจุกเดียว (ต้นแม็ก ≈ 10 นัดแรก, กลาง ≈ นัด 10–25, ท้าย = ที่เหลือ)"
+            });
+            var grid = new UniformGrid { Columns = 4 };
+            foreach (var part in Parts)
+            {
+                var (pf, pt) = (part.from, part.to);
+                string pn = part.name;
+                grid.Children.Add(HoleGroup(pn,
+                    ("▲ หลุดขึ้น", () => Nudge(pn, pf, pt, +HOLE_STEP, 0)),
+                    ("▼ หลุดลง", () => Nudge(pn, pf, pt, -HOLE_STEP, 0))));
+            }
+            grid.Children.Add(HoleGroup("ซ้าย / ขวา",
+                ("◀ หลุดซ้าย", () => Nudge("ซ้าย/ขวา", 0, 0, 0, +HOLE_STEP)),
+                ("หลุดขวา ▶", () => Nudge("ซ้าย/ขวา", 0, 0, 0, -HOLE_STEP))));
+            box.Children.Add(grid);
+            holeUndoBtn = Btn("↶ ย้อนการกดล่าสุด", HoleUndo, 0);
+            holeUndoBtn.HorizontalAlignment = HorizontalAlignment.Left;
+            holeUndoBtn.Margin = new Thickness(0, 8, 0, 0);
+            holeUndoBtn.IsEnabled = false;
+            box.Children.Add(holeUndoBtn);
+            return box;
+        }
+
+        UIElement HoleGroup(string title, params (string label, Action click)[] buttons)
+        {
+            var g = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
+            g.Children.Add(new TextBlock { Text = title, FontSize = 12, Foreground = Muted, Margin = new Thickness(2, 0, 0, 4) });
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            for (int i = 0; i < buttons.Length; i++) row.Children.Add(Btn(buttons[i].label, buttons[i].click, i == 0 ? 0 : 4));
+            g.Children.Add(row);
+            return g;
+        }
+
+        // หลุดขึ้น = ช่วงนั้นดึงลงเพิ่ม (+), หลุดลง = ดึงน้อยลง (−), หลุดขวา = x ไปทางซ้าย (−)
+        void Nudge(string part, double fromSec, double toSec, double dy, double dx)
+        {
+            var cur = wanted(gun);
+            if (cur == null) { pop("ยังไม่พบค่าปืนนี้"); return; }
+            if (macroGun() != 0 && macroGun() - 1 != gun) pop($"หมายเหตุ: มาโครใช้ปืน {macroGun()} อยู่ — ค่านี้ปรับให้ {names[gun]}");
+            holeUndo.Push((gun, Copy(cur)));
+            int len = Math.Max(cur.Steps?.Length ?? 0, 400);          // ช่วงท้ายยาวพอเสมอ (หลังกราฟจบใช้ค่าสุดท้าย)
+            var total = new double[len];
+            int a = (int)(fromSec * 100), z = toSec >= 1e6 ? len : (int)(toSec * 100);
+            for (int k = 0; k < len; k++) total[k] = Math.Max(0, At(cur, k) + (k >= a && k < z ? dy : 0));
+            var f = FromTotal(total, cur.X + dx, cur.Base);
+            apply(gun, f);
+            holeUndoBtn.IsEnabled = true;
+            string what = dx != 0 ? (dx > 0 ? "ดึงไปทางขวาเพิ่ม" : "ดึงไปทางซ้ายเพิ่ม") : (dy > 0 ? "ดึงลงเพิ่ม" : "ดึงลงน้อยลง");
+            Log.Info($"calib holes {names[gun]} {part} dy {dy} dx {dx} → base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}");
+            pop($"{names[gun]} · {part}: {what} 0.5 — ยิงดูใหม่ได้เลย");
+            status.Text = $"{names[gun]} · {part}: {what} 0.5 (base {GHub.Fmt(f.Base)} · ซ้าย/ขวา {GHub.Fmt(f.X)}) — รอป้าย \"ส่งค่าเข้า G Hub แล้ว\" แล้วยิงดูใหม่";
+            status.Foreground = new SolidColorBrush(Ice);
+        }
+
+        void HoleUndo()
+        {
+            if (holeUndo.Count == 0) return;
+            var (g, v) = holeUndo.Pop();
+            apply(g, new Fit { Base = v.Base, X = v.X, Steps = v.Steps ?? new double[] { 0 }, Avg = v.Steps ?? new double[] { 0 } });
+            holeUndoBtn.IsEnabled = holeUndo.Count > 0;
+            pop($"ย้อนค่า {names[g]} แล้ว");
+            Log.Info($"calib holes undo {names[g]} → base {GHub.Fmt(v.Base)} x {GHub.Fmt(v.X)}");
+        }
+
+        static GHub.GunVals Copy(GHub.GunVals v) =>
+            new GHub.GunVals { Base = v.Base, X = v.X, Steps = v.Steps?.ToArray() };
 
         Button Btn(string label, Action click, double leftMargin)
         {

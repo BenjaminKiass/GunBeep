@@ -215,3 +215,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   keeps the current base unless the new curve goes below it (`FromTotal(keepBase)`).
 - Simulated with hand shake ≈ 0.9 per bar and gain error ±20 %: already-correct values finish in 2 rounds
   without change; base 7/no graph converges and finishes in 4–6 rounds.
+
+## Bullet-hole tuning (2026-10-22)
+- User asked for screen/crosshair detection — refused (vision-driven aim/recoil = cheat, BattlEye; also the
+  red dot stays centred, the world moves). Instead: Calibrator panel "จูนจากรอยกระสุน": macro ON, hand still,
+  full mag at a wall, the user judges the holes and clicks ต้น (0–0.8 s) / กลาง (0.8–2 s) / ท้าย (2 s→) ▲/▼
+  (±0.5 pull in that window) or ◀/▶ (x ±0.5). `Nudge` works on GunBeep's current values (`wanted` func),
+  keeps base (`FromTotal(keepBase)`), applies live via `apply`; undo stack per click.
