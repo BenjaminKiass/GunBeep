@@ -17,6 +17,7 @@ namespace GunBeep
         public bool TopMost { get; set; }
         public int OsdMode { get; set; } = 1;       // ป้ายบนจอเกม: 0 ปิด, 1 ตอนเปลี่ยน, 2 ตลอด
         public int OsdCorner { get; set; }          // 0 ซ้ายบน, 1 ขวาบน, 2 ซ้ายล่าง, 3 ขวาล่าง
+        public string Preset { get; set; }         // โปรไฟล์ค่าปืนที่โหลด/บันทึกล่าสุด
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };

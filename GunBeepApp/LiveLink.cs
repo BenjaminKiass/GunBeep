@@ -13,6 +13,7 @@ namespace GunBeep
     {
         const byte VK_RCONTROL = 0xA3, VK_CAPITAL = 0x14;
         const int GAP_MS = 25;
+        public const int FRAME_GAP_MS = 250;    // เงียบระหว่างเฟรม (สคริปต์นับ >150 ms เป็นเฟรมใหม่)
 
         public static int[] Frame(int gun, double baseVal, double x)
         {

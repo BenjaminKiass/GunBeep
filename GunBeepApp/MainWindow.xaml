@@ -88,6 +88,49 @@
             </Setter>
         </Style>
 
+        <!-- เมนูคลิกขวา/ดรอปดาวน์ธีมมืด -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#0B1222" BorderBrush="#24345A" BorderThickness="1" CornerRadius="10" Padding="4">
+                            <ItemsPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#EAF2FF"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="7" Padding="12,7,16,7" MinWidth="200">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="False"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#1A2C52"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#4E5D80"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="#18223A" Margin="6,4"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="StepBtn" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Focusable" Value="False"/>
@@ -434,6 +477,21 @@
                                 <Button x:Name="ApplyBtn" Style="{StaticResource KeyBtn}" Margin="0,12,0,0" HorizontalAlignment="Stretch"
                                         Click="Apply_Click" ToolTip="ส่งค่าเข้า G Hub ทันที ไม่ต้องรีสตาร์ท (ปล่อยหลอดเลื่อนแล้วจะส่งให้เอง)"/>
                             </StackPanel>
+                        </Border>
+
+                        <!-- โปรไฟล์ค่าปืน: เก็บหลายชุด / ส่งออก / นำเข้า -->
+                        <Border Margin="0,10,0,0" CornerRadius="16" Background="#0D1322" BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1" Padding="16,10,12,10">
+                            <DockPanel>
+                                <Button x:Name="PresetMoreBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="8,0,0,0"
+                                        Content="นำเข้า / ส่งออก" Click="PresetMore_Click" ToolTip="นำเข้าจากไฟล์ · ส่งออกเป็นไฟล์ · ลบ · เปิดโฟลเดอร์"/>
+                                <Button x:Name="PresetSaveBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="8,0,0,0"
+                                        Content="บันทึก" Click="PresetSave_Click" ToolTip="บันทึกค่าปืนทั้ง 3 ชุดตอนนี้เป็นโปรไฟล์"/>
+                                <TextBlock Text="&#xE8F1;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                           VerticalAlignment="Center" Width="24"/>
+                                <Button x:Name="PresetBtn" Style="{StaticResource KeyBtn}" HorizontalContentAlignment="Left"
+                                        Click="Preset_Click" ToolTip="เลือกโปรไฟล์ค่าปืนที่บันทึกไว้"/>
+                            </DockPanel>
                         </Border>
                     </StackPanel>
 

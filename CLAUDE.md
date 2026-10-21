@@ -40,6 +40,16 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   screen corner, modes off / pop 2.5 s / always (`cfg.OsdMode`, `cfg.OsdCorner`). Re-asserts HWND_TOPMOST
   every 1.5 s while shown. Not visible over exclusive fullscreen. App uses ShutdownMode.OnMainWindowClose.
 
+## Presets (Presets.cs)
+- `Preset` JSON {App, Format, Name, Saved, Guns[{Name, Base, X}]} in `saved\presets\<name>.json`; Parse validates
+  (1-3 guns, base 0..60, x -30..30, snapped to 0.5). `cfg.Preset` = last used name; button shows " •" when
+  current names/values differ. Loading writes vals + names, then the normal save + live path (resets liveFailed).
+- `InputDialog` = dark themed name prompt. Menus are code-built ContextMenus using the implicit dark
+  ContextMenu/MenuItem/Separator styles in MainWindow.xaml (assigned explicitly via TryFindResource).
+- Bug fixed 2026-10-21: live frames for several guns were sent back-to-back; the script only starts a new frame
+  after >150 ms of Right Ctrl silence, so the 2nd frame was lost. Now `LiveLink.FRAME_GAP_MS` (250) between frames.
+  Verified with a standalone sender: ~20 ms gap → 1 ack of 2, 250 ms → 2 acks.
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

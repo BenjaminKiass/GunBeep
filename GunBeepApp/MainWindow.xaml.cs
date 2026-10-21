@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Speech.Synthesis;
 using System.Threading.Tasks;
@@ -400,6 +401,188 @@ namespace GunBeep
                 valTexts[i].Text = vals != null && i < vals.Length
                     ? $"base {GHub.Fmt(vals[i].Base)} · x {GHub.Fmt(vals[i].X)}"
                     : "base – · x –";
+            UpdatePresetButton();
+        }
+
+        // ---------------------------------------------------------------- โปรไฟล์ค่าปืน
+
+        Preset currentPreset;
+        bool presetLooked;
+
+        void UpdatePresetButton()
+        {
+            if (!presetLooked)
+            {
+                presetLooked = true;
+                if (!string.IsNullOrEmpty(cfg.Preset))
+                    currentPreset = Preset.List().FirstOrDefault(p => p.Name == cfg.Preset);
+            }
+            if (currentPreset == null)
+            {
+                PresetBtn.Content = "▾  เลือกโปรไฟล์ค่าปืน";
+                PresetBtn.ToolTip = "เลือกโปรไฟล์ค่าปืนที่บันทึกไว้";
+                return;
+            }
+            bool changed = vals != null && !currentPreset.Matches(cfg.Names, vals);
+            PresetBtn.Content = "▾  " + currentPreset.Name + (changed ? "  •" : "");
+            PresetBtn.ToolTip = changed
+                ? "ค่าถูกแก้ไปจากโปรไฟล์นี้แล้ว — กด \"บันทึก\" เพื่อเก็บทับ"
+                : "ใช้โปรไฟล์นี้อยู่";
+        }
+
+        ContextMenu DarkMenu(FrameworkElement target)
+        {
+            var m = new ContextMenu { PlacementTarget = target, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+            if (TryFindResource(typeof(ContextMenu)) is Style s) m.Style = s;
+            return m;
+        }
+
+        MenuItem Item(string header, Action click, bool enabled = true)
+        {
+            var mi = new MenuItem { Header = header, IsEnabled = enabled };
+            if (TryFindResource(typeof(MenuItem)) is Style s) mi.Style = s;
+            if (click != null) mi.Click += (o, e) => click();
+            return mi;
+        }
+
+        Separator Sep()
+        {
+            var sp = new Separator();
+            if (TryFindResource(typeof(Separator)) is Style s) sp.Style = s;
+            return sp;
+        }
+
+        static string Summary(Preset p) =>
+            string.Join("  ·  ", p.Guns.Select(g => $"{GHub.Fmt(g.Base)}/{GHub.Fmt(g.X)}"));
+
+        void Preset_Click(object sender, RoutedEventArgs e)
+        {
+            var m = DarkMenu(PresetBtn);
+            var list = Preset.List();
+            if (list.Count == 0)
+                m.Items.Add(Item("ยังไม่มีโปรไฟล์ — กด \"บันทึก\" เพื่อสร้าง", null, false));
+            foreach (var p in list)
+            {
+                var pp = p;
+                string mark = currentPreset != null && currentPreset.Name == p.Name ? "✓  " : "     ";
+                m.Items.Add(Item($"{mark}{p.Name}      ({Summary(p)})", () => LoadPreset(pp)));
+            }
+            m.IsOpen = true;
+        }
+
+        void PresetSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            string name = InputDialog.Ask(this, "บันทึกโปรไฟล์", "ชื่อโปรไฟล์ (เช่น เมาส์ใหม่, sens 40)", currentPreset?.Name ?? "");
+            if (name == null) return;
+            bool exists = File.Exists(Preset.PathFor(name));
+            if (exists && currentPreset?.Name != name && !Ask($"มีโปรไฟล์ \"{name}\" อยู่แล้ว จะบันทึกทับไหม?")) return;
+            try
+            {
+                var p = Preset.From(name, cfg.Names, vals);
+                p.Save();
+                currentPreset = p;
+                cfg.Preset = name;
+                cfg.Save();
+                UpdatePresetButton();
+                Flash("บันทึกโปรไฟล์ \"" + name + "\" แล้ว");
+                Sfx.Play(Sfx.Pick, cfg.Sound);
+            }
+            catch (Exception ex) { Tell("บันทึกไม่สำเร็จ: " + ex.Message); }
+        }
+
+        void PresetMore_Click(object sender, RoutedEventArgs e)
+        {
+            var m = DarkMenu(PresetMoreBtn);
+            m.Items.Add(Item("นำเข้าจากไฟล์...", ImportPreset));
+            m.Items.Add(Item("ส่งออกค่าตอนนี้เป็นไฟล์...", ExportPreset, vals != null));
+            m.Items.Add(Sep());
+            m.Items.Add(Item(currentPreset != null ? $"ลบโปรไฟล์ \"{currentPreset.Name}\"" : "ลบโปรไฟล์", DeletePreset, currentPreset != null));
+            m.Items.Add(Item("เปิดโฟลเดอร์โปรไฟล์", () =>
+            {
+                Directory.CreateDirectory(Preset.Dir);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + Preset.Dir + "\"");
+            }));
+            m.IsOpen = true;
+        }
+
+        void LoadPreset(Preset p)
+        {
+            if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (p.Matches(cfg.Names, vals)) { currentPreset = p; cfg.Preset = p.Name; cfg.Save(); UpdatePresetButton(); return; }
+            bool unsaved = currentPreset == null || !currentPreset.Matches(cfg.Names, vals);
+            if (unsaved && !Ask($"ค่าปืนตอนนี้ยังไม่ได้บันทึกเป็นโปรไฟล์\nจะโหลด \"{p.Name}\" ทับเลยไหม?")) return;
+
+            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
+            {
+                vals[i].Base = p.Guns[i].Base;
+                vals[i].X = p.Guns[i].X;
+                if (p.Guns[i].Name.Length > 0 && i < cfg.Names.Length) cfg.Names[i] = p.Guns[i].Name;
+            }
+            currentPreset = p;
+            cfg.Preset = p.Name;
+            cfg.Save();
+            UpdateGuns();
+            saveVals.Stop();
+            saveVals.Start();
+            liveFailed = false;              // ลองส่งแบบ real time ใหม่ทุกครั้งที่โหลดโปรไฟล์
+            liveTimer.Stop();                // ส่งเข้า G Hub เหมือนเลื่อนหลอดเอง
+            liveTimer.Start();
+            Flash("โหลดโปรไฟล์ \"" + p.Name + "\" แล้ว");
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+            PopOsd("โปรไฟล์: " + p.Name);
+        }
+
+        void ImportPreset()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Title = "นำเข้าโปรไฟล์ค่าปืน", Filter = "โปรไฟล์ GunBeep (*.json)|*.json" };
+            if (dlg.ShowDialog(this) != true) return;
+            Preset p;
+            try { p = Preset.Load(dlg.FileName); }
+            catch (Exception ex) { Tell("นำเข้าไม่ได้: " + ex.Message); return; }
+            if (File.Exists(Preset.PathFor(p.Name)) && !Ask($"มีโปรไฟล์ \"{p.Name}\" อยู่แล้ว จะแทนที่ไหม?")) return;
+            try { p.Save(); }
+            catch (Exception ex) { Tell("บันทึกไม่สำเร็จ: " + ex.Message); return; }
+            Flash("นำเข้าโปรไฟล์ \"" + p.Name + "\" แล้ว");
+            if (vals != null && Ask($"นำเข้า \"{p.Name}\" แล้ว\n({Summary(p)})\n\nจะใช้โปรไฟล์นี้เลยไหม?"))
+                ApplyPresetValues(p);
+        }
+
+        void ApplyPresetValues(Preset p)
+        {
+            // ถามผู้ใช้ไปแล้ว: ทำให้ค่าตอนนี้ "ตรงกับโปรไฟล์" ชั่วคราว LoadPreset จะได้ไม่ถามซ้ำ
+            currentPreset = Preset.From("", cfg.Names, vals);
+            LoadPreset(p);
+        }
+
+        void ExportPreset()
+        {
+            if (vals == null) return;
+            string name = currentPreset?.Name ?? ("GunBeep " + DateTime.Now.ToString("yyyy-MM-dd"));
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "ส่งออกโปรไฟล์ค่าปืน", Filter = "โปรไฟล์ GunBeep (*.json)|*.json",
+                FileName = Path.GetFileName(Preset.PathFor(name))
+            };
+            if (dlg.ShowDialog(this) != true) return;
+            try
+            {
+                File.WriteAllText(dlg.FileName, Preset.From(name, cfg.Names, vals).ToJson());
+                Flash("ส่งออกแล้ว: " + Path.GetFileName(dlg.FileName));
+            }
+            catch (Exception ex) { Tell("ส่งออกไม่สำเร็จ: " + ex.Message); }
+        }
+
+        void DeletePreset()
+        {
+            if (currentPreset == null || !Ask($"ลบโปรไฟล์ \"{currentPreset.Name}\"?\n(ค่าปืนที่ใช้อยู่ตอนนี้ไม่เปลี่ยน)")) return;
+            try { Preset.Delete(currentPreset.Name); }
+            catch (Exception ex) { Tell("ลบไม่สำเร็จ: " + ex.Message); return; }
+            Flash("ลบโปรไฟล์ \"" + currentPreset.Name + "\" แล้ว");
+            currentPreset = null;
+            cfg.Preset = null;
+            cfg.Save();
+            UpdatePresetButton();
         }
 
         void SliderMoved(string field, double value)
@@ -434,6 +617,7 @@ namespace GunBeep
             bool ok = true;
             try
             {
+                bool sent = false;
                 do
                 {
                     liveAgain = false;
@@ -441,6 +625,9 @@ namespace GunBeep
                     {
                         var want = Snap(vals[i]);
                         if (Same(want, applied[i])) continue;
+                        // สคริปต์เริ่มเฟรมใหม่เมื่อ Right Ctrl เงียบเกิน 150 ms → เว้นก่อนส่งปืนถัดไป
+                        if (sent) await Task.Delay(LiveLink.FRAME_GAP_MS);
+                        sent = true;
                         var bits = LiveLink.Frame(i + 1, want.Base, want.X);
                         liveAck = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                         await Task.Run(() => LiveLink.Send(bits));
