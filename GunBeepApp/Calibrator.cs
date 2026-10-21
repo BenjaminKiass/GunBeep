@@ -156,6 +156,11 @@ namespace GunBeep
                 Child = stack
             };
             MouseLeftButtonDown += (s, e) => { if (e.ButtonState == MouseButtonState.Pressed) try { DragMove(); } catch { } };
+            plot.Background = Brushes.Transparent;              // รับเมาส์ทั้งพื้นที่กราฟ
+            plot.Cursor = Cursors.IBeam;
+            plot.MouseLeftButtonDown += PlotDown;
+            plot.MouseMove += PlotMove;
+            plot.MouseLeftButtonUp += PlotUp;
 
             Loaded += (s, e) =>
             {
@@ -173,13 +178,15 @@ namespace GunBeep
         // ---------------------------------------------------------------- จูนจากรอยกระสุน
         //   เปิดมาโคร มือนิ่ง ยิงหมดแม็กใส่กำแพง แล้วดูรอย: ช่วงไหนหลุดขึ้น = ช่วงนั้นดึงเพิ่ม, หลุดลง = ดึงน้อยลง
         //   ไม่ต้องดึงแก้เอง (มือที่ดึงขึ้นลงตามแรงดีดทำให้ค่าแกว่ง) และไม่อ่านภาพจากเกม — ใช้ตาคนดู
-        static readonly (string name, double from, double to)[] Parts =
-        {
-            ("ต้นแม็ก", 0, 0.8), ("กลางแม็ก", 0.8, 2.0), ("ท้ายแม็ก", 2.0, double.MaxValue),
-        };
-        const double HOLE_STEP = 0.5;
+        //   เลือกช่วงเวลาด้วยการลากบนกราฟ (นับจากเริ่มกดยิง) แล้วกด หลุดขึ้น/หลุดลง เฉพาะช่วงนั้น
+        const double HOLE_STEP = 0.5, SHOT_SEC = 0.086;      // ระยะห่างนัด ~M416 (ไว้บอกเลขนัดคร่าวๆ)
         readonly Stack<(int gun, GHub.GunVals v)> holeUndo = new();
         Button holeUndoBtn;
+        readonly TextBlock selText = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Width = 210 };
+        double selA = 0, selB = 3;                            // ช่วงที่เลือก (วินาที)
+        bool selDrag;
+        double dragFrom, lastBw = 1;
+        int lastNb = 30;
 
         UIElement BuildHolesPanel()
         {
@@ -191,38 +198,77 @@ namespace GunBeep
             box.Children.Add(new TextBlock
             {
                 FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 4, 0, 8), TextWrapping = TextWrapping.Wrap, MaxWidth = PW + 16,
-                Text = "เปิดมาโคร (ปืนเดียวกับแท็บนี้) เล็งจุดเดียว มือนิ่ง ยิงหมดแม็ก แล้วดูรอยบนกำแพง → กดช่วงที่หลุด ทีละ 0.5 " +
-                       "→ ยิงดูใหม่ ทำซ้ำจนรอยเป็นกระจุกเดียว (ต้นแม็ก ≈ 10 นัดแรก, กลาง ≈ นัด 10–25, ท้าย = ที่เหลือ)"
+                Text = "เปิดมาโคร (ปืนเดียวกับแท็บนี้) เล็งจุดเดียว มือนิ่ง ยิงหมดแม็ก แล้วดูรอยบนกำแพง → " +
+                       "ลากบนกราฟเพื่อเลือกช่วงเวลาที่หลุด (นับจากเริ่มกดยิง, เส้นขาว = แรงดึงของมาโครตอนนี้) → กด ▲/▼ ทีละ 0.5 → ยิงดูใหม่"
             });
-            var grid = new UniformGrid { Columns = 4 };
-            foreach (var part in Parts)
-            {
-                var (pf, pt) = (part.from, part.to);
-                string pn = part.name;
-                grid.Children.Add(HoleGroup(pn,
-                    ("▲ หลุดขึ้น", () => Nudge(pn, pf, pt, +HOLE_STEP, 0)),
-                    ("▼ หลุดลง", () => Nudge(pn, pf, pt, -HOLE_STEP, 0))));
-            }
-            grid.Children.Add(HoleGroup("ซ้าย / ขวา",
-                ("◀ หลุดซ้าย", () => Nudge("ซ้าย/ขวา", 0, 0, 0, +HOLE_STEP)),
-                ("หลุดขวา ▶", () => Nudge("ซ้าย/ขวา", 0, 0, 0, -HOLE_STEP))));
-            box.Children.Add(grid);
-            holeUndoBtn = Btn("↶ ย้อนการกดล่าสุด", HoleUndo, 0);
-            holeUndoBtn.HorizontalAlignment = HorizontalAlignment.Left;
-            holeUndoBtn.Margin = new Thickness(0, 8, 0, 0);
+
+            var row1 = new StackPanel { Orientation = Orientation.Horizontal };
+            selText.Foreground = new SolidColorBrush(Gold);
+            row1.Children.Add(selText);
+            row1.Children.Add(Btn("ทั้งแม็ก", () => Select(0, 99), 0));
+            row1.Children.Add(Btn("0–0.8 วิ", () => Select(0, 0.8), 4));
+            row1.Children.Add(Btn("0.8–2 วิ", () => Select(0.8, 2), 4));
+            row1.Children.Add(Btn("2 วิ ขึ้นไป", () => Select(2, 99), 4));
+            box.Children.Add(row1);
+
+            var row2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            var up = Btn("▲ ช่วงนี้หลุดขึ้น", () => Nudge(SelName(), selA, selB, +HOLE_STEP, 0), 0);
+            var dn = Btn("▼ ช่วงนี้หลุดลง", () => Nudge(SelName(), selA, selB, -HOLE_STEP, 0), 4);
+            up.BorderBrush = dn.BorderBrush = new SolidColorBrush(Gold);
+            row2.Children.Add(up);
+            row2.Children.Add(dn);
+            row2.Children.Add(Btn("◀ หลุดซ้าย", () => Nudge("ซ้าย/ขวา", 0, 0, 0, +HOLE_STEP), 16));
+            row2.Children.Add(Btn("หลุดขวา ▶", () => Nudge("ซ้าย/ขวา", 0, 0, 0, -HOLE_STEP), 4));
+            holeUndoBtn = Btn("↶ ย้อน", HoleUndo, 16);
             holeUndoBtn.IsEnabled = false;
-            box.Children.Add(holeUndoBtn);
+            row2.Children.Add(holeUndoBtn);
+            box.Children.Add(row2);
+            UpdateSelText();
             return box;
         }
 
-        UIElement HoleGroup(string title, params (string label, Action click)[] buttons)
+        double End => lastNb / 10.0;
+
+        void Select(double a, double b)
         {
-            var g = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
-            g.Children.Add(new TextBlock { Text = title, FontSize = 12, Foreground = Muted, Margin = new Thickness(2, 0, 0, 4) });
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            for (int i = 0; i < buttons.Length; i++) row.Children.Add(Btn(buttons[i].label, buttons[i].click, i == 0 ? 0 : 4));
-            g.Children.Add(row);
-            return g;
+            selA = Math.Max(0, Math.Min(a, End - 0.1));
+            selB = Math.Max(selA + 0.1, Math.Min(b, End));
+            UpdateSelText();
+            Draw(Analyze(sprays));
+        }
+
+        string SelName() => $"{GHub.Fmt(selA)}–{(selB >= End - 1e-9 ? "จบ" : GHub.Fmt(selB))} วิ";
+
+        void UpdateSelText()
+        {
+            int s1 = (int)(selA / SHOT_SEC) + 1, s2 = (int)Math.Ceiling(selB / SHOT_SEC);
+            selText.Text = $"ช่วง {SelName()}" + (selB < End - 1e-9 ? $"  (≈ นัด {s1}–{s2})" : $"  (นัด {s1} ขึ้นไป)");
+        }
+
+        // ลากบนกราฟ = เลือกช่วงเวลา (ปัดทีละ 0.1 วิ = 1 แท่ง)
+        double SecAt(double x) => Math.Clamp(Math.Round((x - PADL) / lastBw) / 10.0, 0, End);
+
+        void PlotDown(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;                                   // ไม่ให้ลากทั้งหน้าต่าง
+            selDrag = true;
+            plot.CaptureMouse();
+            dragFrom = SecAt(e.GetPosition(plot).X);
+            Select(dragFrom, dragFrom + 0.1);
+        }
+
+        void PlotMove(object sender, MouseEventArgs e)
+        {
+            if (!selDrag) return;
+            double t = SecAt(e.GetPosition(plot).X);
+            Select(Math.Min(dragFrom, t), Math.Max(dragFrom + 0.1, t));
+        }
+
+        void PlotUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!selDrag) return;
+            selDrag = false;
+            plot.ReleaseMouseCapture();
         }
 
         // หลุดขึ้น = ช่วงนั้นดึงลงเพิ่ม (+), หลุดลง = ดึงน้อยลง (−), หลุดขวา = x ไปทางซ้าย (−)
@@ -234,7 +280,7 @@ namespace GunBeep
             holeUndo.Push((gun, Copy(cur)));
             int len = Math.Max(cur.Steps?.Length ?? 0, 400);          // ช่วงท้ายยาวพอเสมอ (หลังกราฟจบใช้ค่าสุดท้าย)
             var total = new double[len];
-            int a = (int)(fromSec * 100), z = toSec >= 1e6 ? len : (int)(toSec * 100);
+            int a = (int)Math.Round(fromSec * 100), z = toSec >= End - 1e-9 ? len : (int)Math.Round(toSec * 100);
             for (int k = 0; k < len; k++) total[k] = Math.Max(0, At(cur, k) + (k >= a && k < z ? dy : 0));
             var f = FromTotal(total, cur.X + dx, cur.Base);
             apply(gun, f);
@@ -242,6 +288,7 @@ namespace GunBeep
             string what = dx != 0 ? (dx > 0 ? "ดึงไปทางขวาเพิ่ม" : "ดึงไปทางซ้ายเพิ่ม") : (dy > 0 ? "ดึงลงเพิ่ม" : "ดึงลงน้อยลง");
             Log.Info($"calib holes {names[gun]} {part} dy {dy} dx {dx} → base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}");
             pop($"{names[gun]} · {part}: {what} 0.5 — ยิงดูใหม่ได้เลย");
+            Draw(Analyze(sprays));
             status.Text = $"{names[gun]} · {part}: {what} 0.5 (base {GHub.Fmt(f.Base)} · ซ้าย/ขวา {GHub.Fmt(f.X)}) — รอป้าย \"ส่งค่าเข้า G Hub แล้ว\" แล้วยิงดูใหม่";
             status.Foreground = new SolidColorBrush(Ice);
         }
@@ -637,9 +684,15 @@ namespace GunBeep
             plot.Children.Clear();
             var series = sprays.Select(s => Bars(s.Y)).ToList();
             double[] fitBars = f == null ? null : Bars(f.Steps.Select(v => v + f.Base).ToArray());
-            int nb = Math.Max(30, series.Select(b => b.Length).DefaultIfEmpty(0).Max());
-            double ymax = Math.Max(6, Math.Ceiling(series.SelectMany(b => b).DefaultIfEmpty(0).Max() + 1));
+            var mv = wanted?.Invoke(gun);
+            double[] macroBars = mv == null ? null
+                : Bars(Enumerable.Range(0, Math.Max(mv.Steps?.Length ?? 0, 300)).Select(k => At(mv, k)).ToArray());
+            int nb = Math.Max(30, Math.Max(series.Select(b => b.Length).DefaultIfEmpty(0).Max(), macroBars?.Length ?? 0));
+            double ymax = Math.Max(6, Math.Ceiling(Math.Max(series.SelectMany(b => b).DefaultIfEmpty(0).Max(),
+                                                            macroBars == null ? 0 : macroBars.Max()) + 1));
             double bw = (PW - PADL - PADR) / nb;
+            lastNb = nb;
+            lastBw = bw;
             double Y(double v) => PH - PADB - Math.Clamp(v, 0, ymax) / ymax * (PH - PADB - PADT);
 
             double step = ymax <= 8 ? 1 : ymax <= 20 ? 2 : 5;
@@ -650,6 +703,22 @@ namespace GunBeep
             }
             for (int b = 0; b <= nb; b += 5)
                 Label(GHub.Fmt(b / 10.0) + " วิ", PADL + b * bw - 20, PH - PADB + 4, 40, TextAlignment.Center);
+
+            // ช่วงเวลาที่เลือกไว้จูนจากรอยกระสุน
+            double sa = Math.Min(selA, nb / 10.0), sb = Math.Min(selB, nb / 10.0);
+            if (sb > sa)
+            {
+                var sel = new Rectangle
+                {
+                    Width = Math.Max(2, (sb - sa) * 10 * bw), Height = PH - PADB - PADT,
+                    Fill = new SolidColorBrush(Color.FromArgb(0x2A, 0xC9, 0xA5, 0x4A)),
+                    Stroke = new SolidColorBrush(Color.FromArgb(0x90, 0xC9, 0xA5, 0x4A)), StrokeDashArray = new DoubleCollection { 3, 3 },
+                    IsHitTestVisible = false,
+                };
+                Canvas.SetLeft(sel, PADL + sa * 10 * bw);
+                Canvas.SetTop(sel, PADT);
+                plot.Children.Add(sel);
+            }
 
             // แต่ละชุด = เส้นจาง, ผล = แท่ง
             if (fitBars != null)
@@ -669,6 +738,17 @@ namespace GunBeep
                 var pl = new Polyline { Stroke = new SolidColorBrush(Color.FromArgb(0xB0, 0xC9, 0xA5, 0x4A)), StrokeThickness = 1.5 };
                 for (int b = 0; b < bars.Length; b++) pl.Points.Add(new Point(PADL + (b + 0.5) * bw, Y(bars[b])));
                 plot.Children.Add(pl);
+            }
+            // แรงดึงของมาโครตอนนี้ (เส้นขาวแบบขั้นบันได)
+            if (macroBars != null)
+            {
+                var ml = new Polyline { Stroke = Brushes.White, StrokeThickness = 2, Opacity = 0.85, IsHitTestVisible = false };
+                for (int b = 0; b < macroBars.Length; b++)
+                {
+                    ml.Points.Add(new Point(PADL + b * bw, Y(macroBars[b])));
+                    ml.Points.Add(new Point(PADL + (b + 1) * bw, Y(macroBars[b])));
+                }
+                plot.Children.Add(ml);
             }
             if (f != null)
             {

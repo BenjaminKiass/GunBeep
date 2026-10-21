@@ -219,6 +219,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 ## Bullet-hole tuning (2026-10-22)
 - User asked for screen/crosshair detection — refused (vision-driven aim/recoil = cheat, BattlEye; also the
   red dot stays centred, the world moves). Instead: Calibrator panel "จูนจากรอยกระสุน": macro ON, hand still,
-  full mag at a wall, the user judges the holes and clicks ต้น (0–0.8 s) / กลาง (0.8–2 s) / ท้าย (2 s→) ▲/▼
-  (±0.5 pull in that window) or ◀/▶ (x ±0.5). `Nudge` works on GunBeep's current values (`wanted` func),
+  full mag at a wall, the user judges the holes and drags a time range on the plot
+  (0.1 s steps; presets ทั้งแม็ก / 0–0.8 / 0.8–2 / 2→) and clicks ▲/▼ (±0.5 pull in that window; white step line
+  = current macro pull) or ◀/▶ (x ±0.5). `Nudge` works on GunBeep's current values (`wanted` func),
   keeps base (`FromTotal(keepBase)`), applies live via `apply`; undo stack per click.
