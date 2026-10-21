@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Speech.Synthesis;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -38,7 +37,6 @@ namespace GunBeep
         readonly Brush cardHover = Freeze(new SolidColorBrush(Color.FromRgb(0x2C, 0x4A, 0x80)));
 
         KeyHook hook;
-        SpeechSynthesizer tts;
         System.Windows.Forms.NotifyIcon tray;
         Overlay osd;
         DispatcherTimer lockSettle, saveVals, agentWatch;
@@ -119,7 +117,6 @@ namespace GunBeep
                     AutoStartSwitch.IsChecked = AutoStart.Enabled;
             };
 
-            try { tts = new SpeechSynthesizer { Rate = 1, Volume = 100 }; } catch { tts = null; }
 
             SetupTray();
             osd = new Overlay();
@@ -277,8 +274,7 @@ namespace GunBeep
                 cfg.Gun = gun;
                 cfg.Save();
                 UpdateGuns();
-                Announce();
-                PopOsd();
+                PopOsd();                    // เปลี่ยนปืนจากปุ่ม Back = บอกบนป้ายอย่างเดียว
             }
         }
 
@@ -588,15 +584,6 @@ namespace GunBeep
                 if (st != null && !GHub.SameSteps(st, vals[i].Steps)) segsDiffer = true;
             }
             ApplyPreset(p, null, $"  ({list.IndexOf(p) + 1}/{list.Count})" + (segsDiffer ? "\nกราฟยังไม่ใช้ — เลือกในหน้าต่าง" : ""));
-            AnnouncePreset(p, list.IndexOf(p) + 1);
-        }
-
-        void AnnouncePreset(Preset p, int index)
-        {
-            if (!cfg.Sound || tts == null) return;
-            bool ascii = p.Name.All(c => c < 128) && p.Name.Trim().Length > 0;
-            tts.SpeakAsyncCancelAll();
-            tts.SpeakAsync(ascii ? p.Name : "Profile " + index);
         }
 
         // ---------------------------------------------------------------- กราฟแรงดีด (segs)
@@ -827,17 +814,7 @@ namespace GunBeep
             cfg.Save();
             ApplyState();
             UpdateGuns();
-            if (changed) { Announce(); PopOsd(); }
-        }
-
-        void Announce()
-        {
-            if (!cfg.Sound) return;
-            string name = cfg.Names[gun - 1];
-            bool ascii = name.All(c => c < 128);
-            if (tts == null) { Sfx.Play(Sfx.Pick, true); return; }
-            tts.SpeakAsyncCancelAll();
-            tts.SpeakAsync(ascii && name.Trim().Length > 0 ? name : "Gun " + gun);
+            if (changed) PopOsd();          // เปลี่ยนปืน = บอกบนป้ายอย่างเดียว ไม่มีเสียง
         }
 
         // ---------------------------------------------------------------- ปุ่มลัด
