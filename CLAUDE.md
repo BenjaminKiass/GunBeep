@@ -223,3 +223,13 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   (0.1 s steps; presets ทั้งแม็ก / 0–0.8 / 0.8–2 / 2→) and clicks ▲/▼ (±0.5 pull in that window; white step line
   = current macro pull) or ◀/▶ (x ±0.5). `Nudge` works on GunBeep's current values (`wanted` func),
   keeps base (`FromTotal(keepBase)`), applies live via `apply`; undo stack per click.
+
+## Auto-tune v3: fixed window + smooth graph (2026-10-22)
+- The user's gun 2 graph had become jagged (bars 7↔15 every 0.1–0.3 s, hand shake baked in by earlier
+  recordings) → "goes down long, up long". Now:
+  - `windowSec` (⏱ 2.5/3/3.5/4 s, default 3): every spray is measured over the same window; overlay says
+    "ครบ N วิ — ปล่อยได้"; longer sprays are cut, shorter ones are rejected in auto-tune.
+  - `SmoothBars` (1-2-3-2-1 per 100 ms bar, first bar kept) on `Analyze` results and on auto-tune fixes;
+    `Adjust` ends the graph at the window so the script holds the last value afterwards.
+  - Starting auto-tune smooths the current graph first if `Roughness` (mean |Δbar|) ≥ 0.6; button
+    "〰 เกลี่ยกราฟ" does it on demand (undoable).

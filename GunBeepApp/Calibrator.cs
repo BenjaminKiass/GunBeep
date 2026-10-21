@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace GunBeep
 {
@@ -69,6 +70,12 @@ namespace GunBeep
         GHub.GunVals macroVals;                         // ค่าที่มาโครใช้ในชุดนี้ (null = ปิดมาโคร)
         List<(double t, int dx, int dy, bool hand)> cur;
 
+        // เวลามาตรฐานของแต่ละชุด: วัดแค่ช่วงนี้ทุกชุดเท่ากัน (ครบแล้วป้ายบอกให้ปล่อย) — หลังจากนั้นมาโครดึงคงที่
+        static readonly double[] Windows = { 2.5, 3.0, 3.5, 4.0 };
+        double windowSec = 3.0;
+        readonly DispatcherTimer cutTimer = new DispatcherTimer();
+        Button winBtn;
+
         public Calibrator(string[] gunNames, int startGun, Func<int> activeGun, Func<int, GHub.GunVals> macroValues,
                           Func<int, GHub.GunVals> currentValues, Action<int, Fit> onApply, Action<string> onPop)
         {
@@ -120,10 +127,18 @@ namespace GunBeep
             applyBtn.BorderBrush = new SolidColorBrush(Blue);
             autoBtn = Btn("", ToggleAuto, 6);
             autoBtn.BorderBrush = new SolidColorBrush(Gold);
+            winBtn = Btn("", () =>
+            {
+                windowSec = Windows[(Array.IndexOf(Windows, windowSec) + 1) % Windows.Length];
+                sprays.Clear();                                 // ชุดเก่าวัดคนละความยาว
+                Refresh();
+            }, 6);
+            winBtn.ToolTip = "ความยาวที่วัดต่อชุด (≈ 1 แม็ก) — กดเพื่อเปลี่ยน";
             var left = new StackPanel { Orientation = Orientation.Horizontal };
             left.Children.Add(undoBtn);
             left.Children.Add(clearBtn);
             left.Children.Add(autoBtn);
+            left.Children.Add(winBtn);
             var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             right.Children.Add(Btn("ปิด", Close, 0));
             right.Children.Add(applyBtn);
@@ -156,6 +171,11 @@ namespace GunBeep
                 Child = stack
             };
             MouseLeftButtonDown += (s, e) => { if (e.ButtonState == MouseButtonState.Pressed) try { DragMove(); } catch { } };
+            cutTimer.Tick += (s, e) =>
+            {
+                cutTimer.Stop();
+                if (down && !ignoreThis) pop($"✓  ครบ {GHub.Fmt(windowSec)} วิ — ปล่อยได้");
+            };
             plot.Background = Brushes.Transparent;              // รับเมาส์ทั้งพื้นที่กราฟ
             plot.Cursor = Cursors.IBeam;
             plot.MouseLeftButtonDown += PlotDown;
@@ -219,7 +239,8 @@ namespace GunBeep
             row2.Children.Add(dn);
             row2.Children.Add(Btn("◀ หลุดซ้าย", () => Nudge("ซ้าย/ขวา", 0, 0, 0, +HOLE_STEP), 16));
             row2.Children.Add(Btn("หลุดขวา ▶", () => Nudge("ซ้าย/ขวา", 0, 0, 0, -HOLE_STEP), 4));
-            holeUndoBtn = Btn("↶ ย้อน", HoleUndo, 16);
+            row2.Children.Add(Btn("〰 เกลี่ยกราฟ", () => SmoothCurrent(false), 16));
+            holeUndoBtn = Btn("↶ ย้อน", HoleUndo, 6);
             holeUndoBtn.IsEnabled = false;
             row2.Children.Add(holeUndoBtn);
             box.Children.Add(row2);
@@ -342,14 +363,22 @@ namespace GunBeep
                     if (mg - 1 != gun) pop($"มาโครใช้ปืน {mg} อยู่ — สลับเป็น {names[gun]} ก่อน (ชุดนี้ไม่นับ)");
                     else if (ignoreThis) pop("รอส่งค่าเข้า G Hub ให้เสร็จก่อน (ชุดนี้ไม่นับ)");
                 }
+                cutTimer.Interval = TimeSpan.FromSeconds(windowSec);
+                cutTimer.Stop();
+                cutTimer.Start();
             }
             if (down && (dx != 0 || dy != 0)) cur.Add((now - t0, dx, dy, dev == hand));
             if (left == -1 && down && dev == hand)
             {
                 down = false;
+                cutTimer.Stop();
                 double ms = now - t0;
                 if (ignoreThis) return;
                 if (ms < MIN_MS) return;                        // แตะยิง / คลิกทั่วไป
+                // ทุกชุดวัดยาวเท่ากัน: เกินเวลามาตรฐานตัดทิ้ง, ออโต้จูนต้องยิงให้ครบ
+                double cutMs = windowSec * 1000;
+                if (ms >= cutMs - 150) { cur = cur.Where(e => e.t < cutMs).ToList(); ms = cutMs; }
+                else if (auto) { pop($"ยิงไม่ครบ {GHub.Fmt(windowSec)} วิ (ชุดนี้ไม่นับ) — ยิงค้างจนป้ายบอกให้ปล่อย"); return; }
                 if (auto && macroVals == null) { pop("ออโต้จูน: เปิดมาโครก่อนยิง (ชุดนี้ไม่นับ)"); return; }
                 var s = macroVals == null ? Bucket(cur, ms) : Tune(cur, ms, macroVals);
                 sprays.Add(s);
@@ -464,6 +493,7 @@ namespace GunBeep
                 double m = sum / n, se = sd / Math.Sqrt(n);
                 if (Math.Abs(m) >= 0.25 && Math.Abs(m) > 3 * se) fix[b] = m;
             }
+            fix = SmoothBars(fix);                              // แก้เป็นช่วงต่อเนื่อง ไม่ใช่ทีละแท่งหยักๆ
             double rms = Math.Sqrt(fix.Average(f => f * f));
             var xs = tuned.Select(s => s.CorrX).ToList();
             double mx = xs.Average(), sx = xs.Count > 1 ? Math.Sqrt(xs.Sum(a => (a - mx) * (a - mx)) / (xs.Count - 1)) : double.MaxValue;
@@ -522,7 +552,7 @@ namespace GunBeep
                 foreach (var s in cov) { sumX += s.X[k]; cntX++; }
             }
 
-            var f = FromTotal(avg, cntX > 0 ? sumX / cntX : 0);
+            var f = FromTotal(avg, cntX > 0 ? sumX / cntX : 0, smooth: true);
             f.Used = use.Count;
             f.Dropped = dropped;
             return f;
@@ -530,8 +560,9 @@ namespace GunBeep
 
         // แรงดึงรวมต่อ 10 ms → base (ส่วนต่ำสุด) + กราฟ (ส่วนที่เกิน) + x
         //   keepBase = ใช้ base เดิมถ้ายังไม่เกินช่วงต่ำสุด (กัน base เดินตามเสียงรบกวนทีละนิด)
-        static Fit FromTotal(double[] total, double x, double? keepBase = null)
+        static Fit FromTotal(double[] total, double x, double? keepBase = null, bool smooth = false)
         {
+            if (smooth) total = SmoothSteps(total);
             var bars = LiveLink.Quantize(total);
             double min = bars.Min(), max = bars.Max();
             double baseV = keepBase.HasValue && keepBase.Value <= min + 1e-9 ? keepBase.Value : Math.Max(0, Math.Floor(min * 2) / 2);
@@ -540,16 +571,48 @@ namespace GunBeep
             return new Fit { Base = baseV, X = Math.Round(x * 2) / 2, Steps = steps, Avg = total };
         }
 
+        // เกลี่ยกราฟ: แรงดีดจริงเปลี่ยนแบบค่อยเป็นค่อยไป หยักขึ้นลงทุกแท่ง = มือสั่นที่ติดมา → เป้าลงยาว/ขึ้นยาว
+        //   ถัวน้ำหนัก 1-2-3-2-1 ต่อแท่ง 100 ms (แท่งแรกคงไว้ แรงดีดนัดแรกมักต่างจากที่เหลือ)
+        static double[] SmoothBars(double[] b)
+        {
+            int[] w = { 1, 2, 3, 2, 1 };
+            var r = new double[b.Length];
+            for (int i = 0; i < b.Length; i++)
+            {
+                double sum = 0, ws = 0;
+                for (int j = -2; j <= 2; j++)
+                {
+                    int k = i + j;
+                    if (k < 0 || k >= b.Length) continue;
+                    sum += b[k] * w[j + 2];
+                    ws += w[j + 2];
+                }
+                r[i] = sum / ws;
+            }
+            if (b.Length > 0) r[0] = b[0];
+            return r;
+        }
+
+        static double[] SmoothSteps(double[] steps)
+        {
+            var bars = SmoothBars(Bars(steps));
+            return Enumerable.Range(0, steps.Length).Select(k => bars[k / 10]).ToArray();
+        }
+
+        // ความหยักของกราฟ = ค่าเฉลี่ยที่แท่งติดกันต่างกัน
+        static double Roughness(double[] bars) =>
+            bars.Length < 2 ? 0 : Enumerable.Range(1, bars.Length - 1).Average(i => Math.Abs(bars[i] - bars[i - 1]));
+
         static double At(GHub.GunVals v, int k) =>
             v.Base + (v.Steps == null || v.Steps.Length == 0 ? 0 : v.Steps[Math.Min(k, v.Steps.Length - 1)]);
 
         // ออโต้จูน: แก้ค่าเดิมเฉพาะช่วงที่ผิดจริง ทีละ gain (ไม่กระโดดทีเดียว)
         static Fit Adjust(GHub.GunVals cur, Sys s, double gain)
         {
-            int len = Math.Max(cur.Steps?.Length ?? 0, s.Fix.Length * 10);
+            int len = s.Fix.Length * 10;                         // กราฟจบที่เวลามาตรฐาน หลังจากนั้นสคริปต์ดึงค่าสุดท้ายคงที่
             var total = new double[len];
             for (int k = 0; k < len; k++)
-                total[k] = At(cur, k) + gain * (k / 10 < s.Fix.Length ? s.Fix[k / 10] : 0);
+                total[k] = At(cur, k) + gain * s.Fix[k / 10];
             return FromTotal(total, cur.X + gain * s.FixX, cur.Base);
         }
 
@@ -566,10 +629,29 @@ namespace GunBeep
         {
             auto = !auto;
             goodRounds = autoRounds = 0;
-            sprays.RemoveAll(s => !s.Tuned);
+            sprays.Clear();
+            if (auto) SmoothCurrent(true);
             Log.Info("calib auto " + (auto ? "on" : "off"));
             pop(auto ? "ออโต้จูน: เปิด — เปิดมาโครแล้วยิงได้เลย" : "ออโต้จูน: ปิด");
             Refresh();
+        }
+
+        // เกลี่ยกราฟของปืนนี้ให้เรียบ (ภายในเวลามาตรฐาน หลังจากนั้นดึงคงที่) — onlyIfRough = ทำเฉพาะตอนหยักจริง
+        void SmoothCurrent(bool onlyIfRough)
+        {
+            var cur = wanted(gun);
+            if (cur == null) return;
+            int len = (int)Math.Round(windowSec * 100);
+            var total = Enumerable.Range(0, len).Select(k => At(cur, k)).ToArray();
+            double rough = Roughness(Bars(total));
+            if (onlyIfRough && rough < 0.6) return;
+            holeUndo.Push((gun, Copy(cur)));
+            if (holeUndoBtn != null) holeUndoBtn.IsEnabled = true;
+            var f = FromTotal(total, cur.X, cur.Base, smooth: true);
+            apply(gun, f);
+            Log.Info($"calib smooth {names[gun]} rough {rough:0.00} → {Roughness(Bars(f.Steps)):0.00}");
+            pop($"เกลี่ยกราฟ {names[gun]} ให้เรียบแล้ว (เดิมหยัก {rough:0.0})");
+            Draw(Analyze(sprays));
         }
 
         void AutoStep()
@@ -668,12 +750,13 @@ namespace GunBeep
             }
 
             autoBtn.Content = auto ? "■  หยุดออโต้จูน" : "▶  ออโต้จูน";
+            winBtn.Content = $"⏱ วัด {GHub.Fmt(windowSec)} วิ";
             if (auto)
             {
                 applyBtn.IsEnabled = false;                     // ออโต้จูนใช้ค่าเอง
                 status.Text = $"ออโต้จูน {names[gun]} · รอบ {autoRounds + 1} · ยิงแล้ว {tuned.Count}/{AUTO_N}" +
                               (goodRounds > 0 ? " · นิ่งแล้ว รอยืนยัน" : "") +
-                              " — เปิดมาโคร ยิงค้าง แล้วดึงแก้เฉพาะส่วนที่เป้ายังขยับ";
+                              $" — เปิดมาโคร ยิงค้างจนป้ายบอก \"ครบ {GHub.Fmt(windowSec)} วิ\" ดึงแก้เฉพาะส่วนที่เป้ายังขยับ";
                 status.Foreground = new SolidColorBrush(Gold);
             }
             Draw(f);
