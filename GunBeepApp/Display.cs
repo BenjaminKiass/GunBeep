@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace GunBeep
 {
-    // เปลี่ยนความละเอียดจอหลักตอนเปิดเกม (จอยืดแบบ Borderless) แล้วคืนค่าเดิมตอนปิดเกม
+    // เปลี่ยนความละเอียดจอหลักตอนเปิดเกม/ตลอด (จอยืดแบบ Borderless) แล้วคืนค่าเดิมตอนปิดเกม/ปิด GunBeep
     //   ใช้ CDS_FULLSCREEN = เปลี่ยนชั่วคราว ไม่เขียนลง registry → รีสตาร์ทเครื่องแล้วกลับเป็นค่าเดิมเสมอ
     public static class Display
     {
@@ -22,7 +22,7 @@ namespace GunBeep
             public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
         }
 
-        const int ENUM_CURRENT_SETTINGS = -1, CDS_FULLSCREEN = 4, DISP_CHANGE_SUCCESSFUL = 0;
+        const int ENUM_CURRENT_SETTINGS = -1, ENUM_REGISTRY_SETTINGS = -2, CDS_FULLSCREEN = 4, DISP_CHANGE_SUCCESSFUL = 0;
         const int DM_BITSPERPEL = 0x40000, DM_PELSWIDTH = 0x80000, DM_PELSHEIGHT = 0x100000, DM_DISPLAYFREQUENCY = 0x400000;
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -38,6 +38,13 @@ namespace GunBeep
         {
             var dm = New();
             return EnumDisplaySettings(null, ENUM_CURRENT_SETTINGS, ref dm) ? (dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency) : (0, 0, 0);
+        }
+
+        // ความละเอียดที่ตั้งไว้ใน Windows (ค่าที่ Restore จะกลับไป) — ไม่เปลี่ยนตามที่ GunBeep สลับชั่วคราว
+        public static (int w, int h) Desktop()
+        {
+            var dm = New();
+            return EnumDisplaySettings(null, ENUM_REGISTRY_SETTINGS, ref dm) ? (dm.dmPelsWidth, dm.dmPelsHeight) : (0, 0);
         }
 
         static List<DEVMODE> Modes()

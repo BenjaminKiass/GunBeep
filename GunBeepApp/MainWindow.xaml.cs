@@ -121,9 +121,10 @@ namespace GunBeep
             osd = new Overlay();
             UpdateOsdButtons();
 
-            // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้) — เปิดอยู่ก่อน GunBeep = ไม่ยุ่ง
+            // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้) — เปิดอยู่ก่อน GunBeep = ไม่ยุ่ง (ยกเว้นโหมดยืดตลอด)
             UpdateResButton();
             gameWas = GameRunning();
+            if (cfg.AutoRes && cfg.ResAlways) SwitchRes();
             gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
             gameTimer.Tick += (s, e) => WatchGame();
             gameTimer.Start();
@@ -208,12 +209,39 @@ namespace GunBeep
         void WatchGame()
         {
             bool now = GameRunning();
-            if (now == gameWas) return;
+            if (now == gameWas) { KeepRes(); return; }
             gameWas = now;
             Log.Info(now ? "PUBG started" : "PUBG closed");
-            if (now && cfg.AutoRes) SwitchRes();
-            else if (!now && resSwitched) RestoreRes();
+            if (now && cfg.AutoRes && !cfg.ResAlways) SwitchRes();
+            else if (!now && resSwitched && !cfg.ResAlways) RestoreRes();
             if (!now) ShowDeferred();
+        }
+
+        bool ResWanted => cfg.AutoRes && (cfg.ResAlways || gameWas);
+
+        // มีอะไรเปลี่ยนจอกลับเอง (ตื่นจาก sleep, เสียบจอใหม่, ไดรเวอร์รีเซ็ต) → ยืดกลับให้ ลองไม่เกินทุก 10 วิ
+        DateTime lastResTry;
+
+        void KeepRes()
+        {
+            if (!resSwitched || !ResWanted) return;
+            var c = Display.Current();
+            if (c.w == cfg.GameResW && c.h == cfg.GameResH) return;
+            if (DateTime.Now - lastResTry < TimeSpan.FromSeconds(10)) return;
+            lastResTry = DateTime.Now;
+            Log.Info($"display changed to {c.w}x{c.h} by something else → switch back");
+            SwitchRes();
+        }
+
+        // ตั้งค่าเปลี่ยน → ทำตามทันที (ยืด / เปลี่ยนขนาด / คืนค่าเดิม)
+        void ApplyResNow()
+        {
+            if (ResWanted)
+            {
+                var c = Display.Current();
+                if (!(resSwitched && c.w == cfg.GameResW && c.h == cfg.GameResH)) SwitchRes();
+            }
+            else if (resSwitched) RestoreRes();
         }
 
         // ระหว่างเล่นห้ามมีแจ้งเตือนของ Windows เด้งทับเกม — เก็บไว้บอกตอนปิดเกม (ในเกมใช้ป้ายบนจอแทน)
@@ -247,10 +275,12 @@ namespace GunBeep
                     resSwitched = true;
                     break;
                 case Display.Result.Missing:
+                    resSwitched = false;              // ไม่ลองซ้ำเองทุก 10 วิ
                     PopOsd("✗  ไม่มีความละเอียด " + res);
                     Notify("GunBeep: ไม่มีความละเอียด " + res, "สร้างใน NVIDIA Control Panel → Change resolution → Customize ก่อน", true);
                     break;
                 case Display.Result.Failed:
+                    resSwitched = false;
                     PopOsd("✗  เปลี่ยนจอเป็น " + res + " ไม่สำเร็จ");
                     Notify("GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", true);
                     break;
@@ -265,20 +295,24 @@ namespace GunBeep
         }
 
         void UpdateResButton() =>
-            ResBtn.Content = cfg.AutoRes ? $"{cfg.GameResW}×{cfg.GameResH}" : "ปิด";
+            ResBtn.Content = cfg.AutoRes ? $"{cfg.GameResW}×{cfg.GameResH} · {(cfg.ResAlways ? "ตลอด" : "ในเกม")}" : "ปิด";
 
         void Res_Click(object sender, RoutedEventArgs e)
         {
             var m = DarkMenu(ResBtn);
             m.Items.Add(Item((cfg.AutoRes ? "     " : "✓  ") + "ปิด (ไม่เปลี่ยนความละเอียด)", () => SetRes(false, cfg.GameResW, cfg.GameResH)));
             m.Items.Add(Sep());
-            var cur = Display.Current();
+            m.Items.Add(Item((cfg.ResAlways ? "     " : "✓  ") + "ยืดตอนเปิดเกม (ปิดเกมแล้วคืนค่าเดิม)", () => SetResAlways(false)));
+            m.Items.Add(Item((cfg.ResAlways ? "✓  " : "     ") + "ยืดตลอด (ตั้งแต่เปิด GunBeep)", () => SetResAlways(true)));
+            m.Items.Add(Sep());
+            var desk = Display.Desktop();                    // ค่าจริงของ Windows ไม่ใช่ค่าที่ยืดอยู่
+            var cur = desk.w > 0 ? (desk.w, desk.h, 0) : Display.Current();
             var list = Display.Resolutions();
             foreach (var (w, h) in list.Where(r => r.w <= cur.w && r.h <= cur.h && r.w >= 1024).Take(14))
             {
                 int ww = w, hh = h;
                 bool sel = cfg.AutoRes && w == cfg.GameResW && h == cfg.GameResH;
-                string note = w == cur.w && h == cur.h ? "  (ตอนนี้)" : "";
+                string note = w == cur.w && h == cur.h ? "  (ค่าปกติของจอ)" : "";
                 m.Items.Add(Item((sel ? "✓  " : "     ") + $"{w}×{h}{note}", () => SetRes(true, ww, hh)));
             }
             if (!list.Any(r => r.w == 1728 && r.h == 1080))
@@ -296,8 +330,21 @@ namespace GunBeep
             cfg.GameResH = h;
             cfg.Save();
             UpdateResButton();
-            Flash(on ? $"เปิด PUBG แล้วจะเปลี่ยนจอเป็น {w}×{h} ให้" : "ไม่เปลี่ยนความละเอียดจอแล้ว");
-            if (!on && resSwitched) RestoreRes();
+            Flash(!on ? "ไม่เปลี่ยนความละเอียดจอแล้ว"
+                : cfg.ResAlways ? $"ยืดจอเป็น {w}×{h} ตลอด (ปิด GunBeep แล้วคืนค่าเดิม)"
+                : $"เปิด PUBG แล้วจะเปลี่ยนจอเป็น {w}×{h} ให้");
+            ApplyResNow();
+        }
+
+        void SetResAlways(bool always)
+        {
+            cfg.ResAlways = always;
+            cfg.Save();
+            UpdateResButton();
+            if (!cfg.AutoRes) { Flash("เลือกความละเอียดในเมนูนี้ด้วย"); return; }
+            Flash(always ? $"ยืดจอเป็น {cfg.GameResW}×{cfg.GameResH} ตลอด (ปิด GunBeep แล้วคืนค่าเดิม)"
+                         : "ยืดจอเฉพาะตอนเปิด PUBG");
+            ApplyResNow();
         }
 
         // ---------------------------------------------------------------- อัดค่าแรงดึงอัตโนมัติ
@@ -308,10 +355,18 @@ namespace GunBeep
         {
             if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
             if (calibWin != null) { calibWin.Activate(); return; }
-            calibWin = new Calibrator(cfg.Names.Take(vals.Length).ToArray(), gun, () => on, ApplyCalibration,
+            calibWin = new Calibrator(cfg.Names.Take(vals.Length).ToArray(), gun, () => on ? gun : 0, InMacro, ApplyCalibration,
                                       msg => { PopOsd(msg); Sfx.Play(Sfx.Pick, cfg.Sound); }) { Owner = this };
             calibWin.Closed += (s, a) => calibWin = null;
             calibWin.Show();
+        }
+
+        // ค่าที่สคริปต์ใน G Hub ใช้ยิงอยู่จริงตอนนี้ (ไว้ให้โหมดจูนละเอียดรู้ว่ามาโครดึงไปเท่าไหร่) — ยังส่งไม่เสร็จ = null
+        GHub.GunVals InMacro(int g)
+        {
+            if (liveBusy || HasPending || applied == null || appliedSteps == null || g >= applied.Length || g >= appliedSteps.Length
+                || appliedSteps[g] == null) return null;
+            return new GHub.GunVals { Base = applied[g].Base, X = applied[g].X, Steps = appliedSteps[g].ToArray() };
         }
 
         void ApplyCalibration(int g, Calibrator.Fit f)
@@ -707,7 +762,7 @@ namespace GunBeep
             for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
             {
                 var st = p.Guns[i].StepArray();
-                if (st != null && !LiveLink.SameGraph(st, vals[i].Steps)) { segs[i] = LiveLink.Quantize(st); differ = true; }
+                if (st != null && !LiveLink.SameGraph(st, vals[i].Steps)) { segs[i] = LiveLink.Fit(st); differ = true; }
             }
             return segs;
         }
@@ -783,7 +838,7 @@ namespace GunBeep
             if (res == null) return;
             // ปืนที่แก้ = ปัดเป็นแท่งละ 100 ms ค่าละเอียด 0.25 (แบบเดียวกับที่ส่งเข้า G Hub)
             for (int i = 0; i < vals.Length; i++)
-                if (!GHub.SameSteps(res[i], vals[i].Steps)) vals[i].Steps = LiveLink.Quantize(res[i]);
+                if (!GHub.SameSteps(res[i], vals[i].Steps)) vals[i].Steps = LiveLink.Fit(res[i]);
             UpdatePresetButton();
             RefreshApplyButton();
             if (live)
@@ -899,8 +954,10 @@ namespace GunBeep
                         var st = vals[i].Steps;
                         if (scriptVersion < LiveLink.SEGS_VERSION || st == null || appliedSteps == null
                             || i >= appliedSteps.Length || appliedSteps[i] == null || LiveLink.SameGraph(st, appliedSteps[i])) continue;
+                        st = LiveLink.Fit(st);                     // ย่อให้ส่งได้ (ค่าในโปรแกรม/ไฟล์ = ที่ส่งจริง)
+                        vals[i].Steps = st;
                         var bits = LiveLink.SegsFrame(i + 1, st);
-                        if (bits == null) { ok = false; break; }
+                        if (bits == null) { ok = false; Log.Error($"live: graph of gun {i + 1} cannot be encoded"); break; }
                         st = st.ToArray();
                         int secs = (int)Math.Ceiling(LiveLink.Millis(bits) / 1000.0);
                         Flash($"กำลังส่งกราฟ {cfg.Names[i]} เข้า G Hub (~{secs} วิ)...");

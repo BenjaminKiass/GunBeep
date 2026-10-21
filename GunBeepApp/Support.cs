@@ -22,6 +22,7 @@ namespace GunBeep
         public bool AutoRes { get; set; }           // เปิด PUBG แล้วเปลี่ยนความละเอียด Windows ให้เอง
         public int GameResW { get; set; } = 1728;
         public int GameResH { get; set; } = 1080;
+        public bool ResAlways { get; set; }         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };

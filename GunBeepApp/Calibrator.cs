@@ -11,12 +11,22 @@ using System.Windows.Shapes;
 
 namespace GunBeep
 {
-    // อัดค่าแรงดึงอัตโนมัติ: ปิดมาโคร → ยิงค้างใส่กำแพงแล้วลากเมาส์ลงกดเป้าให้นิ่งเอง 3-5 ชุด
+    // อัดค่าแรงดึงอัตโนมัติ
+    //   ปิดมาโคร: ยิงค้างใส่กำแพงแล้วลากเมาส์ลงกดเป้าให้นิ่งเอง 3-5 ชุด → อัดการดึงทั้งหมดของมือ
+    //   เปิดมาโคร (จูนละเอียด): ยิงแล้วดึงแก้เฉพาะส่วนที่มาโครยังขาด/เกิน → แรงดึงจริง = ที่มาโครดึง + ที่มือแก้
     //   GunBeep อัดการเคลื่อนเมาส์จริง (Raw Input) ทุก 10 ms ตั้งแต่กดยิงจนปล่อย
     //   เฉลี่ยทุกชุด → base (แรงดึงต่ำสุด) + กราฟ (ส่วนที่เพิ่มตามเวลา) + x (ดึงซ้าย/ขวาเฉลี่ย)
     public class Calibrator : Window
     {
-        public class Spray { public double[] Y, X; public double Ms; }
+        public class Spray
+        {
+            public double[] Y, X;           // แรงดึงทั้งหมดที่ต้องใช้ ต่อ 10 ms
+            public double Ms;
+            public bool Tuned;              // อัดตอนเปิดมาโคร
+            public double Corr, CorrX;      // มือดึงแก้เฉลี่ยต่อ 10 ms (+ = ต้องดึงลงเพิ่ม)
+            public double CorrRms;          // ความแกว่งของการดึงแก้ (ต่อแท่ง 100 ms)
+            public double Ratio = double.NaN;   // การขยับของมาโครที่วัดได้ / ที่ตั้งไว้ (เช็กหน่วย)
+        }
 
         public class Fit
         {
@@ -35,7 +45,8 @@ namespace GunBeep
         static readonly Brush GridBrush = new SolidColorBrush(Color.FromRgb(0x18, 0x22, 0x3A));
 
         readonly string[] names;
-        readonly Func<bool> macroOn;
+        readonly Func<int> macroGun;                    // ปืนที่มาโครใช้อยู่ (1-3), 0 = ปิดมาโคร
+        readonly Func<int, GHub.GunVals> inMacro;       // ค่าที่สคริปต์ใน G Hub ใช้อยู่จริงของปืนนั้น
         readonly Action<int, Fit> apply;
         readonly Action<string> pop;
         readonly Style keyBtn;
@@ -48,16 +59,20 @@ namespace GunBeep
         readonly Stopwatch clock = Stopwatch.StartNew();
 
         RawMouse raw;
-        int gun;
+        int gun, round = 1;
         bool down, ignoreThis;
         double t0;
-        List<(double t, int dx, int dy)> cur;
+        IntPtr hand;                                    // เมาส์ที่กดยิง = มือคน
+        GHub.GunVals macroVals;                         // ค่าที่มาโครใช้ในชุดนี้ (null = ปิดมาโคร)
+        List<(double t, int dx, int dy, bool hand)> cur;
 
-        public Calibrator(string[] gunNames, int startGun, Func<bool> isMacroOn, Action<int, Fit> onApply, Action<string> onPop)
+        public Calibrator(string[] gunNames, int startGun, Func<int> activeGun, Func<int, GHub.GunVals> macroValues,
+                          Action<int, Fit> onApply, Action<string> onPop)
         {
             names = gunNames;
             gun = Math.Clamp(startGun - 1, 0, names.Length - 1);
-            macroOn = isMacroOn;
+            macroGun = activeGun;
+            inMacro = macroValues;
             apply = onApply;
             pop = onPop;
             keyBtn = Application.Current.MainWindow?.TryFindResource("KeyBtn") as Style;
@@ -88,10 +103,10 @@ namespace GunBeep
             var steps = new TextBlock
             {
                 FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap, MaxWidth = PW + 16,
-                Text = "1. เข้าห้องซ้อม ถือปืน + กล้องที่จะใช้จริง แล้ว**ปิดมาโคร** (ตอนเปิดมาโครจะไม่อัด)\n" +
-                       "2. เล็งจุดหนึ่งบนกำแพง ยิงค้างจนเกือบหมดแม็ก แล้ว**ลากเมาส์ลงเอง**ให้เป้าอยู่จุดเดิมให้มากที่สุด\n" +
-                       "3. ทำ 3–5 ชุด (ป้ายบนจอบอกทุกชุด) แล้วกลับมากด \"ใช้ค่านี้\" — ชุดที่ต่างจากชุดอื่นมากจะถูกตัดทิ้งเอง"
-                       .Replace("**", "")
+                Text = "เข้าห้องซ้อม ถือปืน + กล้องที่จะใช้จริง เล็งจุดหนึ่งบนกำแพง ยิงค้างจนเกือบหมดแม็ก ให้เป้าอยู่จุดเดิมให้มากที่สุด\n" +
+                       "• ครั้งแรก (ปิดมาโคร): ลากเมาส์ลงเองทั้งหมด 3–5 ชุด แล้วกด \"ใช้ค่านี้\"\n" +
+                       "• จูนละเอียด (เปิดมาโคร ปืนเดียวกับแท็บนี้): ยิงแล้วดึงแก้เฉพาะส่วนที่มาโครยังขาด/เกิน 3 ชุด → \"ใช้ค่านี้\" → " +
+                       "ทำซ้ำจนขึ้นว่า \"นิ่งแล้ว\" — ค่าจะเข้ากับมือ เมาส์ และ sens ของคุณเอง"
             };
 
             undoBtn = Btn("ลบชุดล่าสุด", () => { if (sprays.Count > 0) sprays.RemoveAt(sprays.Count - 1); Refresh(); }, 0);
@@ -156,44 +171,110 @@ namespace GunBeep
 
         // ---------------------------------------------------------------- อัด
 
-        void OnRaw(int dx, int dy, int left)
+        void OnRaw(IntPtr dev, int dx, int dy, int left)
         {
             double now = clock.Elapsed.TotalMilliseconds;
             if (left == 1 && !down)
             {
                 down = true;
                 t0 = now;
-                cur = new List<(double, int, int)>();
-                ignoreThis = macroOn();
-                if (ignoreThis) pop("ปิดมาโครก่อนอัด (ชุดนี้ไม่นับ)");
+                hand = dev;
+                cur = new List<(double, int, int, bool)>();
+                macroVals = null;
+                ignoreThis = false;
+                int mg = macroGun();
+                if (mg != 0)
+                {
+                    macroVals = mg - 1 == gun ? inMacro(gun) : null;
+                    ignoreThis = macroVals == null;
+                    if (mg - 1 != gun) pop($"มาโครใช้ปืน {mg} อยู่ — สลับเป็น {names[gun]} ก่อน (ชุดนี้ไม่นับ)");
+                    else if (ignoreThis) pop("รอส่งค่าเข้า G Hub ให้เสร็จก่อน (ชุดนี้ไม่นับ)");
+                }
             }
-            if (down && (dx != 0 || dy != 0)) cur.Add((now - t0, dx, dy));
-            if (left == -1 && down)
+            if (down && (dx != 0 || dy != 0)) cur.Add((now - t0, dx, dy, dev == hand));
+            if (left == -1 && down && dev == hand)
             {
                 down = false;
                 double ms = now - t0;
                 if (ignoreThis) return;
                 if (ms < MIN_MS) return;                        // แตะยิง / คลิกทั่วไป
-                sprays.Add(Bucket(cur, ms));
+                var s = macroVals == null ? Bucket(cur, ms) : Tune(cur, ms, macroVals);
+                sprays.Add(s);
+                Log.Info($"calib {names[gun]} #{sprays.Count} {ms:0}ms" + (s.Tuned
+                    ? $" tuned corr {s.Corr:0.00} x {s.CorrX:0.00} rms {s.CorrRms:0.00} ratio {s.Ratio:0.00}" : ""));
                 var f = Analyze(sprays);
-                pop($"อัดชุดที่ {sprays.Count} ({ms / 1000:0.0} วิ)" + (f != null ? $" · base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}" : ""));
+                string fit = f != null ? $" · base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)}" : "";
+                pop(s.Tuned ? $"จูนชุดที่ {sprays.Count} · {Verdict(s.Corr, s.CorrRms).short_}{fit}"
+                            : $"อัดชุดที่ {sprays.Count} ({ms / 1000:0.0} วิ){fit}");
                 Refresh();
             }
         }
 
-        static Spray Bucket(List<(double t, int dx, int dy)> s, double ms)
+        static (double[] y, double[] x) Sum(IEnumerable<(double t, int dx, int dy, bool hand)> s, int n)
         {
-            int n = Math.Max(1, (int)(ms / 10));                 // ตัดช่วงสุดท้ายที่ไม่เต็ม 10 ms
             var y = new double[n];
             var x = new double[n];
-            foreach (var (t, dx, dy) in s)
+            foreach (var (t, dx, dy, _) in s)
             {
                 int k = (int)(t / 10);
                 if (k >= n) continue;
                 y[k] += dy;
                 x[k] += dx;
             }
+            return (y, x);
+        }
+
+        static int Len(double ms) => Math.Max(1, (int)(ms / 10));    // ตัดช่วงสุดท้ายที่ไม่เต็ม 10 ms
+
+        static Spray Bucket(List<(double t, int dx, int dy, bool hand)> s, double ms)
+        {
+            var (y, x) = Sum(s, Len(ms));
             return new Spray { Y = y, X = x, Ms = ms };
+        }
+
+        // ชุดที่ยิงตอนเปิดมาโคร: แรงดึงที่ต้องใช้จริง = ที่มาโครดึง (ตามค่าที่ตั้ง) + ที่มือดึงแก้
+        //   ถ้า Windows แยกการขยับของมาโครเป็นอีกอุปกรณ์ → ส่วนของเมาส์ที่กดยิง = มือล้วน
+        //   ถ้ารวมมาในอุปกรณ์เดียวกัน (การขยับของอุปกรณ์อื่นแทบไม่มี) → มือ = ที่อัดได้ − ที่มาโครดึง
+        static Spray Tune(List<(double t, int dx, int dy, bool hand)> s, double ms, GHub.GunVals v)
+        {
+            int n = Len(ms);
+            var (hy, hx) = Sum(s.Where(e => e.hand), n);
+            var (oy, _) = Sum(s.Where(e => !e.hand), n);
+            var ey = new double[n];
+            for (int k = 0; k < n; k++) ey[k] = v.Base + (v.Steps.Length == 0 ? 0 : v.Steps[Math.Min(k, v.Steps.Length - 1)]);
+            double expSum = ey.Sum(), otherSum = oy.Sum();
+            bool merged = expSum <= 0 || otherSum < expSum * 0.4;
+            // วัดได้ว่ามาโครขยับจริงกี่เท่าของค่าที่ตั้ง → แปลงที่มือแก้ (หน่วยเมาส์) เป็นหน่วยของสคริปต์
+            double ratio = merged ? double.NaN : otherSum / expSum;
+            double unit = double.IsNaN(ratio) || ratio < 0.3 || ratio > 3 ? 1 : ratio;
+
+            var y = new double[n];
+            var x = new double[n];
+            var cy = new double[n];
+            for (int k = 0; k < n; k++)
+            {
+                cy[k] = (merged ? hy[k] - ey[k] : hy[k]) / unit;
+                double cx = (merged ? hx[k] - v.X : hx[k]) / unit;
+                y[k] = ey[k] + cy[k];
+                x[k] = v.X + cx;
+            }
+            var bars = Bars(cy);
+            return new Spray
+            {
+                Y = y, X = x, Ms = ms, Tuned = true,
+                Corr = cy.Average(), CorrX = x.Average() - v.X,
+                CorrRms = Math.Sqrt(bars.Average(b => b * b)),
+                Ratio = ratio,
+            };
+        }
+
+        // ดึงแก้เองน้อยแค่ไหน = เป้านิ่งแค่ไหน (หน่วยเดียวกับ base: ต่อ 10 ms)
+        static (string text, string short_, bool good) Verdict(double corr, double rms)
+        {
+            if (Math.Abs(corr) < 0.3 && rms < 0.75) return ("นิ่งแล้ว ✓ แทบไม่ต้องดึงแก้", "นิ่งแล้ว ✓", true);
+            string dir = corr > 0 ? "มาโครดึงไม่พอ" : "มาโครดึงเกิน";
+            return Math.Abs(corr) >= 0.3 ? ($"{dir} (มือแก้เฉลี่ย {Math.Abs(corr):0.0}/10ms)", dir, false)
+                                         : ("เฉลี่ยพอดีแต่ยังแกว่งตามช่วงเวลา (กราฟยังไม่ตรง)", "กราฟยังไม่ตรง", false);
         }
 
         // เฉลี่ยทุกชุด → base / x / กราฟ
@@ -234,7 +315,7 @@ namespace GunBeep
             double min = bars.Min(), max = bars.Max();
             double baseV = Math.Max(0, Math.Floor(min * 2) / 2);
             if (max - baseV > 31.75) baseV = Math.Ceiling((max - 31.75) * 2) / 2;   // กราฟส่งได้สูงสุด 31.75
-            var steps = LiveLink.Quantize(bars.Select(v => Math.Clamp(v - baseV, 0, 31.75)).ToArray());
+            var steps = LiveLink.Fit(bars.Select(v => Math.Clamp(v - baseV, 0, 31.75)).ToArray());
             double x = cntX > 0 ? Math.Round(sumX / cntX * 2) / 2 : 0;
             return new Fit { Base = baseV, X = x, Steps = steps, Avg = avg, Used = use.Count, Dropped = dropped };
         }
@@ -244,7 +325,12 @@ namespace GunBeep
             var f = Analyze(sprays);
             if (f == null) return;
             apply(gun, f);
-            status.Text = $"ใช้ค่ากับ {names[gun]} แล้ว — ลองยิงโดยเปิดมาโคร ถ้ายังดึงเกิน/ไม่พอ ปรับ base ด้วย Ctrl/Alt + Back";
+            Log.Info($"calib apply {names[gun]} round {round}: base {GHub.Fmt(f.Base)} x {GHub.Fmt(f.X)} from {f.Used} sprays");
+            // รอบถัดไปวัดจากค่าใหม่ (ชุดเก่าวัดตอนมาโครยังใช้ค่าเดิม)
+            sprays.Clear();
+            round++;
+            Refresh();
+            status.Text = $"ใช้ค่ากับ {names[gun]} แล้ว (รอบ {round - 1}) — เปิดมาโครแล้วยิงจูนละเอียดต่อ 3 ชุด จนขึ้นว่า \"นิ่งแล้ว\"";
             status.Foreground = new SolidColorBrush(Ice);
         }
 
@@ -271,6 +357,21 @@ namespace GunBeep
                 ? "ผลลัพธ์จะขึ้นตรงนี้ (ต้องยิงค้างอย่างน้อย 0.5 วินาที)"
                 : $"ผล: base {GHub.Fmt(f.Base)} · x {GHub.Fmt(f.X)} · กราฟยาว {GHub.Fmt(f.Steps.Length / 100.0)} วิ" +
                   $"  (ใช้ {f.Used} ชุด" + (f.Dropped > 0 ? $", ตัดทิ้ง {f.Dropped}" : "") + ")";
+
+            // จูนละเอียด: บอกว่าเป้านิ่งหรือยัง
+            var tuned = sprays.Where(s => s.Tuned).ToList();
+            if (tuned.Count > 0)
+            {
+                var (text, _, good) = Verdict(tuned.Average(s => s.Corr), tuned.Average(s => s.CorrRms));
+                double cx = tuned.Average(s => s.CorrX);
+                if (Math.Abs(cx) >= 0.3) { text += $" · ซ้าย/ขวา: มือแก้ไป{(cx > 0 ? "ขวา" : "ซ้าย")} {Math.Abs(cx):0.0}"; good = false; }
+                var ratios = tuned.Select(s => s.Ratio).Where(r => !double.IsNaN(r)).ToList();
+                if (ratios.Count > 0 && Math.Abs(ratios.Average() - 1) > 0.25)
+                    text += $"\nหมายเหตุ: มาโครขยับจริง ×{ratios.Average():0.00} ของค่าที่ตั้ง — ระบบแปลงหน่วยให้แล้ว";
+                status.Text = $"รอบ {round} · จูนแล้ว {tuned.Count} ชุด — {text}";
+                status.Foreground = new SolidColorBrush(good ? Color.FromRgb(0x22, 0xC5, 0x5E) : Gold);
+                if (good) applyBtn.IsEnabled = false;          // นิ่งแล้ว ไม่ต้องเปลี่ยนค่า
+            }
             Draw(f);
         }
 

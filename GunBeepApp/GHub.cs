@@ -347,7 +347,7 @@ namespace GunBeep
         }
 
         static double Num(string s) => double.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
-        public static string Fmt(double d) => d.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        public static string Fmt(double d) => (d + 0.0 == 0 ? 0.0 : d).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
         // อ่านค่าจากสคริปต์ใน G Hub (ถ้าไม่มี ใช้ saved\guns.lua)
         public static GunVals[] ReadGunValues()

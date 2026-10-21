@@ -9,8 +9,9 @@ namespace GunBeep
     //   หน่วยเดียวกับ MoveMouseRelative ของ G Hub → เอาไปตั้งค่าแรงดึงได้ตรงๆ
     public sealed class RawMouse : IDisposable
     {
-        // dx, dy, ปุ่มซ้าย: +1 กดลง, -1 ปล่อย, 0 ไม่เปลี่ยน
-        public event Action<int, int, int> Input;
+        // อุปกรณ์, dx, dy, ปุ่มซ้าย: +1 กดลง, -1 ปล่อย, 0 ไม่เปลี่ยน
+        //   อุปกรณ์ใช้แยกมือคนกับมาโคร: การขยับจาก G Hub มาจากอุปกรณ์เสมือน (หรือ 0) ไม่ใช่เมาส์ที่กดยิง
+        public event Action<IntPtr, int, int, int> Input;
 
         [StructLayout(LayoutKind.Sequential)]
         struct RAWINPUTDEVICE { public ushort UsagePage, Usage; public uint Flags; public IntPtr Target; }
@@ -61,7 +62,7 @@ namespace GunBeep
             int dx = Marshal.ReadInt32(buf, o + 12), dy = Marshal.ReadInt32(buf, o + 16);
             if ((flags & MOUSE_MOVE_ABSOLUTE) != 0) dx = dy = 0;
             int left = (buttons & LEFT_DOWN) != 0 ? 1 : (buttons & LEFT_UP) != 0 ? -1 : 0;
-            if (dx != 0 || dy != 0 || left != 0) Input?.Invoke(dx, dy, left);
+            if (dx != 0 || dy != 0 || left != 0) Input?.Invoke(Marshal.ReadIntPtr(buf, 8), dx, dy, left);
             return IntPtr.Zero;
         }
 

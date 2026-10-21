@@ -81,7 +81,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 ## Auto resolution (Display.cs)
 - `cfg.AutoRes/GameResW/GameResH`; MainWindow polls `TslGame` every 1.5 s; on start → `Display.Switch` with
   CDS_FULLSCREEN (temporary, same refresh rate if available), on exit / GunBeep close → `Display.Restore()`.
-  Game already running when GunBeep starts → no switch. User's PC has 1728x1080@300 (custom NVIDIA mode).
+  Game already running when GunBeep starts → no switch. `cfg.ResAlways` = stretch from GunBeep start until exit.
+  `KeepRes()` re-applies (≤ every 10 s) if something else changed the mode while it is wanted; the menu lists
+  resolutions ≤ `Display.Desktop()` (registry mode, not the temporary one). User's PC has 1728x1080@300 (custom NVIDIA mode).
   Purpose: stretched 1728x1080 in Borderless so the overlay still shows (overlay can't draw over exclusive
   fullscreen; DX hooking/injection into PUBG is refused — BattlEye).
 
@@ -92,6 +94,16 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   differs >40 % from median (n≥3), average steps covered by ≥ half the sprays, quantize to 100 ms bars,
   base = floor(min bar to 0.5), graph = bars − base (≤31.75), x = mean dx per 10 ms (0.5 steps).
 - Deliberately no screen capture / image analysis of the game.
+- Fine-tune mode (2026-10-22): sprays fired with the macro ON for the calibrator's gun are `Tuned`. RawMouse now
+  passes hDevice; the device that sent left-down = the hand. Expected macro motion per 10 ms = applied base +
+  appliedSteps (`MainWindow.InMacro`, null while a send is pending). If other devices moved ≥40 % of expected →
+  G Hub moves arrive separately: hand stream = pure correction, ratio = other/expected converts units. Else
+  merged: correction = hand stream − expected. Spray Y = expected + correction (same shape as a manual spray),
+  so `Analyze` is unchanged. Verdict "นิ่งแล้ว" when |mean corr| < 0.3 and RMS of 100 ms correction bars < 0.75.
+  "ใช้ค่านี้" clears sprays and starts the next round. Not yet tried in game.
+- `LiveLink.Fit`: graphs with >31 runs (every recorded bar differs slightly) could not be sent live; the user's
+  first recording failed with a misleading "G Hub ไม่ตอบรับ". Fit merges the adjacent runs with the least
+  |Δv|·min(n) until ≤31; used by Calibrator, presets, SegsEditor results and ApplyLiveAsync.
 
 ## CPU
 - The window uses AllowsTransparency + blur/glow effects, so every animated frame re-renders the whole layered

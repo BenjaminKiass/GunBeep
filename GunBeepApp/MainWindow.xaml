@@ -562,7 +562,7 @@
                                     <TextBlock Text="ตำแหน่งป้าย" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
-                                <DockPanel Height="46" ToolTip="เปิด PUBG แล้วเปลี่ยนความละเอียด Windows ให้เอง (จอยืดแบบ Borderless) ปิดเกมแล้วคืนค่าเดิม">
+                                <DockPanel Height="46" ToolTip="จอยืดแบบ Borderless: เปลี่ยนความละเอียด Windows ให้ตอนเปิด PUBG หรือตลอดตั้งแต่เปิด GunBeep — ปิดเกม/ปิด GunBeep แล้วคืนค่าเดิม">
                                     <Button x:Name="ResBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
                                             VerticalAlignment="Center" Click="Res_Click"/>
                                     <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"

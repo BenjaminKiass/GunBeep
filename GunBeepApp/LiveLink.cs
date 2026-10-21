@@ -54,13 +54,8 @@ namespace GunBeep
             return q;
         }
 
-        public static bool SameGraph(double[] a, double[] b) =>
-            a != null && b != null && GHub.SameSteps(Quantize(a), Quantize(b));
-
-        // null = ส่งไม่ได้ (ก้อนเยอะเกิน) → ต้องรีสตาร์ท G Hub แทน
-        public static int[] SegsFrame(int gun, double[] steps)
+        static List<(int v, int n)> Runs(double[] q)
         {
-            var q = Quantize(steps);
             var runs = new List<(int v, int n)>();
             for (int b = 0; b < q.Length / BAR_STEPS; b++)
             {
@@ -68,6 +63,43 @@ namespace GunBeep
                 if (runs.Count > 0 && runs[^1].v == v && runs[^1].n < MAX_RUN_BARS) runs[^1] = (v, runs[^1].n + 1);
                 else runs.Add((v, 1));
             }
+            return runs;
+        }
+
+        // กราฟที่ส่งได้เสมอ: ก้อน (แท่งค่าเดียวกันติดกัน) เกิน 31 → รวมคู่ที่ค่าใกล้กันที่สุดเข้าด้วยกันจนพอดี
+        //   กราฟจากการอัดค่าแต่ละแท่งต่างกันนิดหน่อยเกือบทุกแท่ง จึงต้องย่อแบบนี้ (แรงดึงรวมแทบไม่เปลี่ยน)
+        public static double[] Fit(double[] steps)
+        {
+            var q = Quantize(steps);
+            if (q == null) return null;
+            var runs = Runs(q);
+            while (runs.Count > MAX_RUNS)
+            {
+                int best = -1;
+                double bestCost = double.MaxValue;
+                for (int i = 0; i + 1 < runs.Count; i++)
+                {
+                    var (a, b) = (runs[i], runs[i + 1]);
+                    if (a.n + b.n > MAX_RUN_BARS) continue;
+                    double cost = Math.Abs(a.v - b.v) * Math.Min(a.n, b.n);
+                    if (cost < bestCost) { bestCost = cost; best = i; }
+                }
+                if (best < 0) break;
+                var (x, y) = (runs[best], runs[best + 1]);
+                int n = x.n + y.n;
+                runs[best] = ((int)Math.Round((x.v * x.n + y.v * y.n) / (double)n), n);
+                runs.RemoveAt(best + 1);
+            }
+            return runs.SelectMany(r => Enumerable.Repeat(r.v / 4.0, r.n * BAR_STEPS)).ToArray();
+        }
+
+        public static bool SameGraph(double[] a, double[] b) =>
+            a != null && b != null && GHub.SameSteps(Quantize(a), Quantize(b));
+
+        // null = ส่งไม่ได้ (ก้อนเยอะเกิน) → ต้องรีสตาร์ท G Hub แทน
+        public static int[] SegsFrame(int gun, double[] steps)
+        {
+            var runs = Runs(Quantize(steps));
             if (runs.Count < 1 || runs.Count > MAX_RUNS) return null;
             var bits = new List<int> { 1, 1 };
             Put(bits, gun, 2); Put(bits, runs.Count, 5);
