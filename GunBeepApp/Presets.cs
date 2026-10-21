@@ -25,6 +25,10 @@ namespace GunBeep
             public string Name { get; set; } = "";
             public double Base { get; set; }
             public double X { get; set; }
+            public List<double[]> Segs { get; set; }    // กราฟแรงดีด {แรงดึง, จำนวนช่วง 10 ms} (ไม่มี = ไฟล์รุ่นเก่า)
+
+            public double[] StepArray() =>
+                Segs == null || Segs.Count == 0 ? null : GHub.Expand(Segs.Select(p => (p[0], (int)p[1])));
         }
 
         public static readonly string Dir = Path.Combine(Settings.KitDir, "presets");
@@ -32,19 +36,25 @@ namespace GunBeep
         static readonly JsonSerializerOptions Json = new()
         {
             WriteIndented = true, PropertyNameCaseInsensitive = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
         public static Preset From(string name, string[] names, GHub.GunVals[] vals) => new()
         {
             Name = name,
-            Guns = vals.Select((v, i) => new PresetGun { Name = names[i], Base = v.Base, X = v.X }).ToList()
+            Guns = vals.Select((v, i) => new PresetGun
+            {
+                Name = names[i], Base = v.Base, X = v.X,
+                Segs = v.Steps == null ? null : GHub.Compress(v.Steps).Select(p => new[] { p.v, (double)p.n }).ToList()
+            }).ToList()
         };
 
         // ค่าตรงกับที่ใช้อยู่ไหม (ไว้โชว์ว่าแก้ไปจากโปรไฟล์แล้ว)
         public bool Matches(string[] names, GHub.GunVals[] vals) =>
             vals != null && Guns.Count == vals.Length &&
-            Guns.Select((g, i) => g.Name == names[i] && Math.Abs(g.Base - vals[i].Base) < 1e-9 && Math.Abs(g.X - vals[i].X) < 1e-9).All(b => b);
+            Guns.Select((g, i) => g.Name == names[i] && Math.Abs(g.Base - vals[i].Base) < 1e-9 && Math.Abs(g.X - vals[i].X) < 1e-9
+                                  && (g.Segs == null || GHub.SameSteps(g.StepArray(), vals[i].Steps))).All(b => b);
 
         public string ToJson() => JsonSerializer.Serialize(this, Json);
 
@@ -60,6 +70,14 @@ namespace GunBeep
                     throw new InvalidDataException("ค่า base/x ในไฟล์ผิดปกติ");
                 g.Base = Math.Round(g.Base * 2) / 2;
                 g.X = Math.Round(g.X * 2) / 2;
+                if (g.Segs != null)
+                {
+                    if (g.Segs.Any(p => p == null || p.Length != 2 || double.IsNaN(p[0]) || p[0] < 0 || p[0] > 50
+                                         || p[1] < 1 || p[1] > 2000 || p[1] != Math.Floor(p[1]))
+                        || g.Segs.Sum(p => p[1]) > 2000)
+                        throw new InvalidDataException("กราฟแรงดีดในไฟล์ผิดปกติ");
+                    if (g.Segs.Count == 0) g.Segs = null;
+                }
                 g.Name = (g.Name ?? "").Trim();
                 if (g.Name.Length > 14) g.Name = g.Name.Substring(0, 14);
             }

@@ -513,24 +513,55 @@ namespace GunBeep
             bool unsaved = currentPreset == null || !currentPreset.Matches(cfg.Names, vals);
             if (unsaved && !Ask($"ค่าปืนตอนนี้ยังไม่ได้บันทึกเป็นโปรไฟล์\nจะโหลด \"{p.Name}\" ทับเลยไหม?")) return;
 
+            // กราฟแรงดีดในโปรไฟล์ต่างจากที่ใช้อยู่ → ต้องรีสตาร์ท G Hub (ส่งแบบ real time ไม่ได้)
+            var segs = vals.Select(v => v.Steps).ToArray();
+            bool segsDiffer = false;
+            for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
+            {
+                var st = p.Guns[i].StepArray();
+                if (st != null && !GHub.SameSteps(st, vals[i].Steps)) { segs[i] = st; segsDiffer = true; }
+            }
+            bool withSegs = segsDiffer && Ask($"\"{p.Name}\" มีกราฟแรงดีดต่างจากที่ใช้อยู่\n" +
+                                              "ต้องรีสตาร์ท G Hub (~10 วิ) จะใช้กราฟด้วยเลยไหม?\n\n(ไม่ = ใช้แค่ base / x)");
+
             for (int i = 0; i < Math.Min(p.Guns.Count, vals.Length); i++)
             {
                 vals[i].Base = p.Guns[i].Base;
                 vals[i].X = p.Guns[i].X;
+                if (withSegs) vals[i].Steps = segs[i];
                 if (p.Guns[i].Name.Length > 0 && i < cfg.Names.Length) cfg.Names[i] = p.Guns[i].Name;
             }
             currentPreset = p;
             cfg.Preset = p.Name;
             cfg.Save();
             UpdateGuns();
+            Flash("โหลดโปรไฟล์ \"" + p.Name + "\" แล้ว");
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+            PopOsd("โปรไฟล์: " + p.Name);
+            if (withSegs)
+            {
+                _ = ApplyRestartAsync(segs);
+                return;
+            }
             saveVals.Stop();
             saveVals.Start();
             liveFailed = false;              // ลองส่งแบบ real time ใหม่ทุกครั้งที่โหลดโปรไฟล์
             liveTimer.Stop();                // ส่งเข้า G Hub เหมือนเลื่อนหลอดเอง
             liveTimer.Start();
-            Flash("โหลดโปรไฟล์ \"" + p.Name + "\" แล้ว");
-            Sfx.Play(Sfx.Pick, cfg.Sound);
-            PopOsd("โปรไฟล์: " + p.Name);
+        }
+
+        // ---------------------------------------------------------------- กราฟแรงดีด (segs)
+
+        async void Segs_Click(object sender, RoutedEventArgs e)
+        {
+            if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (setupBusy || liveBusy) return;
+            var res = SegsEditor.Edit(this, cfg.Names.Take(vals.Length).ToArray(),
+                                      vals.Select(v => v.Steps).ToArray(), vals.Select(v => v.Base).ToArray(), gun);
+            if (res == null) return;
+            for (int i = 0; i < vals.Length; i++) vals[i].Steps = res[i];
+            UpdatePresetButton();
+            await ApplyRestartAsync(res);
         }
 
         void ImportPreset()
@@ -672,9 +703,9 @@ namespace GunBeep
         }
 
         // ทางสำรอง: เขียนค่าลงไฟล์แล้วรีสตาร์ท G Hub ให้โหลดใหม่
-        async Task ApplyRestartAsync()
+        async Task ApplyRestartAsync(double[][] segs = null)
         {
-            if (setupBusy || liveBusy || vals == null || !HasPending) return;
+            if (setupBusy || liveBusy || vals == null || (!HasPending && segs == null)) return;
             setupBusy = true;
             UpdateTunePanel();
             var copy = Clone(vals);
@@ -686,6 +717,7 @@ namespace GunBeep
                 stopped = true;
                 await Task.Run(async () =>
                 {
+                    if (segs != null) GHub.WriteSegs(segs);
                     GHub.WriteGunValues(copy);
                     await GHub.StopAsync();
                     GHub.StartBackground();

@@ -50,6 +50,18 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   after >150 ms of Right Ctrl silence, so the 2nd frame was lost. Now `LiveLink.FRAME_GAP_MS` (250) between frames.
   Verified with a standalone sender: ~20 ms gap → 1 ack of 2, 250 ms → 2 acks.
 
+## Recoil graph (segs) — SegsEditor.cs
+- `GunVals.Steps` = per-10 ms values expanded from the gun's `segs` table (ReadGunValues follows each GUNS line's
+  `segs = NAME`). `GHub.WriteSegs(steps[])` replaces all segs tables in the gun section with run-length tables
+  (identical guns share one: SEGS_MAIN, SEGS_2, SEGS_3), patches `segs = X, sname = "X"`, backs up script.lua.
+  Segs can't go over the live channel → `ApplyRestartAsync(segs)` writes + restarts G Hub.
+- Editor: bars of 100 ms (10 steps); painting a bar sets its 10 steps to one value (snap 0.25); untouched bars
+  keep their original per-step values. Tools: shift all ±0.5, 1-2-1 smooth, copy from gun, default
+  (embedded template), undo stack.
+- Presets store `Segs` as [value, count] pairs (optional; old files have none and ignore segs in Matches).
+- Verified 2026-10-21: +0.5 on gun 1 → SEGS_MAIN/SEGS_2 written, G Hub restarted and acked a live frame;
+  −0.5 restored identical values (only line wrapping differs). Mouse painting not yet tried by the user.
+
 ## Autostart / single instance
 - "เปิดพร้อม Windows" switch = `AutoStart` (Support.cs): HKCU Run value `GunBeep` = `"<exe>" --tray`. The
   registry is the source of truth (not settings.json). At startup `AutoStart.Refresh()` rewrites the path if

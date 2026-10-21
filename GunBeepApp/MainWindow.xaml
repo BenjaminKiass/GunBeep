@@ -474,8 +474,17 @@
                                                Foreground="#8FDBFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <Button x:Name="ApplyBtn" Style="{StaticResource KeyBtn}" Margin="0,12,0,0" HorizontalAlignment="Stretch"
-                                        Click="Apply_Click" ToolTip="ส่งค่าเข้า G Hub ทันที ไม่ต้องรีสตาร์ท (ปล่อยหลอดเลื่อนแล้วจะส่งให้เอง)"/>
+                                <DockPanel Margin="0,12,0,0">
+                                    <Button x:Name="SegsBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="8,0,0,0"
+                                            Click="Segs_Click" ToolTip="แก้กราฟแรงดีดตามเวลา (ตาราง segs) ของแต่ละปืน">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Text="กราฟแรงดีด" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="ApplyBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch"
+                                            Click="Apply_Click" ToolTip="ส่งค่าเข้า G Hub ทันที ไม่ต้องรีสตาร์ท (ปล่อยหลอดเลื่อนแล้วจะส่งให้เอง)"/>
+                                </DockPanel>
                             </StackPanel>
                         </Border>
 

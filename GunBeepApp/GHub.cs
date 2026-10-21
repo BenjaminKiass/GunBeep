@@ -234,7 +234,105 @@ namespace GunBeep
         static readonly Regex GunLine = new Regex(
             @"\{\s*name\s*=\s*""([^""]*)""\s*,\s*base\s*=\s*(-?[\d.]+)\s*,\s*x\s*=\s*(-?[\d.]+)");
 
-        public class GunVals { public double Base, X; }
+        public class GunVals
+        {
+            public double Base, X;
+            public double[] Steps;      // แรงดึงต่อช่วง 10 ms (ขยายจากตาราง segs แล้ว)
+        }
+
+        // ---------------------------------------------------------------- ตาราง segs (กราฟแรงดีด)
+
+        static readonly Regex SegsTable = new Regex(
+            @"local\s+(\w+)\s*=\s*\{((?:\s*\{\s*-?[\d.]+\s*,\s*\d+\s*\}\s*,?)+)\s*\}", RegexOptions.Singleline);
+        static readonly Regex SegsPair = new Regex(@"\{\s*(-?[\d.]+)\s*,\s*(\d+)\s*\}");
+        static readonly Regex SegsRef = new Regex(@"segs\s*=\s*(\w+)\s*,\s*sname\s*=\s*""[^""]*""");
+
+        public static double[] Expand(IEnumerable<(double v, int n)> pairs) =>
+            pairs.SelectMany(p => Enumerable.Repeat(p.v, Math.Max(0, p.n))).ToArray();
+
+        public static List<(double v, int n)> Compress(double[] steps)
+        {
+            var list = new List<(double v, int n)>();
+            foreach (double raw in steps)
+            {
+                double v = Math.Round(raw, 3);
+                if (list.Count > 0 && list[^1].v == v) list[^1] = (v, list[^1].n + 1);
+                else list.Add((v, 1));
+            }
+            return list;
+        }
+
+        public static bool SameSteps(double[] a, double[] b) =>
+            a != null && b != null && a.Length == b.Length && a.Zip(b).All(p => Math.Abs(p.First - p.Second) < 1e-6);
+
+        // segs ตั้งต้นจากสคริปต์ที่ฝังมา (ไว้ปุ่ม "ค่าเริ่มต้น")
+        public static double[] DefaultSteps()
+        {
+            var t = SegsTable.Match(GunSection.Match(Template()).Value);
+            return t.Success ? ParseTable(t.Groups[2].Value) : new double[300];
+        }
+
+        static double[] ParseTable(string body) =>
+            Expand(SegsPair.Matches(body).Cast<Match>().Select(m => (Num(m.Groups[1].Value), int.Parse(m.Groups[2].Value))));
+
+        static Dictionary<string, double[]> ParseTables(string section) =>
+            SegsTable.Matches(section).Cast<Match>()
+                .GroupBy(m => m.Groups[1].Value)
+                .ToDictionary(g => g.Key, g => ParseTable(g.First().Groups[2].Value));
+
+        static string FormatTable(string name, double[] steps, string nl)
+        {
+            var pairs = Compress(steps).Select(p => $"{{{Fmt(p.v)},{p.n}}}").ToList();
+            var sb = new StringBuilder($"local {name} = {{{nl}");
+            for (int i = 0; i < pairs.Count; i += 8)
+                sb.Append("  ").Append(string.Join(", ", pairs.Skip(i).Take(8))).Append(',').Append(nl);
+            return sb.Append('}').ToString();
+        }
+
+        // เขียนตาราง segs ของแต่ละปืนลงสคริปต์ (ต้องรีสตาร์ท G Hub ถึงจะใช้)
+        //   ปืนที่กราฟเหมือนกันใช้ตารางเดียวกัน: SEGS_MAIN, SEGS_2, SEGS_3
+        public static void WriteSegs(double[][] steps)
+        {
+            var slot = PickScript(ListScripts());
+            if (slot == null || !slot.IsGunBeep) throw new InvalidOperationException("ไม่พบสคริปต์ GunBeep ใน G Hub");
+            var sec = GunSection.Match(slot.Text);
+            if (!sec.Success) throw new InvalidOperationException("ไม่พบตารางปืนในสคริปต์");
+            string nl = slot.Text.Contains("\r\n") ? "\r\n" : "\n";
+            string s = sec.Value;
+
+            var tables = SegsTable.Matches(s).Cast<Match>().ToList();
+            if (tables.Count == 0) throw new InvalidOperationException("ไม่พบตาราง segs ในสคริปต์");
+
+            var names = new string[steps.Length];
+            var uniq = new List<(string name, double[] st)>();
+            for (int i = 0; i < steps.Length; i++)
+            {
+                var hit = uniq.FirstOrDefault(u => SameSteps(u.st, steps[i]));
+                if (hit.name != null) { names[i] = hit.name; continue; }
+                names[i] = uniq.Count == 0 ? "SEGS_MAIN" : "SEGS_" + (i + 1);
+                uniq.Add((names[i], steps[i]));
+            }
+
+            int at = tables[0].Index;
+            for (int k = tables.Count - 1; k >= 0; k--) s = s.Remove(tables[k].Index, tables[k].Length);
+            s = s.Insert(at, string.Join(nl + nl, uniq.Select(u => FormatTable(u.name, u.st, nl))));
+            s = Regex.Replace(s, @"(\r?\n[ \t]*){3,}", nl + nl);
+
+            int gi = 0;
+            s = SegsRef.Replace(s, m =>
+            {
+                if (gi >= names.Length) return m.Value;
+                string n = names[gi++];
+                return $"segs = {n}, sname = \"{n}\"";
+            });
+
+            string text = slot.Text.Substring(0, sec.Index) + s + slot.Text.Substring(sec.Index + sec.Length);
+            if (text == slot.Text) return;
+            Backup(Path.Combine(slot.Folder, "script.lua"), "script");
+            File.WriteAllText(Path.Combine(slot.Folder, "script.lua"), text, new UTF8Encoding(false));
+            slot.Text = text;
+            SaveGunSection(slot);
+        }
 
         static double Num(string s) => double.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
         public static string Fmt(double d) => d.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
@@ -247,8 +345,18 @@ namespace GunBeep
                         : File.Exists(SavedGuns) ? File.ReadAllText(SavedGuns, Encoding.UTF8) : null;
             var sec = GunSection.Match(text ?? "");
             if (!sec.Success) return null;
-            var vals = GunLine.Matches(sec.Value).Cast<Match>().Take(3)
-                .Select(m => new GunVals { Base = Num(m.Groups[2].Value), X = Num(m.Groups[3].Value) }).ToArray();
+            var tables = ParseTables(sec.Value);
+            var vals = GunLine.Matches(sec.Value).Cast<Match>().Take(3).Select(m =>
+            {
+                int eol = sec.Value.IndexOf('\n', m.Index);
+                string line = eol < 0 ? sec.Value.Substring(m.Index) : sec.Value.Substring(m.Index, eol - m.Index);
+                var r = SegsRef.Match(line);
+                return new GunVals
+                {
+                    Base = Num(m.Groups[2].Value), X = Num(m.Groups[3].Value),
+                    Steps = r.Success && tables.TryGetValue(r.Groups[1].Value, out var st) ? st : null
+                };
+            }).ToArray();
             return vals.Length > 0 ? vals : null;
         }
 
