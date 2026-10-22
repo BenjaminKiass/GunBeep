@@ -186,12 +186,12 @@ namespace GunBeep
             {
                 try
                 {
-                    raw = new RawMouse();
+                    raw = RawMouse.Shared;
                     raw.Input += OnRaw;
                 }
                 catch (Exception ex) { status.Text = "อ่านเมาส์ไม่ได้: " + ex.Message; }
             };
-            Closed += (s, e) => raw?.Dispose();
+            Closed += (s, e) => { if (raw != null) raw.Input -= OnRaw; };
             Refresh();
         }
 

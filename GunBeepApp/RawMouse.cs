@@ -12,6 +12,13 @@ namespace GunBeep
         // อุปกรณ์, dx, dy, ปุ่มซ้าย: +1 กดลง, -1 ปล่อย, 0 ไม่เปลี่ยน
         //   อุปกรณ์ใช้แยกมือคนกับมาโคร: การขยับจาก G Hub มาจากอุปกรณ์เสมือน (หรือ 0) ไม่ใช่เมาส์ที่กดยิง
         public event Action<IntPtr, int, int, int> Input;
+        // ปุ่มเมาส์อื่นกดลง เป็นรหัสปุ่มแบบคีย์บอร์ด: 4 = ปุ่มกลาง, 5 = Back, 6 = Forward (VK_MBUTTON / XBUTTON1 / XBUTTON2)
+        public event Action<int> Button;
+        public event Action<int> Wheel;                 // + = หมุนขึ้น, − = หมุนลง
+
+        // ทั้งโปรแกรมใช้ตัวเดียว (ลงทะเบียน Raw Input ได้ครั้งเดียวต่อโปรแกรม ตัวที่สองจะแย่งตัวแรก)
+        static RawMouse shared;
+        public static RawMouse Shared => shared ??= new RawMouse();
 
         [StructLayout(LayoutKind.Sequential)]
         struct RAWINPUTDEVICE { public ushort UsagePage, Usage; public uint Flags; public IntPtr Target; }
@@ -23,7 +30,7 @@ namespace GunBeep
 
         const int WM_INPUT = 0x00FF;
         const uint RID_INPUT = 0x10000003, RIM_TYPEMOUSE = 0, RIDEV_INPUTSINK = 0x100, RIDEV_REMOVE = 0x1;
-        const ushort MOUSE_MOVE_ABSOLUTE = 1, LEFT_DOWN = 0x1, LEFT_UP = 0x2;
+        const ushort MOUSE_MOVE_ABSOLUTE = 1, LEFT_DOWN = 0x1, LEFT_UP = 0x2, MID_DOWN = 0x10, B4_DOWN = 0x40, B5_DOWN = 0x100, WHEEL = 0x400;
 
         static readonly int HeaderSize = 8 + IntPtr.Size * 2;     // dwType, dwSize, hDevice, wParam
         readonly HwndSource src;
@@ -63,6 +70,10 @@ namespace GunBeep
             if ((flags & MOUSE_MOVE_ABSOLUTE) != 0) dx = dy = 0;
             int left = (buttons & LEFT_DOWN) != 0 ? 1 : (buttons & LEFT_UP) != 0 ? -1 : 0;
             if (dx != 0 || dy != 0 || left != 0) Input?.Invoke(Marshal.ReadIntPtr(buf, 8), dx, dy, left);
+            if ((buttons & MID_DOWN) != 0) Button?.Invoke(4);
+            if ((buttons & B4_DOWN) != 0) Button?.Invoke(5);
+            if ((buttons & B5_DOWN) != 0) Button?.Invoke(6);
+            if ((buttons & WHEEL) != 0) Wheel?.Invoke(Marshal.ReadInt16(buf, o + 6));
             return IntPtr.Zero;
         }
 

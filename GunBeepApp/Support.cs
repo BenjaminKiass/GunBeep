@@ -24,7 +24,8 @@ namespace GunBeep
         public int GameResH { get; set; } = 1080;
         public int CycleMouse { get; set; } = 4;    // ปุ่มเมาส์วนปืน/จูนในเกม (G Hub): 4 Back, 5 Forward, 3 กลาง, 0 = ไม่ใช้
         public int CycleKey { get; set; }           // หรือปุ่มคีย์บอร์ด (GunBeep จัดการเอง), 0 = ไม่ใช้
-        public bool ResAlways { get; set; }         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
+        public bool ResAlways { get; set; }
+        public int SlotSwitch { get; set; } = 2;    // สลับปืนตามช่องในเกม: 0 ปิด, 1 ปุ่ม 1/2, 2 ปุ่ม 1/2 + ลูกกลิ้ง         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };

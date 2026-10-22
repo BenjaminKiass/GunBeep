@@ -608,6 +608,14 @@
                                     <TextBlock Text="ลอยอยู่บนเกม" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="46" ToolTip="ในเกมกด 1 = ปืน 1, กด 2 = ปืน 2 (ช่องปืนหลัก/รอง) · ลูกกลิ้ง = สลับไปอีกช่อง — ทำงานตอนเปิดมาโคร">
+                                    <Button x:Name="SlotBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="Slot_Click"/>
+                                    <TextBlock Text="&#xE8AB;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="สลับปืนตามช่อง" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="46" ToolTip="ป้ายเล็กๆ บนมุมจอ บอกเปิด/ปิด + ปืน (เกมต้องเป็นโหมด Borderless หรือ Windowed)">
                                     <Button x:Name="OsdModeBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
                                             VerticalAlignment="Center" Click="OsdMode_Click"/>

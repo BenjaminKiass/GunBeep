@@ -101,6 +101,14 @@ namespace GunBeep
             XSlider.ValueChanged += (s, e) => { UpdateXBar(); SliderMoved("x", e.NewValue); };
             UpdateHotkeyText();
             UpdateEyeBtn();
+            UpdateSlotBtn();
+            // ปุ่มเมาส์ (กลาง/Back/Forward) ใช้เป็นปุ่มลัดได้เหมือนคีย์บอร์ด + ลูกกลิ้งไว้สลับช่องปืน
+            try
+            {
+                RawMouse.Shared.Button += vk => OnKey(vk);
+                RawMouse.Shared.Wheel += OnWheel;
+            }
+            catch (Exception ex) { Log.Error("raw mouse", ex); }
 
             SoundSwitch.IsChecked = cfg.Sound;
             TopSwitch.IsChecked = cfg.TopMost;
@@ -382,6 +390,38 @@ namespace GunBeep
             calibWin.Show();
         }
 
+        // ---------------------------------------------------------------- สลับปืนตามช่อง (ปุ่ม 1/2 + ลูกกลิ้ง)
+        //   เกมไม่บอกว่าถือปืนอะไร (อ่านภาพ/หน่วยความจำเกม = โกง) → ตามปุ่มที่กดเปลี่ยนช่องแทน
+        static readonly string[] SlotNames = { "ปิด", "ปุ่ม 1 · 2", "ปุ่ม 1 · 2 + ลูกกลิ้ง" };
+        int slot = 1;
+        DateTime lastWheel;
+
+        void UpdateSlotBtn() => SlotBtn.Content = SlotNames[Math.Clamp(cfg.SlotSwitch, 0, 2)];
+
+        void Slot_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.SlotSwitch = (cfg.SlotSwitch + 1) % 3;
+            cfg.Save();
+            UpdateSlotBtn();
+            Flash(cfg.SlotSwitch == 0 ? "ไม่สลับปืนตามช่อง" : "ในเกมกด 1 = ปืน 1, 2 = ปืน 2" + (cfg.SlotSwitch == 2 ? " · ลูกกลิ้ง = สลับช่อง" : ""));
+        }
+
+        void SlotTo(int s)
+        {
+            slot = s;
+            if (!on || vals == null || s > vals.Length || s == gun) return;
+            SelectGun(s);
+        }
+
+        void OnWheel(int delta)
+        {
+            if (cfg.SlotSwitch != 2 || !on || capturing) return;
+            var now = DateTime.Now;
+            if (now - lastWheel < TimeSpan.FromMilliseconds(180)) return;    // หมุนหลายแก๊กติดกัน = เปลี่ยนครั้งเดียว
+            lastWheel = now;
+            SlotTo(slot == 1 ? 2 : 1);
+        }
+
         // ---------------------------------------------------------------- จูนด้วยตา
 
         EyeTune eye;
@@ -542,6 +582,7 @@ namespace GunBeep
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
+            if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32)) { SlotTo(vk - 0x30); return; }
 
             switch (vk)
             {
@@ -1203,11 +1244,14 @@ namespace GunBeep
             !(vk == VK_NUM || vk == VK_SCROLL                  // ใช้ส่งสถานะให้ G Hub
               || (vk >= 0x10 && vk <= 0x12) || (vk >= 0xA0 && vk <= 0xA5) || vk == 0x5B || vk == 0x5C
               || (vk >= 0x7C && vk <= 0x87)                    // F13-F24 ที่ G Hub ส่งมา
-              || vk < 0x08);
+              || (vk < 0x08 && vk != 4 && vk != 5 && vk != 6));   // 4-6 = ปุ่มเมาส์กลาง/Back/Forward ใช้ได้
 
         static string KeyName(int vk)
         {
             string s = KeyInterop.KeyFromVirtualKey(vk).ToString();
+            if (vk == 4) return "เมาส์ปุ่มกลาง";
+            if (vk == 5) return "เมาส์ Back";
+            if (vk == 6) return "เมาส์ Forward";
             if (s.Length == 2 && s[0] == 'D' && char.IsDigit(s[1])) return s.Substring(1);
             if (s.StartsWith("NumPad")) return "Num " + s.Substring(6);
             switch (s)
@@ -1334,7 +1378,7 @@ namespace GunBeep
             capturing = true;
             captureFor = target;
             var btn = target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
-            btn.Content = target == 0 ? "กดปุ่ม..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
+            btn.Content = target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
             btn.BorderBrush = accent;
         }
 
@@ -1353,9 +1397,14 @@ namespace GunBeep
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
             var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Where((k, i) => i != captureFor && k != 0);
-            if (taken.Contains(vk))
+            if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
-                Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว ลองปุ่มอื่น");
+                Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
+                return;
+            }
+            if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32))
+            {
+                Flash("ปุ่ม 1 / 2 ใช้สลับปืนตามช่องอยู่ — ลองปุ่มอื่น หรือปิด \"สลับปืนตามช่อง\" ก่อน");
                 return;
             }
             capturing = false;

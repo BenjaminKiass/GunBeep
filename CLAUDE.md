@@ -248,3 +248,11 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   ➡ = ok; horizontal: ⬅ = went left (x +), ➡ = right (x −), ⬆ = ok. Step 1.0 (x 0.5), halved on direction
   change (min 0.25 / 0.5); ok twice = next part. Edits are ramped over 0.1 s at part edges; the graph ends at
   3 s (script holds the last value). Waits for the live send (`busy`) before the next spray. Finish = smooth.
+
+## Mouse hotkeys + slot switching (2026-10-22)
+- `RawMouse.Shared` (one Raw Input registration per process — Calibrator/EyeTune now subscribe to it instead of
+  creating their own). Events `Button` (vk 4 = middle, 5 = Back/XBUTTON1, 6 = Forward/XBUTTON2) are fed into
+  `OnKey`, so every hotkey capture accepts those mouse buttons; `Wheel` → slot switching.
+- `cfg.SlotSwitch` (0 off, 1 keys 1/2, 2 keys + wheel; default 2): while ON, key 1 → gun 1, key 2 → gun 2,
+  a wheel notch (≥180 ms apart) toggles slot 1↔2. No game reading: the user asked for automatic gun/attachment
+  detection — refused (screen/memory reading = cheat); this is the safe substitute.

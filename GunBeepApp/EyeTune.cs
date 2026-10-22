@@ -71,7 +71,7 @@ namespace GunBeep
                 AskFire();
             };
 
-            raw = new RawMouse();
+            raw = RawMouse.Shared;
             raw.Input += OnRaw;
             StartPart(0);
             Log.Info($"eye tune start {gunName}");
@@ -255,7 +255,7 @@ namespace GunBeep
         {
             cut.Stop();
             wait.Stop();
-            raw.Dispose();
+            raw.Input -= OnRaw;
         }
     }
 }
