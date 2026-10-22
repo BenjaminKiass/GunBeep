@@ -81,8 +81,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 ## Auto resolution (Display.cs)
 - `cfg.AutoRes/GameResW/GameResH`; MainWindow polls `TslGame` every 1.5 s; on start → `Display.Switch` with
   CDS_FULLSCREEN (temporary, same refresh rate if available), on exit / GunBeep close → `Display.Restore()`.
-  Game already running when GunBeep starts → switch too (an update mid-game restores on exit, the new
-  instance must stretch again). `cfg.ResAlways` = stretch from GunBeep start until exit.
+  Game already running when GunBeep starts → do NOT switch (tried switching: PUBG kept rendering at 1920 and
+  the stretched desktop cut it off — "เบียดไม่เต็มจอ"). Windows itself restores the CDS_FULLSCREEN mode when
+  GunBeep exits/is killed, so never update GunBeep while PUBG runs. KeepRes/ApplyResNow also skip in game. `cfg.ResAlways` = stretch from GunBeep start until exit.
   `KeepRes()` re-applies (≤ every 10 s) if something else changed the mode while it is wanted; the menu lists
   resolutions ≤ `Display.Desktop()` (registry mode, not the temporary one). User's PC has 1728x1080@300 (custom NVIDIA mode).
   Purpose: stretched 1728x1080 in Borderless so the overlay still shows (overlay can't draw over exclusive

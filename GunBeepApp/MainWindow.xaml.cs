@@ -123,10 +123,13 @@ namespace GunBeep
             UpdateOsdButtons();
 
             // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้)
-            //   เกมเปิดอยู่แล้วตอน GunBeep เริ่ม (เช่นอัปเดต/รีสตาร์ท GunBeep กลางเกม ตัวเก่าคืนจอไปแล้ว) → ยืดให้เลย
+            //   เกมเปิดอยู่แล้วตอน GunBeep เริ่ม → ห้ามเปลี่ยนจอ: PUBG ยังวาดขนาดเดิม จะล้นจอ/โดนตัดขอบ
+            //   (ปิด GunBeep กลางเกม Windows คืนจอเองอยู่แล้ว — ยืดใหม่ได้ตอนเปิดเกมรอบหน้า)
             UpdateResButton();
             gameWas = GameRunning();
-            if (cfg.AutoRes && (cfg.ResAlways || gameWas)) SwitchRes();
+            if (cfg.AutoRes && cfg.ResAlways && !gameWas) SwitchRes();
+            else if (cfg.AutoRes && gameWas && Display.Current() is var c0 && (c0.w != cfg.GameResW || c0.h != cfg.GameResH))
+                Log.Info("PUBG already running — not switching the display (would squeeze the game)");
             gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
             gameTimer.Tick += (s, e) => WatchGame();
             gameTimer.Start();
@@ -226,7 +229,7 @@ namespace GunBeep
 
         void KeepRes()
         {
-            if (!resSwitched || !ResWanted) return;
+            if (!resSwitched || !ResWanted || gameWas) return;     // ระหว่างเกมห้ามเปลี่ยนจอ (เกมจะล้นจอ)
             var c = Display.Current();
             if (c.w == cfg.GameResW && c.h == cfg.GameResH) return;
             if (DateTime.Now - lastResTry < TimeSpan.FromSeconds(10)) return;
@@ -238,6 +241,11 @@ namespace GunBeep
         // ตั้งค่าเปลี่ยน → ทำตามทันที (ยืด / เปลี่ยนขนาด / คืนค่าเดิม)
         void ApplyResNow()
         {
+            if (gameWas)
+            {
+                Flash("PUBG เปิดอยู่ — จะเปลี่ยนจอให้ตอนเปิดเกมรอบหน้า (เปลี่ยนกลางเกมแล้วภาพจะล้นจอ)");
+                return;
+            }
             if (ResWanted)
             {
                 var c = Display.Current();
