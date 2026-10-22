@@ -551,6 +551,9 @@
                                     <Button x:Name="ApplyBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch"
                                             Click="Apply_Click" ToolTip="ส่งค่าเข้า G Hub ทันที ไม่ต้องรีสตาร์ท (ปล่อยหลอดเลื่อนแล้วจะส่งให้เอง)"/>
                                 </DockPanel>
+                                <Button x:Name="EyeBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                                        BorderBrush="#C9A54A" Click="Eye_Click"
+                                        ToolTip="ยิงใส่กำแพง มือนิ่ง ดูรอยกระสุน แล้วตอบด้วยปุ่มลูกศร — ป้ายบนจอบอกทุกขั้น"/>
                             </StackPanel>
                         </Border>
 

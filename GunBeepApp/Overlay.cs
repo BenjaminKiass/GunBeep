@@ -45,6 +45,13 @@ namespace GunBeep
             FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(18, 3, 0, 0),
             Foreground = new SolidColorBrush(Color.FromRgb(0x8F, 0xDB, 0xFF)), Visibility = Visibility.Collapsed
         };
+        // ข้อความนำทาง (จูนด้วยตา): ค้างไว้จนกว่าจะเปลี่ยน/ลบ และโชว์แม้ตั้งป้ายเป็น "ปิด"
+        readonly TextBlock guide = new TextBlock
+        {
+            FontSize = 16, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 0), MaxWidth = 380,
+            TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xD0, 0x6A)),
+            Visibility = Visibility.Collapsed
+        };
         readonly Border pill;
         readonly DispatcherTimer hideTimer, evtTimer, topTimer;
 
@@ -83,6 +90,7 @@ namespace GunBeep
             stack.Children.Add(top);
             stack.Children.Add(values);
             stack.Children.Add(evt);
+            stack.Children.Add(guide);
 
             pill = new Border
             {
@@ -95,7 +103,7 @@ namespace GunBeep
             Content = pill;
 
             hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
-            hideTimer.Tick += (s, e) => { hideTimer.Stop(); if (mode != MODE_ALWAYS) FadeOut(); };
+            hideTimer.Tick += (s, e) => { hideTimer.Stop(); if (mode != MODE_ALWAYS && !Guiding) FadeOut(); };
             evtTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
             evtTimer.Tick += (s, e) => { evtTimer.Stop(); evt.Visibility = Visibility.Collapsed; };
             // เกม / หน้าต่างอื่นที่ topmost อาจขึ้นมาทับ → ดันกลับขึ้นบนสุดเรื่อยๆ ระหว่างโชว์
@@ -134,9 +142,27 @@ namespace GunBeep
         }
 
         // โชว์ชั่วคราว (โหมด "ตอนเปลี่ยน") พร้อมข้อความเหตุการณ์ถ้ามี
+        bool Guiding => guide.Visibility == Visibility.Visible;
+
+        public void Guide(string text)
+        {
+            gen++;
+            if (string.IsNullOrEmpty(text))
+            {
+                guide.Visibility = Visibility.Collapsed;
+                if (mode == MODE_OFF) HideNow();
+                else if (mode == MODE_POP) { hideTimer.Stop(); hideTimer.Start(); }
+                return;
+            }
+            guide.Text = text;
+            guide.Visibility = Visibility.Visible;
+            hideTimer.Stop();
+            FadeIn();
+        }
+
         public void Pop(string message = null)
         {
-            if (mode == MODE_OFF) return;
+            if (mode == MODE_OFF && !Guiding) return;
             gen++;
             if (!string.IsNullOrEmpty(message))
             {
@@ -147,7 +173,7 @@ namespace GunBeep
             }
             FadeIn();
             hideTimer.Stop();
-            if (mode == MODE_POP) hideTimer.Start();
+            if (mode == MODE_POP && !Guiding) hideTimer.Start();
         }
 
         void FadeIn()
@@ -167,7 +193,7 @@ namespace GunBeep
         {
             int g = gen;
             var a = new DoubleAnimation(0, TimeSpan.FromMilliseconds(350));
-            a.Completed += (s, e) => { if (g == gen && mode != MODE_ALWAYS) HideNow(); };
+            a.Completed += (s, e) => { if (g == gen && mode != MODE_ALWAYS && !Guiding) HideNow(); };
             BeginAnimation(OpacityProperty, a);
         }
 

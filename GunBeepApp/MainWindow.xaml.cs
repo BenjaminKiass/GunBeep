@@ -100,6 +100,7 @@ namespace GunBeep
             BaseSlider.ValueChanged += (s, e) => SliderMoved("base", e.NewValue);
             XSlider.ValueChanged += (s, e) => { UpdateXBar(); SliderMoved("x", e.NewValue); };
             UpdateHotkeyText();
+            UpdateEyeBtn();
 
             SoundSwitch.IsChecked = cfg.Sound;
             TopSwitch.IsChecked = cfg.TopMost;
@@ -364,6 +365,41 @@ namespace GunBeep
             calibWin.Show();
         }
 
+        // ---------------------------------------------------------------- จูนด้วยตา
+
+        EyeTune eye;
+
+        void UpdateEyeBtn() =>
+            EyeBtn.Content = eye == null ? "👁   จูนด้วยตา  (ง่ายสุด · ตอบด้วยปุ่มลูกศร)" : "■   หยุดจูนด้วยตา";
+
+        void Eye_Click(object sender, RoutedEventArgs e)
+        {
+            if (eye != null) { eye.Stop("หยุดจูนด้วยตาแล้ว"); return; }
+            if (vals == null || gun > vals.Length) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (scriptVersion < LiveLink.SEGS_VERSION)
+            {
+                Tell("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" ก่อน (นอกเกม, G Hub รีสตาร์ท ~10 วิ)");
+                return;
+            }
+            if (!on) ToggleOn();
+            int g = gun - 1;
+            try
+            {
+                eye = new EyeTune(g, cfg.Names[g],
+                    () => vals != null && g < vals.Length ? new GHub.GunVals { Base = vals[g].Base, X = vals[g].X, Steps = vals[g].Steps?.ToArray() } : null,
+                    f => ApplyCalibration(g, f),
+                    () => liveBusy || setupBusy || (HasPending && !liveFailed),
+                    () => on ? gun : 0,
+                    t => osd?.Guide(t),
+                    m => PopOsd(m),
+                    ok => Sfx.Play(ok ? Sfx.Pick : Sfx.Down, cfg.Sound));
+            }
+            catch (Exception ex) { Tell("เริ่มจูนด้วยตาไม่ได้: " + ex.Message); return; }
+            eye.Finished += () => { var t = eye; eye = null; t?.Dispose(); UpdateEyeBtn(); };
+            UpdateEyeBtn();
+            Flash("เริ่มจูนด้วยตาแล้ว — กลับเข้าเกม ดูป้ายมุมจอแล้วทำตามได้เลย");
+        }
+
         // ค่าที่สคริปต์ใน G Hub ใช้ยิงอยู่จริงตอนนี้ (ไว้ให้โหมดจูนละเอียดรู้ว่ามาโครดึงไปเท่าไหร่) — ยังส่งไม่เสร็จ = null
         GHub.GunVals InMacro(int g)
         {
@@ -484,6 +520,7 @@ namespace GunBeep
         void OnKey(int vk)
         {
             if (capturing) { CaptureKey(vk); return; }
+            if (eye != null && eye.Key(vk)) return;          // จูนด้วยตา: ลูกศรตอบคำถามบนป้าย
 
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
@@ -1794,6 +1831,7 @@ namespace GunBeep
             hook?.Dispose();
             osd?.Close();
             calibWin?.Close();
+            eye?.Dispose();
             if (resSwitched) RestoreRes();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }
             base.OnClosing(e);

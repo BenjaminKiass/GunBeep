@@ -560,7 +560,7 @@ namespace GunBeep
 
         // แรงดึงรวมต่อ 10 ms → base (ส่วนต่ำสุด) + กราฟ (ส่วนที่เกิน) + x
         //   keepBase = ใช้ base เดิมถ้ายังไม่เกินช่วงต่ำสุด (กัน base เดินตามเสียงรบกวนทีละนิด)
-        static Fit FromTotal(double[] total, double x, double? keepBase = null, bool smooth = false)
+        internal static Fit FromTotal(double[] total, double x, double? keepBase = null, bool smooth = false)
         {
             if (smooth) total = SmoothSteps(total);
             var bars = LiveLink.Quantize(total);
@@ -593,7 +593,7 @@ namespace GunBeep
             return r;
         }
 
-        static double[] SmoothSteps(double[] steps)
+        internal static double[] SmoothSteps(double[] steps)
         {
             var bars = SmoothBars(Bars(steps));
             return Enumerable.Range(0, steps.Length).Select(k => bars[k / 10]).ToArray();
@@ -603,7 +603,7 @@ namespace GunBeep
         static double Roughness(double[] bars) =>
             bars.Length < 2 ? 0 : Enumerable.Range(1, bars.Length - 1).Average(i => Math.Abs(bars[i] - bars[i - 1]));
 
-        static double At(GHub.GunVals v, int k) =>
+        internal static double At(GHub.GunVals v, int k) =>
             v.Base + (v.Steps == null || v.Steps.Length == 0 ? 0 : v.Steps[Math.Min(k, v.Steps.Length - 1)]);
 
         // ออโต้จูน: แก้ค่าเดิมเฉพาะช่วงที่ผิดจริง ทีละ gain (ไม่กระโดดทีเดียว)
@@ -841,7 +841,7 @@ namespace GunBeep
             }
         }
 
-        static double[] Bars(double[] steps)
+        internal static double[] Bars(double[] steps)
         {
             int n = (steps.Length + 9) / 10;
             return Enumerable.Range(0, n).Select(b => steps.Skip(b * 10).Take(10).Average()).ToArray();

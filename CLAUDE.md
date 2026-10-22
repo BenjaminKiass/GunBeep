@@ -233,3 +233,14 @@ Windows. README.md is the user-facing guide; this file is the technical context.
     `Adjust` ends the graph at the window so the script holds the last value afterwards.
   - Starting auto-tune smooths the current graph first if `Roughness` (mean |Δbar|) ≥ 0.6; button
     "〰 เกลี่ยกราฟ" does it on demand (undoable).
+
+## Eye tune (EyeTune.cs, 2026-10-22) — the recommended way
+- Hand-correction tuning failed for this user: log showed mean correction ≈ −0.1 (they keep the hand still),
+  so auto-tune "finished" while the aim still kicked. Eye tune uses their eyes on the wall instead.
+- Main window button "👁 จูนด้วยตา" (turns the macro on). Overlay `Guide(text)` = persistent gold line,
+  shown even when the overlay mode is OFF. Flow per question: fire (Raw Input left down/up, must hold 3 s;
+  "✓ ครบแล้ว — ปล่อยนิ้วได้" at 3 s) → ask → arrow answer (only while asking; Esc cancels):
+  vertical parts ต้นแม็ก 0–0.6 s / กลาง 0.6–1.8 s / ท้าย 1.8–3 s: ⬆ = holes went up (+pull), ⬇ = down (−),
+  ➡ = ok; horizontal: ⬅ = went left (x +), ➡ = right (x −), ⬆ = ok. Step 1.0 (x 0.5), halved on direction
+  change (min 0.25 / 0.5); ok twice = next part. Edits are ramped over 0.1 s at part edges; the graph ends at
+  3 s (script holds the last value). Waits for the live send (`busy`) before the next spray. Finish = smooth.
