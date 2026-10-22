@@ -505,7 +505,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="แรงดึงลง" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="base-" Click="Step_Click"/>
-                                    <Slider x:Name="BaseSlider" Grid.Column="2" Style="{StaticResource NiceSlider}" Minimum="0" Maximum="20" Margin="8,0"/>
+                                    <Slider x:Name="BaseSlider" Grid.Column="2" Style="{StaticResource NiceSlider}" Minimum="0" Maximum="50" Margin="8,0"/>
                                     <Button Grid.Column="3" Style="{StaticResource StepBtn}" Content="&#xE710;" Tag="base+" Click="Step_Click"/>
                                     <TextBlock x:Name="BaseValue" Grid.Column="4" FontSize="13" FontWeight="Bold" FontFamily="Consolas"
                                                Foreground="#8FDBFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>

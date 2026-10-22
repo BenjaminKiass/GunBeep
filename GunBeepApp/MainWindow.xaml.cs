@@ -601,7 +601,7 @@ namespace GunBeep
             if (have)
             {
                 var v = vals[gun - 1];
-                BaseSlider.Maximum = Math.Max(20, Math.Ceiling(v.Base));
+                BaseSlider.Maximum = Math.Max(50, Math.Ceiling(v.Base));     // ตัวส่งรับได้ถึง 127.5
                 BaseSlider.Minimum = Math.Min(0, Math.Floor(v.Base));
                 double xr = Math.Max(5, Math.Ceiling(Math.Abs(v.X)));   // สมมาตร 0 อยู่กลางหลอดเสมอ
                 XSlider.Maximum = xr;
