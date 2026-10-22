@@ -123,13 +123,10 @@ namespace GunBeep
             UpdateOsdButtons();
 
             // ดูว่า PUBG เปิด/ปิดหรือยัง (เปลี่ยนความละเอียดจอให้)
-            //   เกมเปิดอยู่แล้วตอน GunBeep เริ่ม → ห้ามเปลี่ยนจอ: PUBG ยังวาดขนาดเดิม จะล้นจอ/โดนตัดขอบ
-            //   (ปิด GunBeep กลางเกม Windows คืนจอเองอยู่แล้ว — ยืดใหม่ได้ตอนเปิดเกมรอบหน้า)
+            //   เกมเปิดอยู่แล้วตอน GunBeep เริ่ม (เช่นอัปเดตกลางเกม: ตัวเก่าปิด Windows คืนจอเอง) → ยืดแล้วขยายหน้าต่างเกมให้พอดี
             UpdateResButton();
             gameWas = GameRunning();
-            if (cfg.AutoRes && cfg.ResAlways && !gameWas) SwitchRes();
-            else if (cfg.AutoRes && gameWas && Display.Current() is var c0 && (c0.w != cfg.GameResW || c0.h != cfg.GameResH))
-                Log.Info("PUBG already running — not switching the display (would squeeze the game)");
+            if (cfg.AutoRes && (cfg.ResAlways || gameWas)) { SwitchRes(); if (gameWas) FitGameSoon(); }
             gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
             gameTimer.Tick += (s, e) => WatchGame();
             gameTimer.Start();
@@ -229,29 +226,41 @@ namespace GunBeep
 
         void KeepRes()
         {
-            if (!resSwitched || !ResWanted || gameWas) return;     // ระหว่างเกมห้ามเปลี่ยนจอ (เกมจะล้นจอ)
+            if (!resSwitched || !ResWanted) return;
             var c = Display.Current();
             if (c.w == cfg.GameResW && c.h == cfg.GameResH) return;
             if (DateTime.Now - lastResTry < TimeSpan.FromSeconds(10)) return;
             lastResTry = DateTime.Now;
             Log.Info($"display changed to {c.w}x{c.h} by something else → switch back");
             SwitchRes();
+            if (gameWas) FitGameSoon();
         }
 
         // ตั้งค่าเปลี่ยน → ทำตามทันที (ยืด / เปลี่ยนขนาด / คืนค่าเดิม)
         void ApplyResNow()
         {
-            if (gameWas)
-            {
-                Flash("PUBG เปิดอยู่ — จะเปลี่ยนจอให้ตอนเปิดเกมรอบหน้า (เปลี่ยนกลางเกมแล้วภาพจะล้นจอ)");
-                return;
-            }
             if (ResWanted)
             {
                 var c = Display.Current();
                 if (!(resSwitched && c.w == cfg.GameResW && c.h == cfg.GameResH)) SwitchRes();
             }
             else if (resSwitched) RestoreRes();
+            if (gameWas) FitGameSoon();
+        }
+
+        // จอเปลี่ยนตอนเกมเปิดอยู่: ขยายหน้าต่างเกมให้เต็มจอใหม่ (ทำซ้ำอีกรอบเผื่อเกมยังไม่ทันรับ)
+        void FitGameSoon()
+        {
+            int n = 0;
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            t.Tick += (s, e) =>
+            {
+                var c = Display.Current();
+                string r = Display.FitWindow("TslGame", c.w, c.h);
+                Log.Info($"fit PUBG window to {c.w}x{c.h}: {r ?? "window not found"}");
+                if (++n >= 2) t.Stop(); else t.Interval = TimeSpan.FromSeconds(1.5);
+            };
+            t.Start();
         }
 
         // ระหว่างเล่นห้ามมีแจ้งเตือนของ Windows เด้งทับเกม — เก็บไว้บอกตอนปิดเกม (ในเกมใช้ป้ายบนจอแทน)

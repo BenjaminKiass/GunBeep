@@ -72,7 +72,7 @@
 - ตั้ง PUBG เป็น **Borderless** (ป้ายบนจอถึงจะขึ้น) + NVIDIA Control Panel → Adjust desktop size → Scaling = **Full-screen**, Perform scaling on **GPU**, ติ๊ก Override
 - ถ้าไม่มีความละเอียดที่ต้องการในรายการ: NVIDIA Control Panel → Change resolution → Customize → Create Custom Resolution
 - เปลี่ยนแบบชั่วคราว (ไม่เขียนลง Windows) — ถ้าเครื่องค้าง/รีสตาร์ท จะกลับเป็นความละเอียดเดิมเอง
-- ต้องเปิด GunBeep ก่อนเกม (เปิดพร้อม Windows ไว้ก็พอ) — ระหว่างเกมเปิดอยู่ GunBeep จะไม่เปลี่ยนจอ (เปลี่ยนกลางเกมภาพจะล้นจอ)
+- เปิด GunBeep ทีหลังเกม หรืออัปเดตกลางเกม: GunBeep ยืดจอแล้วขยายหน้าต่างเกมให้พอดีเอง
 - ถ้าภาพเกมล้น/โดนตัดขอบ: ในเกมเปลี่ยนโหมดการแสดงผลเป็น Windowed แล้วกลับเป็น Borderless
 - ในเมนูเดียวกันเลือก **ยืดตลอด** ได้: ยืดตั้งแต่เปิด GunBeep จนปิด GunBeep ไม่ต้องรอเกม
 - ถ้าจอเด้งกลับเอง (ตื่นจาก sleep ฯลฯ) GunBeep ยืดกลับให้

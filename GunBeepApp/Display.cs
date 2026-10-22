@@ -84,5 +84,41 @@ namespace GunBeep
 
         // กลับเป็นความละเอียดที่ตั้งไว้ใน Windows
         public static void Restore() => ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+
+        // ---------------------------------------------------------------- หน้าต่างเกม
+        // เปลี่ยนจอตอนเกมเปิดอยู่: หน้าต่าง Borderless ของเกมยังค้างขนาดเดิม (ล้น/ไม่เต็มจอ)
+        //   → ขยับหน้าต่างให้เต็มจอใหม่ (เหมือนโปรแกรมจัดหน้าต่างทั่วไป ไม่ได้ยุ่งกับข้างในเกม)
+        delegate bool EnumProc(IntPtr h, IntPtr l);
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+        [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+        [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+        const uint SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20, SWP_NOOWNERZORDER = 0x200;
+
+        // คืนขนาดหน้าต่างก่อน/หลัง (ไว้ลง log) หรือ null ถ้าไม่เจอหน้าต่างเกม
+        public static string FitWindow(string process, int w, int h)
+        {
+            var pids = System.Diagnostics.Process.GetProcessesByName(process).Select(p => { int id = p.Id; p.Dispose(); return (uint)id; }).ToHashSet();
+            if (pids.Count == 0) return null;
+            IntPtr best = IntPtr.Zero;
+            long bestArea = 0;
+            EnumWindows((hw, l) =>
+            {
+                GetWindowThreadProcessId(hw, out uint pid);
+                if (pids.Contains(pid) && IsWindowVisible(hw) && GetWindowRect(hw, out var r))
+                {
+                    long a = (long)(r.R - r.L) * (r.B - r.T);
+                    if (a > bestArea) { bestArea = a; best = hw; }
+                }
+                return true;
+            }, IntPtr.Zero);
+            if (best == IntPtr.Zero || bestArea < 640 * 480) return null;
+            GetWindowRect(best, out var before);
+            SetWindowPos(best, IntPtr.Zero, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+            GetWindowRect(best, out var after);
+            return $"{before.R - before.L}x{before.B - before.T} → {after.R - after.L}x{after.B - after.T}";
+        }
     }
 }
