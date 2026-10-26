@@ -644,6 +644,14 @@
                                     <TextBlock Text="ลอยอยู่บนเกม" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="46" ToolTip="เข้าเกม PUBG = สลับคีย์บอร์ดเป็นภาษาอังกฤษให้เอง (ภาษาไทยแล้วกดเปลี่ยนปืน/ปุ่มอื่นในเกมไม่ได้) · ออกจากเกม = คืนภาษาเดิม">
+                                    <Button x:Name="LangBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="Lang_Click"/>
+                                    <TextBlock Text="&#xE8C1;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="ภาษาอังกฤษอัตโนมัติในเกม" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="46" ToolTip="SOCD: กดปุ่มทิศตรงข้ามพร้อมกัน (เช่น A กับ D) ให้ปุ่มล่าสุดชนะ แบบคีย์บอร์ด Snap Tap — คลิกเพื่อตั้งค่า">
                                     <Button x:Name="SocdBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
                                             VerticalAlignment="Center" Click="Socd_Click"/>

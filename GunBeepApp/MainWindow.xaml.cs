@@ -161,6 +161,7 @@ namespace GunBeep
             ShotsBox.LostKeyboardFocus += (s, e) => ShotsTyped();
             ApplySocd();
             UpdateSocdBtn();
+            UpdateLangBtn();
             ApplyState();
             UpdatePower();
             UpdateGuns();
@@ -256,9 +257,64 @@ namespace GunBeep
             return GetCursorInfo(ref ci) && (ci.flags & 1) != 0;
         }
 
+        // ---------------------------------------------------------------- ภาษาอังกฤษอัตโนมัติในเกม
+        // PUBG อ่านปุ่มตามตัวอักษรของภาษาที่ใช้อยู่ → คีย์บอร์ดภาษาไทยแล้วปุ่ม 1/2/3, F, R ฯลฯ ไม่ทำงาน
+        //   เข้าเกม (หรือกลับมาเล่นหลังปิดกระเป๋า/เมนู) = ขอให้หน้าต่างเกมเปลี่ยนเป็น English (US)
+        //   ออกจากเกม = คืนภาษาเดิมให้หน้าต่างที่สลับไป — ระหว่างเล่นไม่บังคับซ้ำ (เผื่ออยากพิมพ์แชทไทย)
+        [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint threadId);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadKeyboardLayout(string id, uint flags);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+        const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
+
+        bool playingWas;          // เกมอยู่ข้างหน้าและไม่มีเคอร์เซอร์ (กำลังเล่น)
+        bool gameFrontWas;
+        IntPtr langBefore;        // ภาษาก่อนเข้าเกม (คืนตอนออก), Zero = ไม่ได้เปลี่ยน
+
+        static bool IsEnglish(IntPtr hkl) => ((long)hkl & 0x3FF) == 0x09;     // LANG_ENGLISH (ทุกประเทศ)
+
+        void WatchLanguage(bool front, bool playing)
+        {
+            if (cfg.AutoEnglish && playing && !playingWas)
+            {
+                IntPtr fg = GetForegroundWindow();
+                uint tid = GetWindowThreadProcessId(fg, out _);
+                IntPtr cur = GetKeyboardLayout(tid);
+                if (!IsEnglish(cur))
+                {
+                    IntPtr en = LoadKeyboardLayout("00000409", 0);
+                    if (en != IntPtr.Zero && PostMessage(fg, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, en))
+                    {
+                        if (langBefore == IntPtr.Zero) langBefore = cur;
+                        Log.Info($"keyboard → English for PUBG (was {(long)cur & 0xFFFF:X4})");
+                    }
+                }
+            }
+            if (!front && gameFrontWas && langBefore != IntPtr.Zero)
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg != IntPtr.Zero) PostMessage(fg, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, langBefore);
+                Log.Info($"keyboard ← {(long)langBefore & 0xFFFF:X4} (left PUBG)");
+                langBefore = IntPtr.Zero;
+            }
+            playingWas = playing;
+            gameFrontWas = front;
+        }
+
+        void UpdateLangBtn() => LangBtn.Content = cfg.AutoEnglish ? "เปิด" : "ปิด";
+
+        void Lang_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.AutoEnglish = !cfg.AutoEnglish;
+            cfg.Save();
+            UpdateLangBtn();
+            Flash(cfg.AutoEnglish ? "เข้าเกมแล้วสลับเป็นภาษาอังกฤษให้เอง" : "ไม่สลับภาษาให้แล้ว");
+        }
+
         void WatchMenu()
         {
-            Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || GameInFront()));
+            bool front = GameInFront();
+            WatchLanguage(front, front && !CursorShown());
+            Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
             bool want = false;
             string why = null;
             if (cfg.PauseInMenu && on && gameWas)
