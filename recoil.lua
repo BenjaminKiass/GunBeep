@@ -1,6 +1,6 @@
 -- ============================================================
 --  Recoil macro สำหรับ Logitech G Hub  (ใช้คู่กับโปรแกรม GunBeep.exe)
---  GunBeep-Script-Version: 17
+--  GunBeep-Script-Version: 18
 --  ความไวเดียวทุกสโคป + ตารางแรงดีดอิงเวลาจริง (ไม่เพี้ยนตาม Sleep)
 --
 --  เปิด/ปิดมาโคร : ปุ่มลัดที่ตั้งใน GunBeep (ค่าเริ่มต้น F8) หรือคลิกปุ่มใหญ่ในโปรแกรม
@@ -16,8 +16,7 @@
 local SCOPE_BUTTON = 3           -- คลิกขวา (ปุ่มเล็ง / ADS)
 local CYCLE_BTN    = 4           -- 4 = Back, 5 = Forward, 3 = ปุ่มกลาง, 0 = ไม่ใช้ (GunBeep ตั้งให้)
 local GUN_MOD      = "lshift"    -- ใช้เฉพาะตอน UNIFIED_SENS = false: Shift ค้าง + CYCLE_BTN = วนปืน
-local REQUIRE_ADS  = false       -- false = ดึงทุกครั้งที่ยิง, true = เฉพาะตอนเล็งคลิกขวา (ค้าง หรือกดทีเดียวสโคปค้าง) — GunBeep ตั้งให้
-local ADS_TAP_MS   = 250         -- คลิกขวาสั้นกว่านี้ = กดทีเดียวเปิดสโคปค้าง (Toggle)
+local REQUIRE_ADS  = false       -- false = ดึงทุกครั้งที่ยิง, true = เฉพาะตอนกดคลิกขวาค้าง (เล็ง ADS) — GunBeep ตั้งให้
 
 -- ===== สัญญาณให้ GunBeep (F21/F22 = base +/-, F19/F20 = x +/-, F23 = เปลี่ยนกล้อง) =====
 local SIGNAL_ON = true
@@ -224,23 +223,13 @@ local function write_state(from, to)
   PressAndReleaseKey(GUN_KEYS[to])
 end
 
--- ===== เล็ง (ADS): คลิกขวาค้าง หรือกดสั้นๆ ทีเดียวแล้วสโคปค้าง =====
-local ads_down, ads_t, ads_toggle = false, 0, false
+-- ===== เล็ง (ADS): นับเฉพาะตอนกดคลิกขวาค้าง (คลิกครั้งเดียวแล้วปล่อย = ไม่นับ) =====
+local ads_toggle = false        -- (เลิกใช้แบบกดทีเดียวสโคปค้างแล้ว คงตัวแปรไว้ให้ที่อื่นรีเซ็ตได้)
 
-local function ads_poll()
-  local d = IsMouseButtonPressed(SCOPE_BUTTON)
-  if d == ads_down then return end
-  ads_down = d
-  local now = GetRunningTime()
-  if d then
-    if ads_toggle then ads_toggle = false; ads_t = -1 else ads_t = now end   -- กดอีกทีตอนสโคปค้าง = ออกจากสโคป
-  elseif ads_t >= 0 and now - ads_t < ADS_TAP_MS then
-    ads_toggle = true
-  end
-end
+local function ads_poll() end
 
 local function is_ads()
-  return ads_down or ads_toggle
+  return IsMouseButtonPressed(SCOPE_BUTTON)
 end
 
 local scope_factor = 1

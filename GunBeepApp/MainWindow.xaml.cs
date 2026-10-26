@@ -300,11 +300,11 @@ namespace GunBeep
             gameFrontWas = front;
         }
 
-        void UpdateLangBtn() => LangBtn.Content = cfg.AutoEnglish ? "เปิด" : "ปิด";
+        void UpdateLangBtn() => LangSwitch.IsChecked = cfg.AutoEnglish;
 
         void Lang_Click(object sender, RoutedEventArgs e)
         {
-            cfg.AutoEnglish = !cfg.AutoEnglish;
+            cfg.AutoEnglish = LangSwitch.IsChecked == true;
             cfg.Save();
             UpdateLangBtn();
             Flash(cfg.AutoEnglish ? "เข้าเกมแล้วสลับเป็นภาษาอังกฤษให้เอง" : "ไม่สลับภาษาให้แล้ว");
@@ -1619,26 +1619,17 @@ namespace GunBeep
 
         void UpdateAdsModeButton()
         {
-            if (cfg.RequireAds)
-            {
-                AdsText.Text = "โหมด: เฉพาะตอนสโคป ADS (เปิดค้างได้)";
-                AdsModeBtn.BorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x1D, 0x6B, 0xFF)));
-                AdsIcon.Foreground = Freeze(new SolidColorBrush(Color.FromRgb(0x5C, 0xE1, 0xFF)));
-            }
-            else
-            {
-                AdsText.Text = "โหมด: ดึงทุกครั้งที่ยิง (รวมยิงสะโพก)";
-                AdsModeBtn.BorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x40, 0x50, 0x70)));
-                AdsIcon.Foreground = Freeze(new SolidColorBrush(Color.FromRgb(0x8A, 0x9B, 0xB8)));
-            }
+            AdsAllRb.IsChecked = !cfg.RequireAds;
+            AdsHoldRb.IsChecked = cfg.RequireAds;
         }
 
-        void AdsMode_Click(object sender, RoutedEventArgs e)
+        void AdsRb_Checked(object sender, RoutedEventArgs e)
         {
-            cfg.RequireAds = !cfg.RequireAds;
+            bool req = sender == AdsHoldRb;
+            if (req == cfg.RequireAds) return;          // ตั้งค่าตอนเปิดโปรแกรม ไม่ใช่ผู้ใช้กด
+            cfg.RequireAds = req;
             cfg.Save();
-            UpdateAdsModeButton();
-            Flash(cfg.RequireAds ? "🎯 ดึงเฉพาะตอนเล็งคลิกขวา (เปิดค้างได้ ไม่ลากในเมนู)" : "🔫 ดึงทุกครั้งที่ยิง (รวมยิงสะโพก)");
+            Flash(cfg.RequireAds ? "🎯 ดึงเฉพาะตอนกดคลิกขวาค้าง (เล็ง ADS)" : "🔫 ดึงทุกครั้งที่ยิง (รวมยิงสะโพก)");
             Sfx.Play(Sfx.Pick, cfg.Sound);
             try { GHub.WriteRequireAds(cfg.RequireAds); } catch { }
             _ = SendAdsModeAsync();
