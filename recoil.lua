@@ -1,11 +1,11 @@
 -- ============================================================
 --  Recoil macro สำหรับ Logitech G Hub  (ใช้คู่กับโปรแกรม GunBeep.exe)
---  GunBeep-Script-Version: 7
+--  GunBeep-Script-Version: 17
 --  ความไวเดียวทุกสโคป + ตารางแรงดีดอิงเวลาจริง (ไม่เพี้ยนตาม Sleep)
 --
 --  เปิด/ปิดมาโคร : ปุ่มลัดที่ตั้งใน GunBeep (ค่าเริ่มต้น F8) หรือคลิกปุ่มใหญ่ในโปรแกรม
---  สถานะส่งมาทางไฟ Scroll Lock + Num Lock:
---    ดับ/ดับ = ปิด    Scroll ติด = ปืน 1    Num ติด = ปืน 2    ติดทั้งคู่ = ปืน 3
+--  เปิด/ปิดส่งมาทางไฟ Scroll Lock (ไม่ใช้ Num Lock แล้ว — ใน PUBG Num Lock = วิ่งอัตโนมัติ)
+--  เลขปืนส่งมาเป็นเฟรมสั้นทาง Right Ctrl + Caps Lock; สคริปต์วนปืนเองแล้วบอก GunBeep ด้วย F13/F14/F15
 --  ปุ่มข้างเมาส์ (CYCLE_BTN, ค่าเริ่มต้น Back — เปลี่ยนได้ใน GunBeep) ใช้ได้เฉพาะตอนเปิดมาโคร กันค่าเพี้ยนตอนไม่ได้ใช้
 --    กดเปล่าๆ = วนปืน (ถ้าปิด UNIFIED_SENS จะวนกล้องแทน)
 --    Ctrl+ปุ่ม = base +0.5 / Alt+ปุ่ม = base -0.5
@@ -13,10 +13,11 @@
 -- ============================================================
 
 -- ===== ปุ่มและการทำงานหลัก =====
-local SCOPE_BUTTON = 5           -- ปุ่มเล็ง (Forward) ถ้าไม่ติดลองเปลี่ยนเป็น 4
+local SCOPE_BUTTON = 3           -- คลิกขวา (ปุ่มเล็ง / ADS)
 local CYCLE_BTN    = 4           -- 4 = Back, 5 = Forward, 3 = ปุ่มกลาง, 0 = ไม่ใช้ (GunBeep ตั้งให้)
 local GUN_MOD      = "lshift"    -- ใช้เฉพาะตอน UNIFIED_SENS = false: Shift ค้าง + CYCLE_BTN = วนปืน
-local REQUIRE_ADS  = false       -- true = ชดเชยเฉพาะตอนกดปุ่มเล็งค้าง (ไม่ลากตอนยิงสะโพก)
+local REQUIRE_ADS  = false       -- false = ดึงทุกครั้งที่ยิง, true = เฉพาะตอนเล็งคลิกขวา (ค้าง หรือกดทีเดียวสโคปค้าง) — GunBeep ตั้งให้
+local ADS_TAP_MS   = 250         -- คลิกขวาสั้นกว่านี้ = กดทีเดียวเปิดสโคปค้าง (Toggle)
 
 -- ===== สัญญาณให้ GunBeep (F21/F22 = base +/-, F19/F20 = x +/-, F23 = เปลี่ยนกล้อง) =====
 local SIGNAL_ON = true
@@ -45,15 +46,25 @@ local scope_idx = 4
 -- x     = ซ้าย/ขวา (+ = ขวา, - = ซ้าย)
 -- sname = ชื่อตาราง segs (ใช้ตอนพิมพ์ค่าออก Console ให้ก๊อปกลับมาวาง)
 local SEGS_MAIN = {
-  {1,15}, {2,1}, {1,1}, {2,31},
-  {3,1}, {2,1}, {3,1}, {2,1}, {3,1}, {2,1}, {3,1}, {2,1}, {3,1},
-  {3,243},
+  {1.25,10}, {1.5,10}, {1.75,10}, {2,20}, {2.25,30}, {2.5,30}, {3.75,50}, {4.5,20},
+  {4.75,20}, {5.25,30}, {5.5,10}, {5.75,20}, {6,10}, {6.25,20}, {6.5,20}, {6.75,10},
+  {7,30},
+}
+
+local SEGS_2 = {
+  {0.8,8}, {1.4,12}, {2,20}, {2.5,30}, {2.8,40}, {3,50}, {3.2,140},
+}
+
+local SEGS_3 = {
+  {1,10}, {1.5,20}, {1.75,20}, {3.5,30}, {4,10}, {4.25,30}, {4.75,10}, {5,20},
+  {5.5,10}, {5.75,40}, {6,10}, {6.25,10}, {6.5,40}, {6.75,10}, {7,10}, {7.25,10},
+  {7.5,10}, {7.75,10}, {8,10}, {8.25,30},
 }
 
 local GUNS = {
-  { name = "gun1", base = 7, x = 0, segs = SEGS_MAIN, sname = "SEGS_MAIN" },
-  { name = "gun2", base = 7, x = 0, segs = SEGS_MAIN, sname = "SEGS_MAIN" },
-  { name = "gun3", base = 7, x = 0, segs = SEGS_MAIN, sname = "SEGS_MAIN" },
+  { name = "M416", base = 16.5, x = 0, segs = SEGS_MAIN, sname = "SEGS_MAIN" },
+  { name = "Beryl", base = 3.5, x = 0, segs = SEGS_2, sname = "SEGS_2" },
+  { name = "AUG / ACE", base = 24, x = 0, segs = SEGS_3, sname = "SEGS_3" },
 }
 local gun_idx = 1
 
@@ -64,6 +75,8 @@ local X_NUDGE = 1                -- Alt ค้าง = ดึงซ้ายเ�
 local STEP_MS = 10
 local LOOP_MS = 4
 local RELEASE_GRACE_MS = 30
+local MAX_SHOTS = 42             -- ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2) กดยิงค้างตอนกระสุนหมดจอไม่กดลงต่อ — GunBeep ตั้งให้, 0 = ไม่จำกัด
+local SHOT_MS = 86               -- เวลาต่อนัดของปืนไรเฟิลส่วนใหญ่ (~700 นัด/นาที)
 
 EnablePrimaryMouseButtonEvents(true)
 
@@ -88,7 +101,8 @@ end
 -- Right Ctrl เปลี่ยนสถานะ = 1 จังหวะ, Caps Lock สลับในจังหวะนั้น = บิต 1 / ไม่สลับ = บิต 0
 -- เฟรม base/x (24 บิต): 10 | ปืน(2) | base*2 (8) | x*2+128 (8) | checksum(4)
 -- เฟรมกราฟ: 11 | ปืน(2) | จำนวนก้อน(5) | ก้อนละ: แรงดึง*4 (7) + จำนวนแท่ง 100 ms (5) | checksum(8)
--- เฟรมตั้งค่า (24 บิต): 01 | ชนิด(2) | ค่า(8) | 0(8) | (ชนิด+ค่า)%16 (4)   ชนิด 0 = ปุ่มวนปืน (CYCLE_BTN)
+-- เฟรมตั้งค่า (24 บิต): 01 | ชนิด(2) | ค่า(8) | 0(8) | (ชนิด+ค่า)%16 (4)
+--   ชนิด 0 = ปุ่มวนปืน (CYCLE_BTN), ชนิด 1 = REQUIRE_ADS (0/1), ชนิด 2 = MAX_SHOTS (0-255)
 -- รับครบแล้วตอบกลับด้วย F18
 local rx_clk, rx_t, rx_caps, rx_bits, rx_need = false, 0, false, {}, 24
 
@@ -100,17 +114,41 @@ end
 
 local function rx_apply_cfg()
   local k, v, chk = rx_take(3, 2), rx_take(5, 8), rx_take(21, 4)
-  if chk ~= (k + v) % 16 or k ~= 0 or v > 5 or v == 1 or v == 2 then
+  if chk ~= (k + v) % 16 then
     OutputLogMessage("LIVE: ตั้งค่าเสีย ไม่รับ\n")
     return
   end
-  CYCLE_BTN = v
-  OutputLogMessage("LIVE: ปุ่มวนปืน = %d\n", v)
+  if k == 0 and v <= 5 and v ~= 1 and v ~= 2 then
+    CYCLE_BTN = v
+    OutputLogMessage("LIVE: ปุ่มวนปืน = %d\n", v)
+  elseif k == 1 and v <= 1 then
+    REQUIRE_ADS = v == 1
+    OutputLogMessage("LIVE: REQUIRE_ADS = %s\n", tostring(REQUIRE_ADS))
+  elseif k == 2 then
+    MAX_SHOTS = v
+    OutputLogMessage("LIVE: MAX_SHOTS = %d\n", v)
+  else
+    OutputLogMessage("LIVE: ตั้งค่าเสีย ไม่รับ\n")
+    return
+  end
+  PressAndReleaseKey("f18")
+end
+
+-- เฟรมปืน (8 บิต): 00 | ปืน(2) | (ปืน*5+3)%16 (4)
+local function rx_apply_gun()
+  local g, chk = rx_take(3, 2), rx_take(5, 4)
+  if g < 1 or g > NGUNS or chk ~= (g * 5 + 3) % 16 then
+    OutputLogMessage("LIVE: เลขปืนเสีย ไม่รับ\n")
+    return
+  end
+  gun_idx = g
+  OutputLogMessage("LIVE gun=%s base=%g x=%g\n", GUNS[g].name, GUNS[g].base, GUNS[g].x)
   PressAndReleaseKey("f18")
 end
 
 local function rx_apply()
   local t = rx_take(1, 2)
+  if t == 0 then rx_apply_gun() return end
   if t == 1 then rx_apply_cfg() return end
   if t ~= 2 then return end
   local g, b, xv, chk = rx_take(3, 2), rx_take(5, 8), rx_take(13, 8), rx_take(21, 4)
@@ -166,6 +204,7 @@ local function rx_poll()
   rx_caps = caps
   local n = #rx_bits
   if n == 2 and rx_bits[1] == 1 and rx_bits[2] == 1 then rx_need = 9 end     -- เฟรมกราฟ: รอรู้จำนวนก้อนก่อน
+  if n == 2 and rx_bits[1] == 0 and rx_bits[2] == 0 then rx_need = 8 end     -- เฟรมปืน: สั้น 8 บิต
   if n == 9 and rx_need == 9 then rx_need = 9 + rx_take(5, 5) * 12 + 8 end
   if n == rx_need then
     if rx_bits[1] == 1 and rx_bits[2] == 1 then rx_apply_segs() else rx_apply() end
@@ -173,23 +212,35 @@ local function rx_poll()
 end
 
 -- ===== สถานะจาก GunBeep (0 = ปิด, 1-3 = เปิด + เลขปืน) =====
+-- ไฟ Scroll Lock = เปิด/ปิด, เลขปืนมาจากเฟรมปืน (gun_idx)
 local function read_state()
-  local s = IsKeyLockOn("scrolllock")
-  local n = IsKeyLockOn("numlock")
-  if s and n then return 3 end
-  if n then return 2 end
-  if s then return 1 end
+  if IsKeyLockOn("scrolllock") then return gun_idx end
   return 0
 end
 
--- สลับไฟจากสถานะ from -> to (เปิดดวงที่ต้องติดก่อน จะได้ไม่ผ่านสถานะ "ปิด" ระหว่างทาง)
+-- สคริปต์วนปืนเอง → บอก GunBeep ว่าตอนนี้ปืนไหน
+local GUN_KEYS = { "f13", "f14", "f15" }
 local function write_state(from, to)
-  local fs, fn = (from == 1 or from == 3), (from == 2 or from == 3)
-  local ts, tn = (to == 1 or to == 3), (to == 2 or to == 3)
-  if ts and not fs then PressAndReleaseKey("scrolllock") end
-  if tn and not fn then PressAndReleaseKey("numlock") end
-  if fs and not ts then PressAndReleaseKey("scrolllock") end
-  if fn and not tn then PressAndReleaseKey("numlock") end
+  PressAndReleaseKey(GUN_KEYS[to])
+end
+
+-- ===== เล็ง (ADS): คลิกขวาค้าง หรือกดสั้นๆ ทีเดียวแล้วสโคปค้าง =====
+local ads_down, ads_t, ads_toggle = false, 0, false
+
+local function ads_poll()
+  local d = IsMouseButtonPressed(SCOPE_BUTTON)
+  if d == ads_down then return end
+  ads_down = d
+  local now = GetRunningTime()
+  if d then
+    if ads_toggle then ads_toggle = false; ads_t = -1 else ads_t = now end   -- กดอีกทีตอนสโคปค้าง = ออกจากสโคป
+  elseif ads_t >= 0 and now - ads_t < ADS_TAP_MS then
+    ads_toggle = true
+  end
+end
+
+local function is_ads()
+  return ads_down or ads_toggle
 end
 
 local scope_factor = 1
@@ -262,11 +313,13 @@ local function spray()
       pending = true
     end
     rx_poll()                       -- รับค่าใหม่ได้แม้กำลังยิง (ใช้กับชุดถัดไป)
+    ads_poll()
     if read_state() == 0 then reason = "macro off" break end
-    if REQUIRE_ADS and not IsMouseButtonPressed(SCOPE_BUTTON) then reason = "ads released" break end
+    if MAX_SHOTS > 0 and now >= MAX_SHOTS * SHOT_MS then reason = "max shots" break end
+    if REQUIRE_ADS and not is_ads() then reason = "ads released" break end
 
     local factor = 1
-    if (not UNIFIED_SENS) and IsMouseButtonPressed(SCOPE_BUTTON) then
+    if (not UNIFIED_SENS) and is_ads() then
       factor = scope_factor
     end
 
@@ -338,6 +391,7 @@ function OnEvent(a, b)
 
   while true do
     rx_poll()
+    ads_poll()
 
     -- อ่านสถานะจาก GunBeep
     if GetRunningTime() >= hold_until then
@@ -345,6 +399,7 @@ function OnEvent(a, b)
       local now_on = st > 0
       if now_on ~= on then
         on = now_on
+        ads_toggle = false
         if on then
           gun_idx = math.min(st, NGUNS)
           OutputLogMessage("MACRO ON (gun=%s)\n", GUNS[gun_idx].name)
@@ -359,7 +414,8 @@ function OnEvent(a, b)
     end
 
     -- ปุ่มวนปืน (ค่าเริ่มต้น Back): ทำงานเฉพาะตอนเปิดมาโคร
-    local cyc = CYCLE_BTN > 0 and IsMouseButtonPressed(CYCLE_BTN)
+    -- IsMouseButtonPressed: 2 = ปุ่มกลาง, 3 = คลิกขวา → CYCLE_BTN 3 (ปุ่มกลาง) ต้องอ่านเป็น 2
+    local cyc = CYCLE_BTN > 0 and IsMouseButtonPressed(CYCLE_BTN == 3 and 2 or CYCLE_BTN)
     if cyc and not prev_cycle and on then
       local sh = IsModifierPressed("lshift")
       local ct = IsModifierPressed("lctrl")
@@ -369,6 +425,7 @@ function OnEvent(a, b)
       elseif ct or al then
         tune("base", ct and TUNE_STEP or -TUNE_STEP)
       elseif UNIFIED_SENS or IsModifierPressed(GUN_MOD) then
+        ads_toggle = false
         local nxt = gun_idx % NGUNS + 1
         write_state(gun_idx, nxt)
         gun_idx = nxt
@@ -383,9 +440,9 @@ function OnEvent(a, b)
     prev_cycle = cyc
 
     if on and IsMouseButtonPressed(1)
-       and ((not REQUIRE_ADS) or IsMouseButtonPressed(SCOPE_BUTTON)) then
+       and ((not REQUIRE_ADS) or is_ads()) then
       spray()
-      while IsMouseButtonPressed(1) do Sleep(5) end
+      while IsMouseButtonPressed(1) do rx_poll(); Sleep(5) end   -- ยังรับค่าจาก GunBeep ระหว่างกดค้างหลังหยุดดึง
     end
 
     Sleep(1)

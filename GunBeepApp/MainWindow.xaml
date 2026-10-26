@@ -551,9 +551,45 @@
                                     <Button x:Name="ApplyBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch"
                                             Click="Apply_Click" ToolTip="ส่งค่าเข้า G Hub ทันที ไม่ต้องรีสตาร์ท (ปล่อยหลอดเลื่อนแล้วจะส่งให้เอง)"/>
                                 </DockPanel>
+                                <Button x:Name="AdsModeBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                                        Click="AdsMode_Click" ToolTip="คลิกเพื่อสลับ: ดึงเฉพาะตอนเล็งคลิกขวา (เปิดค้างได้ ไม่ลากในเมนู) หรือ ดึงทุกครั้งที่ยิง">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="AdsIcon" Text="&#xE727;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#5CE1FF"/>
+                                        <TextBlock x:Name="AdsText" Text="โหมด: เฉพาะตอนสโคป ADS (เปิดค้างได้)" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Grid Margin="0,8,0,0" ToolTip="ยิงครบกี่นัดแล้วหยุดดึง — กระสุนหมดแล้วกดยิงค้าง จอจะไม่กดลงต่อ (แม็ก 40 + เผื่อ 2 = 42)">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="62"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="หยุดดึงหลังยิง" Foreground="#C8D3E6" VerticalAlignment="Center"/>
+                                    <DockPanel Grid.Column="1" Margin="8,0,6,0">
+                                        <Button DockPanel.Dock="Left" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="-" Click="ShotsStep_Click"/>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource StepBtn}" Content="&#xE710;" Tag="+" Click="ShotsStep_Click"/>
+                                        <Slider x:Name="ShotsSlider" Style="{StaticResource NiceSlider}" Minimum="5" Maximum="120"
+                                                IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="5" Margin="6,0"/>
+                                    </DockPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBox x:Name="ShotsBox" Width="36" Text="42" FontSize="13" FontWeight="Bold" FontFamily="Consolas"
+                                                 Foreground="#8FDBFF" Background="#121B30" BorderBrush="#2A3A5C" BorderThickness="1"
+                                                 CaretBrush="#8FDBFF" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                 MaxLength="3" Padding="0,2" ToolTip="พิมพ์จำนวนนัด (5–120) แล้วกด Enter"/>
+                                        <TextBlock Text=" นัด" Foreground="#8FDBFF" FontSize="12" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
                                 <Button x:Name="EyeBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch" Margin="0,8,0,0"
-                                        BorderBrush="#C9A54A" Click="Eye_Click"
+                                        BorderBrush="#C9A54A" Click="Eye_Click" Visibility="Collapsed"
                                         ToolTip="ยิงใส่กำแพง มือนิ่ง ดูรอยกระสุน แล้วตอบด้วยปุ่มลูกศร — ป้ายบนจอบอกทุกขั้น"/>
+                                <Button x:Name="VisionBtn" Style="{StaticResource KeyBtn}" HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                                        BorderBrush="#1D6BFF" Click="Vision_Click" Visibility="Collapsed"
+                                        ToolTip="สแกนหน้ากระเป๋า (Tab) ตรวจจับปืน ของแต่ง ลำกล้อง และคำนวณแรงดีดออโต้">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#5CE1FF"/>
+                                        <TextBlock Text="AI Detect ปืน · ของแต่ง · ลำกล้อง (Tab)" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Border>
 
@@ -606,6 +642,14 @@
                                     <TextBlock Text="&#xE718;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
                                                VerticalAlignment="Center" Width="26"/>
                                     <TextBlock Text="ลอยอยู่บนเกม" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="46" ToolTip="SOCD: กดปุ่มทิศตรงข้ามพร้อมกัน (เช่น A กับ D) ให้ปุ่มล่าสุดชนะ แบบคีย์บอร์ด Snap Tap — คลิกเพื่อตั้งค่า">
+                                    <Button x:Name="SocdBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="Socd_Click"/>
+                                    <TextBlock Text="&#xE759;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="SOCD (ปุ่มทิศชนกัน)" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="46" ToolTip="ในเกมกด 1 = ปืน 1, กด 2 = ปืน 2 (ช่องปืนหลัก/รอง) · ลูกกลิ้ง = สลับไปอีกช่อง — ทำงานตอนเปิดมาโคร">

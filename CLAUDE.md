@@ -155,6 +155,20 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   button in the title bar; check at startup and every 6 h. Local builds are 1.0.0 → always older.
 - Commits are authored with the user's GitHub noreply email.
 
+## Protocol v16+ (2026-10-26) — supersedes the LED table below
+- Num Lock is NOT used any more (PUBG binds Num Lock to auto-run → character ran by itself). Scroll Lock = ON/OFF.
+- Gun number GunBeep → Lua: short live frame `00 | gun(2) | (gun*5+3)%16 (4)` (8 bits), F18 ack. Sent on macro ON,
+  gun change, and 10 s after a G Hub restart (`gunSent` tracks what Lua knows).
+- Lua cycles guns itself and tells GunBeep with F13/F14/F15 (= gun 1/2/3).
+- Config frame kinds: 0 CYCLE_BTN, 1 REQUIRE_ADS (0/1), 2 MAX_SHOTS (0–255; time = shots × 86 ms).
+- Pause: GunBeep turns Scroll Lock off while the cursor is visible (GetCursorInfo) or PUBG is not foreground; app stays ON.
+- SOCD (Socd.cs) runs inside KeyHook, which has its own thread + message loop (a slow UI thread made Windows skip
+  the hook → missed key events → stuck keys). Key-ups are never blocked. Sim of the state machine: 0 stuck cases.
+- v12 (written in another session) had dropped rx_poll entirely → every live send "no ack". v13+ restored it.
+- Vision (screen capture of the inventory) exists but the Tab-triggered auto scan was removed: it guessed wrong and
+  overwrote base (0 ↔ 13), and reading the game screen risks a BattlEye ban.
+- Working copy on the user's PC is now `Downloads\pubg\มาโครพับจี\มาโครพับจี\GunBeep` (autostart points here).
+
 ## GunBeep ⇄ G Hub protocol (G Hub Lua can only read lock-key LEDs)
 - State on Scroll Lock / Num Lock: off/off = macro OFF, Scroll = gun 1, Num = gun 2, both = gun 3.
   When switching, turn ON the needed LED first, then turn off the other (never passes through OFF).

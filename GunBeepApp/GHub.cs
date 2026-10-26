@@ -224,10 +224,32 @@ namespace GunBeep
             return list;
         }
 
-        // เลือกช่องสคริปต์ที่จะเขียน: ตัวที่เป็นของ GunBeep ก่อน ไม่งั้นตัวที่แก้ล่าสุด
-        static ScriptSlot PickScript(List<ScriptSlot> list) =>
-            list.Where(s => s.IsGunBeep).OrderByDescending(s => s.Modified).FirstOrDefault()
-            ?? list.OrderByDescending(s => s.Modified).FirstOrDefault();
+        // เลือกช่องสคริปต์ที่จะเขียน: ตัวที่ผูกกับโปรไฟล์ PUBG ใน settings.db ก่อน
+        static string pubgScriptId;
+        static DateTime pubgScriptRead;
+
+        static ScriptSlot PickScript(List<ScriptSlot> list)
+        {
+            if (list == null || list.Count == 0) return null;
+            try
+            {
+                if (DateTime.Now - pubgScriptRead > TimeSpan.FromSeconds(30))
+                {
+                    var json = ReadSettingsJson(DbPath, copyFirst: true, out _, out _);
+                    var prof = json != null ? FindPubgProfile(json) : null;
+                    pubgScriptId = prof?["scriptId"]?.GetValue<string>();
+                    pubgScriptRead = DateTime.Now;
+                }
+                if (!string.IsNullOrEmpty(pubgScriptId))
+                {
+                    var match = list.FirstOrDefault(s => Path.GetFileName(s.Folder).Equals(pubgScriptId, StringComparison.OrdinalIgnoreCase));
+                    if (match != null) return match;
+                }
+            }
+            catch { }
+            return list.Where(s => s.IsGunBeep).OrderByDescending(s => s.Modified).FirstOrDefault()
+                ?? list.OrderByDescending(s => s.Modified).FirstOrDefault();
+        }
 
         // ---------------------------------------------------------------- ค่า base / x ของแต่ละปืน
 
@@ -425,6 +447,38 @@ namespace GunBeep
                 WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
                 slot.Text = text;
                 Log.Info("wrote CYCLE_BTN = " + btn);
+            }
+        }
+
+        static readonly Regex ShotsLine = new Regex(@"(local\s+MAX_SHOTS\s*=\s*)\d+");
+
+        public static void WriteMaxShots(int n)
+        {
+            lock (ScriptLock)
+            {
+                var slot = PickScript(ListScripts());
+                if (slot == null || !slot.IsGunBeep || !ShotsLine.IsMatch(slot.Text)) return;
+                string text = ShotsLine.Replace(slot.Text, m => m.Groups[1].Value + n, 1);
+                if (text == slot.Text) return;
+                WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
+                slot.Text = text;
+                Log.Info("wrote MAX_SHOTS = " + n);
+            }
+        }
+
+        static readonly Regex AdsLine = new Regex(@"(local\s+REQUIRE_ADS\s*=\s*)(true|false)");
+
+        public static void WriteRequireAds(bool req)
+        {
+            lock (ScriptLock)
+            {
+                var slot = PickScript(ListScripts());
+                if (slot == null || !slot.IsGunBeep || !AdsLine.IsMatch(slot.Text)) return;
+                string text = AdsLine.Replace(slot.Text, m => m.Groups[1].Value + (req ? "true" : "false"), 1);
+                if (text == slot.Text) return;
+                WriteScript(Path.Combine(slot.Folder, "script.lua"), text);
+                slot.Text = text;
+                Log.Info("wrote REQUIRE_ADS = " + req);
             }
         }
 

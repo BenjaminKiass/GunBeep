@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -80,14 +81,20 @@ namespace GunBeep
             Loaded += (s, e) => AnimateIn();
 
             if (cfg.Left.HasValue && cfg.Top.HasValue
-                && cfg.Left.Value > SystemParameters.VirtualScreenLeft - 100
-                && cfg.Left.Value < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100
-                && cfg.Top.Value > SystemParameters.VirtualScreenTop - 20
-                && cfg.Top.Value < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+                && cfg.Left.Value >= 0
+                && cfg.Left.Value < SystemParameters.PrimaryScreenWidth - 200
+                && cfg.Top.Value >= 0
+                && cfg.Top.Value < SystemParameters.PrimaryScreenHeight - 200)
             {
                 WindowStartupLocation = WindowStartupLocation.Manual;
                 Left = cfg.Left.Value;
                 Top = cfg.Top.Value;
+            }
+            else
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = Math.Max(50, (SystemParameters.PrimaryScreenWidth - 960) / 2);
+                Top = Math.Max(50, (SystemParameters.PrimaryScreenHeight - 650) / 2);
             }
 
             Ring.Stroke = powerBrush;
@@ -138,11 +145,22 @@ namespace GunBeep
             gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
             gameTimer.Tick += (s, e) => WatchGame();
             gameTimer.Start();
+            menuTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+            menuTimer.Tick += (s, e) => WatchMenu();
+            menuTimer.Start();
 
             // เปิดโปรแกรมมาให้มาโครปิดไว้ก่อนเสมอ
             scroll = KeyHook.IsLockOn(VK_SCROLL);
             num = KeyHook.IsLockOn(VK_NUM);
             on = false;
+            UpdateAdsModeButton();
+            UpdateShotsText();
+            ShotsSlider.Value = cfg.MaxShots > 0 ? cfg.MaxShots : ShotsSlider.Maximum;
+            ShotsSlider.ValueChanged += (s, e) => ShotsMoved((int)Math.Round(e.NewValue));
+            ShotsBox.KeyDown += (s, e) => { if (e.Key == Key.Enter) { ShotsTyped(); Keyboard.ClearFocus(); } };
+            ShotsBox.LostKeyboardFocus += (s, e) => ShotsTyped();
+            ApplySocd();
+            UpdateSocdBtn();
             ApplyState();
             UpdatePower();
             UpdateGuns();
@@ -174,13 +192,14 @@ namespace GunBeep
             agentWatch.Tick += (s, e) =>
             {
                 int pid = GHub.AgentPid();
-                if (pid != 0 && pid != agentPid) { agentPid = pid; LoadGunValues(); }
+                if (pid != 0 && pid != agentPid) { agentPid = pid; LoadGunValues(); GunAfterRestart(); }
             };
             agentPid = GHub.AgentPid();
             agentWatch.Start();
 
             hook = new KeyHook();
             hook.KeyDown += vk => Dispatcher.BeginInvoke(new Action(() => OnKey(vk)));
+            hook.KeyUp += vk => Dispatcher.BeginInvoke(new Action(() => OnKeyUp(vk)));
 
             SubTitle.Text = "Recoil Control Panel · v" + Updater.Current;
 
@@ -202,6 +221,55 @@ namespace GunBeep
             LoadGunValues();
             CheckUpdate();
             osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+        }
+
+        // ---------------------------------------------------------------- หยุดชั่วคราวตอนอยู่ในเมนู
+        // PUBG ซ่อนเคอร์เซอร์ตอนเล่น และโชว์ตอนเปิดกระเป๋า (Tab) / แผนที่ / เมนู Esc
+        //   → เคอร์เซอร์โผล่ หรือหน้าต่างเกมไม่ได้อยู่ข้างหน้า = ไม่ดึง (กดเก็บของ/ลากของแล้วเป้าไม่ลากลง)
+        //   ดูแค่สถานะเคอร์เซอร์ของ Windows ไม่ได้อ่านภาพหรือหน่วยความจำเกม
+        [StructLayout(LayoutKind.Sequential)]
+        struct CURSORINFO { public int cbSize, flags; public IntPtr hCursor; public int x, y; }
+        [DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO ci);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+
+        DispatcherTimer menuTimer;
+        bool paused;
+        uint fgPid;
+        bool fgIsGame;
+
+        bool GameInFront()
+        {
+            GetWindowThreadProcessId(GetForegroundWindow(), out uint pid);
+            if (pid != fgPid)
+            {
+                fgPid = pid;
+                try { using var p = System.Diagnostics.Process.GetProcessById((int)pid); fgIsGame = p.ProcessName == "TslGame"; }
+                catch { fgIsGame = false; }
+            }
+            return fgIsGame;
+        }
+
+        static bool CursorShown()
+        {
+            var ci = new CURSORINFO { cbSize = Marshal.SizeOf<CURSORINFO>() };
+            return GetCursorInfo(ref ci) && (ci.flags & 1) != 0;
+        }
+
+        void WatchMenu()
+        {
+            Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || GameInFront()));
+            bool want = false;
+            string why = null;
+            if (cfg.PauseInMenu && on && gameWas)
+            {
+                if (!GameInFront()) { want = true; why = "game not in front"; }
+                else if (CursorShown()) { want = true; why = "cursor shown (inventory/map/menu)"; }
+            }
+            if (want == paused) return;
+            paused = want;
+            ApplyState();
+            Log.Info(paused ? "pause: " + why : "resume");
         }
 
         // ---------------------------------------------------------------- จอยืดตอนเปิดเกม
@@ -390,6 +458,68 @@ namespace GunBeep
             calibWin.Show();
         }
 
+        // ---------------------------------------------------------------- AI ตรวจจับปืน / ของแต่ง (Vision)
+        VisionWindow visionWin;
+
+        void Vision_Click(object sender, RoutedEventArgs e)
+        {
+            if (visionWin != null) { visionWin.Activate(); return; }
+            visionWin = new VisionWindow(cfg, ApplyVisionResult) { Owner = this };
+            visionWin.Closed += (s, a) => visionWin = null;
+            visionWin.Show();
+        }
+
+        void ApplyVisionResult(int slotIdx, double b, double x, string summary)
+        {
+            if (vals == null) return;
+            int g = slotIdx - 1;
+            if (g >= vals.Length) g = gun - 1;
+
+            vals[g].Base = b;
+            vals[g].X = x;
+            UpdateGuns();
+            saveVals.Stop();
+            saveVals.Start();
+            liveFailed = false;
+            liveTimer.Stop();
+            liveTimer.Start();
+
+            Flash($"AI: {summary}");
+            PopOsd($"AI: {summary}");
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+        }
+
+        async void TriggerVisionScan(bool manual)
+        {
+            if (!manual)
+            {
+                // รอให้อนิเมชันเปิด/ปิดกระเป๋าเรนเดอร์ครบก่อนแคปเจอร์
+                await Task.Delay(250);
+            }
+
+            var rep = await VisionEngine.ScanAsync(cfg);
+            if (visionWin != null && visionWin.IsVisible)
+            {
+                visionWin.RenderReport(rep);
+            }
+
+            if (rep != null && rep.Success && cfg.VisionAutoApply)
+            {
+                int targetSlot = (slot == 2) ? 2 : 1;
+                var res = targetSlot == 1 ? rep.Slot1 : rep.Slot2;
+                if (res != null)
+                {
+                    ApplyVisionResult(targetSlot, res.FinalBase, res.FinalX, res.Summary);
+                }
+            }
+            else if (manual && rep != null && rep.Success)
+            {
+                Flash("AI สแกนจอสำเร็จ");
+                PopOsd("AI: สแกนจอสำเร็จ");
+                Sfx.Play(Sfx.Pick, cfg.Sound);
+            }
+        }
+
         // ---------------------------------------------------------------- สลับปืนตามช่อง (ปุ่ม 1/2 + ลูกกลิ้ง)
         //   เกมไม่บอกว่าถือปืนอะไร (อ่านภาพ/หน่วยความจำเกม = โกง) → ตามปุ่มที่กดเปลี่ยนช่องแทน
         static readonly string[] SlotNames = { "ปิด", "ปุ่ม 1 · 2", "ปุ่ม 1 · 2 + ลูกกลิ้ง" };
@@ -538,20 +668,91 @@ namespace GunBeep
         int DecodeState() => scroll ? (num ? 3 : 1) : (num ? 2 : 0);
 
         // ตั้งไฟให้ตรงกับ on/gun ตอนนี้ (เปิดดวงที่ต้องติดก่อน จะได้ไม่ผ่านสถานะ "ปิด" ระหว่างสลับปืน)
+        // สคริปต์ v16+: ไม่แตะ Num Lock (ใน PUBG = วิ่งอัตโนมัติ) — Scroll Lock = เปิด/ปิด, เลขปืนส่งเป็นเฟรม
+        bool NoNum => scriptVersion == 0 || scriptVersion >= LiveLink.NONUM_VERSION;   // ยังไม่รู้รุ่น = ไม่แตะ Num Lock ไว้ก่อน
+
         void ApplyState()
         {
-            int st = on ? gun : 0;
+            if (NoNum)
+            {
+                bool want = on && !paused;
+                if (want != scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = want; }
+                if (on) SyncGun();
+                return;
+            }
+            int st = on && !paused ? gun : 0;     // หยุดชั่วคราว = ส่ง "ปิด" ให้ G Hub แต่ในโปรแกรมยังเปิดอยู่
             bool wantScroll = st == 1 || st == 3;
             bool wantNum = st == 2 || st == 3;
             if (wantScroll && !scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = true; }
-            if (wantNum && !num) { KeyHook.Tap(VK_NUM, 0x45, true); num = true; }
+            if (wantNum && !num) { KeyHook.Tap(VK_NUM, 0x45, false); num = true; }
             if (!wantScroll && scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = false; }
-            if (!wantNum && num) { KeyHook.Tap(VK_NUM, 0x45, true); num = false; }
+            if (!wantNum && num) { KeyHook.Tap(VK_NUM, 0x45, false); num = false; }
         }
 
-        // ไฟถูกเปลี่ยนจากข้างนอก (G Hub วนปืนด้วยปุ่ม Back)
+        // บอกสคริปต์ว่าใช้ปืนไหน (ส่งเฉพาะตอนเปลี่ยน กดรัวได้ ส่งตัวล่าสุด)
+        int gunSent;                 // ปืนที่สคริปต์รู้แล้ว (0 = ไม่รู้ เช่นหลัง G Hub เปิดใหม่)
+        bool gunSending;
+
+        async void SyncGun()
+        {
+            if (gunSending || gun == gunSent) return;
+            gunSending = true;
+            try
+            {
+                while (gun != gunSent)
+                {
+                    for (int i = 0; i < 100 && (liveBusy || setupBusy); i++) await Task.Delay(50);
+                    if (liveBusy || setupBusy) return;
+                    int g = gun;
+                    liveBusy = true;
+                    RefreshApplyButton();
+                    bool ok;
+                    try { ok = await SendFrameAsync(LiveLink.GunFrame(g)); }
+                    finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
+                    Log.Info($"live gun {g}: {(ok ? "ok" : "no ack")}");
+                    if (!ok) { Flash("G Hub ไม่ตอบรับตอนเปลี่ยนปืน"); return; }
+                    gunSent = g;
+                }
+            }
+            finally { gunSending = false; }
+        }
+
+        // G Hub เปิดใหม่ = สคริปต์กลับไปปืน 1 → รอโหลดเสร็จแล้วส่งเลขปืนให้ใหม่
+        async void GunAfterRestart()
+        {
+            gunSent = 0;
+            await Task.Delay(10000);
+            if (on && NoNum) SyncGun();
+        }
+
+        // สคริปต์วนปืนเอง (ปุ่มเมาส์) แล้วกด F13–F15 มาบอก
+        void GunFromScript(int g)
+        {
+            if (vals == null || g > vals.Length) return;
+            gunSent = g;
+            if (g == gun) return;
+            gun = g;
+            cfg.Gun = gun;
+            cfg.Save();
+            UpdateGuns();
+            PopOsd();
+        }
+
+        // ไฟถูกเปลี่ยนจากข้างนอก (ผู้ใช้กด Scroll Lock / สคริปต์รุ่นเก่าวนปืนด้วยไฟ)
         void SyncFromLocks()
         {
+            if (paused) return;                   // ไฟดับเพราะหยุดชั่วคราว ไม่ใช่ปิดมาโคร
+            if (NoNum)
+            {
+                if (scroll == on) return;         // ผู้ใช้กด Scroll Lock เอง = เปิด/ปิดมาโคร
+                on = scroll;
+                if (on) { gunSent = 0; SyncGun(); }
+                UpdatePower();
+                UpdateGuns();
+                Sfx.Play(on ? Sfx.On : Sfx.Off, cfg.Sound);
+                PopOsd();
+                return;
+            }
             int st = DecodeState();
             bool newOn = st > 0;
             if (newOn != on)
@@ -573,6 +774,10 @@ namespace GunBeep
         }
 
         // ---------------------------------------------------------------- ปุ่มที่ดักได้
+        void OnKeyUp(int vk)
+        {
+            // เลิกสแกนอัตโนมัติตอนกด Tab แล้ว: เดาปืนผิดแล้วเขียนทับค่า base เอง (0 ↔ 13) และการจับภาพจอเกมเสี่ยงโดนแบน
+        }
 
         void OnKey(int vk)
         {
@@ -582,7 +787,8 @@ namespace GunBeep
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
-            if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32)) { SlotTo(vk - 0x30); return; }
+            if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
+            if (cfg.VisionKey != 0 && vk == cfg.VisionKey) { TriggerVisionScan(true); return; }
 
             switch (vk)
             {
@@ -594,6 +800,7 @@ namespace GunBeep
                     break;
 
                 case 0x81: liveAck?.TrySetResult(true); break;   // F18 = G Hub รับค่าแล้ว
+                case 0x7C: case 0x7D: case 0x7E: GunFromScript(vk - 0x7B); break;   // F13–F15 = สคริปต์วนไปปืน 1–3
                 case 0x84: Tune("base", +0.5); break;   // F21 จาก G Hub
                 case 0x85: Tune("base", -0.5); break;   // F22
                 case 0x82: Tune("x", +0.5); break;      // F19
@@ -1178,6 +1385,7 @@ namespace GunBeep
                 });
                 stopped = false;
                 agentPid = GHub.AgentPid();
+                GunAfterRestart();
                 applied = Clone(copy);
                 if (segs != null) appliedSteps = segs.Select(s => s?.ToArray()).ToArray();
                 liveFailed = false;
@@ -1211,6 +1419,7 @@ namespace GunBeep
         void ToggleOn()
         {
             on = !on;
+            if (on) gunSent = 0;                  // เปิดใหม่ = ส่งเลขปืนให้สคริปต์ทุกครั้ง (G Hub อาจเพิ่งเปิดใหม่)
             ApplyState();
             UpdatePower();
             UpdateGuns();
@@ -1246,7 +1455,7 @@ namespace GunBeep
               || (vk >= 0x7C && vk <= 0x87)                    // F13-F24 ที่ G Hub ส่งมา
               || (vk < 0x08 && vk != 4 && vk != 5 && vk != 6));   // 4-6 = ปุ่มเมาส์กลาง/Back/Forward ใช้ได้
 
-        static string KeyName(int vk)
+        internal static string KeyName(int vk)
         {
             string s = KeyInterop.KeyFromVirtualKey(vk).ToString();
             if (vk == 4) return "เมาส์ปุ่มกลาง";
@@ -1327,6 +1536,124 @@ namespace GunBeep
             finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
             Log.Info($"live cycle button {cfg.CycleMouse}: {(ok ? "ok" : "no ack")}");
             Flash(ok ? "G Hub ใช้ปุ่มใหม่แล้ว" : "G Hub ไม่ตอบรับ — ปุ่มใหม่จะใช้ได้หลัง G Hub เปิดใหม่");
+        }
+
+        void UpdateAdsModeButton()
+        {
+            if (cfg.RequireAds)
+            {
+                AdsText.Text = "โหมด: เฉพาะตอนสโคป ADS (เปิดค้างได้)";
+                AdsModeBtn.BorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x1D, 0x6B, 0xFF)));
+                AdsIcon.Foreground = Freeze(new SolidColorBrush(Color.FromRgb(0x5C, 0xE1, 0xFF)));
+            }
+            else
+            {
+                AdsText.Text = "โหมด: ดึงทุกครั้งที่ยิง (รวมยิงสะโพก)";
+                AdsModeBtn.BorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x40, 0x50, 0x70)));
+                AdsIcon.Foreground = Freeze(new SolidColorBrush(Color.FromRgb(0x8A, 0x9B, 0xB8)));
+            }
+        }
+
+        void AdsMode_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.RequireAds = !cfg.RequireAds;
+            cfg.Save();
+            UpdateAdsModeButton();
+            Flash(cfg.RequireAds ? "🎯 ดึงเฉพาะตอนเล็งคลิกขวา (เปิดค้างได้ ไม่ลากในเมนู)" : "🔫 ดึงทุกครั้งที่ยิง (รวมยิงสะโพก)");
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+            try { GHub.WriteRequireAds(cfg.RequireAds); } catch { }
+            _ = SendAdsModeAsync();
+        }
+
+        // ---------------------------------------------------------------- หยุดดึงหลังยิงครบ N นัด
+        DispatcherTimer shotsSave;
+
+        void UpdateShotsText() => ShotsBox.Text = cfg.MaxShots > 0 ? cfg.MaxShots.ToString() : "∞";
+
+        void ShotsStep_Click(object sender, RoutedEventArgs e) =>
+            ShotsSlider.Value = Math.Clamp(ShotsSlider.Value + ((string)((Button)sender).Tag == "+" ? 1 : -1), ShotsSlider.Minimum, ShotsSlider.Maximum);
+
+        void ShotsTyped()
+        {
+            if (int.TryParse(ShotsBox.Text.Trim(), out int n))
+                ShotsSlider.Value = Math.Clamp(n, (int)ShotsSlider.Minimum, (int)ShotsSlider.Maximum);
+            UpdateShotsText();                     // พิมพ์ผิด/เกินช่วง = กลับเป็นค่าจริง
+        }
+
+        // ---------------------------------------------------------------- SOCD
+        SocdWindow socdWin;
+
+        void ApplySocd()
+        {
+            Socd.Mode = cfg.SocdMode;
+            Socd.SetPairs(cfg.SocdPairs);
+        }
+
+        void UpdateSocdBtn()
+        {
+            string pairs = cfg.SocdPairs == null || cfg.SocdPairs.Count == 0 ? "ไม่มีคู่ปุ่ม"
+                : string.Join(" ", cfg.SocdPairs.Select(p => KeyName(p[0]) + "⇄" + KeyName(p[1])));
+            SocdBtn.Content = cfg.Socd ? "เปิด · " + pairs : "ปิด";
+        }
+
+        void Socd_Click(object sender, RoutedEventArgs e)
+        {
+            if (socdWin != null) { socdWin.Activate(); return; }
+            socdWin = new SocdWindow(cfg, KeyName, () => { ApplySocd(); UpdateSocdBtn(); }) { Owner = this };
+            socdWin.Closed += (s, a) => socdWin = null;
+            socdWin.Show();
+        }
+
+        void ShotsMoved(int n)
+        {
+            if (n == cfg.MaxShots) return;
+            cfg.MaxShots = n;
+            cfg.Save();
+            UpdateShotsText();
+            // เลื่อนไปมาได้ ส่งครั้งเดียวหลังหยุดเลื่อน
+            if (shotsSave == null)
+            {
+                shotsSave = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+                shotsSave.Tick += (s, a) => { shotsSave.Stop(); _ = SendMaxShotsAsync(); };
+            }
+            shotsSave.Stop();
+            shotsSave.Start();
+        }
+
+        async Task SendMaxShotsAsync()
+        {
+            try { GHub.WriteMaxShots(cfg.MaxShots); } catch { }
+            if (scriptVersion < LiveLink.SHOTS_VERSION)
+            {
+                Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้จำนวนนัด");
+                return;
+            }
+            for (int i = 0; i < 100 && (liveBusy || setupBusy); i++) await Task.Delay(200);
+            if (liveBusy || setupBusy) return;
+            liveBusy = true;
+            RefreshApplyButton();
+            bool ok;
+            try { ok = await SendFrameAsync(LiveLink.CfgFrame(2, cfg.MaxShots)); }
+            finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
+            Log.Info($"live max shots {cfg.MaxShots}: {(ok ? "ok" : "no ack")}");
+            Flash(ok ? $"หยุดดึงหลังยิง {(cfg.MaxShots > 0 ? cfg.MaxShots + " นัด" : "ไม่จำกัด")}" : "G Hub ไม่ตอบรับ — จะใช้ได้หลัง G Hub เปิดใหม่");
+        }
+
+        async Task SendAdsModeAsync()
+        {
+            if (scriptVersion < LiveLink.ADS_VERSION)
+            {
+                Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อเปลี่ยนโหมดทันที");
+                return;
+            }
+            for (int i = 0; i < 100 && (liveBusy || setupBusy); i++) await Task.Delay(200);
+            if (liveBusy || setupBusy) return;
+            liveBusy = true;
+            RefreshApplyButton();
+            bool ok;
+            try { ok = await SendFrameAsync(LiveLink.CfgFrame(1, cfg.RequireAds ? 1 : 0)); }
+            finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
+            Log.Info($"live ads mode {cfg.RequireAds}: {(ok ? "ok" : "no ack")}");
         }
 
         // ปุ่มคีย์บอร์ดในเกม (เฉพาะตอนเปิดมาโคร)
@@ -1888,15 +2215,17 @@ namespace GunBeep
             Log.Info("exit");
             on = false;
             ApplyState();
-            if (!double.IsNaN(Left) && !double.IsNaN(Top))   // เปิดจากถาดแล้วไม่เคยโชว์หน้าต่าง = ไม่มีตำแหน่ง
+            if (!double.IsNaN(Left) && !double.IsNaN(Top) && Left >= 0 && Top >= 0)
             {
                 cfg.Left = Left;
                 cfg.Top = Top;
             }
             cfg.Save();
+            Socd.SetActive(false);
             hook?.Dispose();
             osd?.Close();
             calibWin?.Close();
+            visionWin?.Close();
             eye?.Dispose();
             if (resSwitched) RestoreRes();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }

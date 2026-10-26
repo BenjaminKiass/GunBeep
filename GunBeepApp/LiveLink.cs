@@ -28,8 +28,19 @@ namespace GunBeep
         static void Put(List<int> bits, int v, int n) { for (int i = n - 1; i >= 0; i--) bits.Add((v >> i) & 1); }
 
         public const int CFG_VERSION = 7;       // สคริปต์ตั้งแต่ v7 รับเฟรมตั้งค่า (ปุ่มวนปืน)
+        public const int NONUM_VERSION = 16;    // สคริปต์ตั้งแต่ v16 ไม่ใช้ Num Lock: Scroll = เปิด/ปิด, เลขปืนส่งเป็นเฟรมปืน, สคริปต์ตอบปืนด้วย F13–F15
+        public const int SHOTS_VERSION = 15;    // สคริปต์ตั้งแต่ v15 รับเฟรมตั้งค่าชนิด 2 (MAX_SHOTS)
+        public const int ADS_VERSION = 13;      // สคริปต์ตั้งแต่ v13 รับเฟรมตั้งค่าชนิด 1 (REQUIRE_ADS) — v8–v12 ไม่มีตัวรับค่าสด
 
         // เฟรมตั้งค่า: 01 | ชนิด(2) | ค่า(8) | 0(8) | (ชนิด+ค่า)%16   ชนิด 0 = ปุ่มวนปืน
+        // เฟรมปืน (v16+): 00 | ปืน(2) | (ปืน*5+3)%16 — สั้น 8 บิต สลับปืนได้เร็ว
+        public static int[] GunFrame(int gun)
+        {
+            var bits = new List<int> { 0, 0 };
+            Put(bits, gun, 2); Put(bits, (gun * 5 + 3) % 16, 4);
+            return bits.ToArray();
+        }
+
         public static int[] CfgFrame(int kind, int value)
         {
             var bits = new List<int> { 0, 1 };

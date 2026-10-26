@@ -15,6 +15,7 @@ namespace GunBeep
         public int HotKey { get; set; } = 0x77;     // F8
         public int Gun { get; set; } = 1;
         public bool TopMost { get; set; }
+        public bool RequireAds { get; set; } = false; // true = ดึงเฉพาะตอนเล็งสโคป (ADS), false = ดึงทุกครั้งที่ยิง (ตรงกับสคริปต์ตั้งต้น)
         public int OsdMode { get; set; } = 1;       // ป้ายบนจอเกม: 0 ปิด, 1 ตอนเปลี่ยน, 2 ตลอด
         public int OsdCorner { get; set; }          // 0 ซ้ายบน, 1 ขวาบน, 2 ซ้ายล่าง, 3 ขวาล่าง
         public string Preset { get; set; }         // โปรไฟล์ค่าปืนที่โหลด/บันทึกล่าสุด
@@ -25,7 +26,19 @@ namespace GunBeep
         public int CycleMouse { get; set; } = 4;    // ปุ่มเมาส์วนปืน/จูนในเกม (G Hub): 4 Back, 5 Forward, 3 กลาง, 0 = ไม่ใช้
         public int CycleKey { get; set; }           // หรือปุ่มคีย์บอร์ด (GunBeep จัดการเอง), 0 = ไม่ใช้
         public bool ResAlways { get; set; }
+        public int MaxShots { get; set; } = 42;     // ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2), 0 = ไม่จำกัด
+        public bool Socd { get; set; } = false;      // SOCD: ปุ่มทิศตรงข้ามกดพร้อมกัน (Snap Tap)
+        public int SocdMode { get; set; } = 0;       // 0 ปุ่มล่าสุดชนะ, 1 ปุ่มแรกชนะ, 2 กดคู่ = หยุดนิ่ง
+        public bool SocdGameOnly { get; set; } = true;
+        public List<int[]> SocdPairs { get; set; } = new() { new[] { 0x41, 0x44 } };   // A ⇄ D
+        public bool PauseInMenu { get; set; } = true; // หยุดดึงชั่วคราวตอนเปิดกระเป๋า/แผนที่/เมนู (มีเคอร์เซอร์) หรือสลับออกจากเกม
         public int SlotSwitch { get; set; } = 2;    // สลับปืนตามช่องในเกม: 0 ปิด, 1 ปุ่ม 1/2, 2 ปุ่ม 1/2 + ลูกกลิ้ง         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
+        public bool VisionAuto { get; set; } = false;        // (เลิกใช้: เคยสแกนเองตอนกด Tab แล้วเขียนทับค่าผิด)
+        public bool VisionAutoApply { get; set; } = false;   // ส่งค่าแรงดีดที่คำนวณได้เข้า G Hub ทันที (ตอนกดสแกนเอง)
+        public int VisionKey { get; set; } = 0x76;           // ปุ่มลัดสแกนจอสด (F7, 0 = ปิด)
+        public string VisionRes { get; set; } = "1728x1080"; // ความละเอียด ("1728x1080" หรือ "1920x1080")
+        public int VisionOffsetX { get; set; } = 0;          // เลื่อนตำแหน่งแนวนอน ±px
+        public int VisionOffsetY { get; set; } = 0;          // เลื่อนตำแหน่งแนวตั้ง ±px
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };
