@@ -77,6 +77,16 @@ namespace GunBeep
 
         public static bool IsLockOn(int vk) => (GetKeyState(vk) & 1) != 0;
 
+        // สถานะไฟจริงตอนนี้: GetKeyState ของเธรดที่รับข้อความอยู่จะตามหลังได้ → ถามจากเธรดใหม่ที่เพิ่งสร้าง
+        public static bool ReadLockNow(int vk)
+        {
+            bool on = false;
+            var t = new System.Threading.Thread(() => on = (GetKeyState(vk) & 1) != 0) { IsBackground = true };
+            t.Start();
+            t.Join(200);
+            return on;
+        }
+
         public static void Tap(byte vk, byte scan, bool extended)
         {
             uint ext = extended ? 1u : 0u;

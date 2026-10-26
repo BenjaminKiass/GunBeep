@@ -150,8 +150,8 @@ namespace GunBeep
             menuTimer.Start();
 
             // เปิดโปรแกรมมาให้มาโครปิดไว้ก่อนเสมอ
-            scroll = KeyHook.IsLockOn(VK_SCROLL);
-            num = KeyHook.IsLockOn(VK_NUM);
+            scroll = KeyHook.ReadLockNow(VK_SCROLL);     // อ่านไฟจริง (GetKeyState ของเธรด UI ตอนเพิ่งเปิดอาจยังไม่ตรง)
+            num = KeyHook.ReadLockNow(VK_NUM);
             on = false;
             UpdateAdsModeButton();
             UpdateShotsText();
@@ -322,10 +322,32 @@ namespace GunBeep
                 if (!GameInFront()) { want = true; why = "game not in front"; }
                 else if (CursorShown()) { want = true; why = "cursor shown (inventory/map/menu)"; }
             }
-            if (want == paused) return;
-            paused = want;
-            ApplyState();
-            Log.Info(paused ? "pause: " + why : "resume");
+            if (want != paused)
+            {
+                paused = want;
+                ApplyState();
+                Log.Info(paused ? "pause: " + why : "resume");
+            }
+            CheckScroll();
+        }
+
+        // ไฟ Scroll Lock จริงต้องตรงกับปุ่มในแอปเสมอ — เคยเจอแอปขึ้น OFF แต่ไฟยังติด มาโครเลยยังดึงอยู่
+        //   ทุกครึ่งวินาทีอ่านไฟจริง ถ้าไม่ตรงก็กดแก้ให้ (เว้นช่วงที่เพิ่งกด / ผู้ใช้กด Scroll Lock เอง / กำลังส่งค่า)
+        DateTime lastScrollTap, lastScrollCheck;
+
+        void CheckScroll()
+        {
+            if (!NoNum || liveBusy || setupBusy || lockSettle == null || lockSettle.IsEnabled) return;
+            var now = DateTime.Now;
+            if (now - lastScrollCheck < TimeSpan.FromMilliseconds(500) || now - lastScrollTap < TimeSpan.FromMilliseconds(400)) return;
+            lastScrollCheck = now;
+            bool real = KeyHook.ReadLockNow(VK_SCROLL);
+            bool want = on && !paused;
+            if (real == want) { scroll = real; return; }
+            KeyHook.Tap(VK_SCROLL, 0x46, false);
+            scroll = want;
+            lastScrollTap = now;
+            Log.Info($"scroll lock was {(real ? "on" : "off")} but macro is {(want ? "on" : "off")} → fixed");
         }
 
         // ---------------------------------------------------------------- จอยืดตอนเปิดเกม
@@ -732,7 +754,7 @@ namespace GunBeep
             if (NoNum)
             {
                 bool want = on && !paused;
-                if (want != scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = want; }
+                if (want != scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = want; lastScrollTap = DateTime.Now; }
                 if (on) SyncGun();
                 return;
             }
@@ -850,6 +872,7 @@ namespace GunBeep
             {
                 case VK_SCROLL:
                 case VK_NUM:
+                    lastScrollTap = DateTime.Now;
                     if (vk == VK_SCROLL) scroll = !scroll; else num = !num;
                     lockSettle.Stop();
                     lockSettle.Start();
