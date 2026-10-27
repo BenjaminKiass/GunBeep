@@ -188,7 +188,7 @@
 
                             <DockPanel Margin="0,4,0,0">
                                 <Button DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Content="ใช้ค่านี้กับปืน 1" Click="ApplySlot1_Click"/>
-                                <TextBlock x:Name="S1Formula" Text="กดปุ่ม [สแกนหน้าจอนี้] หรือกด F7 ในเกมเพื่อตรวจจับ"
+                                <TextBlock x:Name="S1Formula" Text="กดปุ่ม [สแกนหน้าจอนี้] เพื่อตรวจจับ"
                                            FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                             </DockPanel>
                         </StackPanel>
@@ -245,7 +245,7 @@
 
                             <DockPanel Margin="0,4,0,0">
                                 <Button DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Content="ใช้ค่านี้กับปืน 2" Click="ApplySlot2_Click"/>
-                                <TextBlock x:Name="S2Formula" Text="กดปุ่ม [สแกนหน้าจอนี้] หรือกด F7 ในเกมเพื่อตรวจจับ"
+                                <TextBlock x:Name="S2Formula" Text="กดปุ่ม [สแกนหน้าจอนี้] เพื่อตรวจจับ"
                                            FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                             </DockPanel>
                         </StackPanel>
@@ -256,7 +256,7 @@
                             Click="ScanNow_Click">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock Text="สแกนหน้าจอตอนนี้ (หรือกด F7 ในเกม)" FontSize="13.5" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="สแกนหน้าจอตอนนี้" FontSize="13.5" FontWeight="Bold" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                     <TextBlock x:Name="StatusMsg" Text="พร้อมสแกน (เปิดหน้ากระเป๋า Tab ในเกม แล้วกดสแกน)" FontSize="11.5"

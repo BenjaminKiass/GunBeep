@@ -36,7 +36,7 @@ namespace GunBeep
         public int SlotSwitch { get; set; } = 2;    // สลับปืนตามช่องในเกม: 0 ปิด, 1 ปุ่ม 1/2, 2 ปุ่ม 1/2 + ลูกกลิ้ง         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
         public bool VisionAuto { get; set; } = false;        // (เลิกใช้: เคยสแกนเองตอนกด Tab แล้วเขียนทับค่าผิด)
         public bool VisionAutoApply { get; set; } = false;   // ส่งค่าแรงดีดที่คำนวณได้เข้า G Hub ทันที (ตอนกดสแกนเอง)
-        public int VisionKey { get; set; } = 0x76;           // ปุ่มลัดสแกนจอสด (F7, 0 = ปิด)
+        public int VisionKey { get; set; } = 0;              // (เลิกใช้: ปุ่ม F7 สแกนจอในเกมเอาออกแล้ว)
         public string VisionRes { get; set; } = "1728x1080"; // ความละเอียด ("1728x1080" หรือ "1920x1080")
         public int VisionOffsetX { get; set; } = 0;          // เลื่อนตำแหน่งแนวนอน ±px
         public int VisionOffsetY { get; set; } = 0;          // เลื่อนตำแหน่งแนวตั้ง ±px

@@ -866,7 +866,6 @@ namespace GunBeep
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
-            if (cfg.VisionKey != 0 && vk == cfg.VisionKey) { TriggerVisionScan(true); return; }
 
             switch (vk)
             {
