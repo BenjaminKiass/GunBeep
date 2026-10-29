@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -1275,8 +1275,7 @@ namespace GunBeep
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
             if (vk == cfg.HotKey) { ToggleOn(); return; }
-            // ในตัว: ปุ่มเมาส์ในเกม (Back/Forward/กลาง) GunBeep จัดการเอง แทนสคริปต์ G Hub
-            if (Native && cfg.CycleKey == 0 && cfg.CycleMouse > 0 && vk == cfg.CycleMouse + 1) { CycleKeyPressed(); return; }
+            // ในตัว: ไม่มีปุ่มเลือกชุด/จูนในเกม (Back/Forward) — ทุกอย่างออโต้จากหน้ากระเป๋า
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;

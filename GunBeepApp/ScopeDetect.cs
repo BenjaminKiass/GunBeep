@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -331,7 +331,7 @@ namespace GunBeep
             for (int x = minX; x <= maxX; x++) if (on[x, midRow]) mid++;
             if (bw / bh < 0.42) return 1;
             if (bottom >= bw * 0.7 && mid <= bw * 0.5) return 2;
-            return 0;
+            return 3;                                     // เลขอื่น (ป้ายเขียนปุ่มที่ผู้ใช้ตั้ง เช่น 3) = มีปืน
         }
 
         // ---------------------------------------------------------------- ชื่อปืน (Windows OCR ภาษาอังกฤษ)
@@ -430,7 +430,9 @@ namespace GunBeep
                 badge.Offset(-origin.X, -origin.Y);
                 icon.Offset(-origin.X, -origin.Y);
                 var p = new Panel();
-                using (var b = Crop(shot, badge)) p.Slot = ReadSlot(b);
+                // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
+                //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
+                using (var b = Crop(shot, badge)) p.Slot = ReadSlot(b) != 0 ? i + 1 : 0;
                 using (var ic = Crop(shot, icon))
                 {
                     if (Detail(ic) < 0.035) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
@@ -456,7 +458,29 @@ namespace GunBeep
                 if (p.Slot != 0) p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId);
                 res[i] = p;
             }
+            Sample(shot, origin, screenW, screenH, res);
             return res;
+        }
+// ---------------------------------------------------------------- เก็บภาพแผงปืนไว้สอนสโคป/ของแต่งที่ยังไม่รู้จัก
+        //   เฉพาะภาพบริเวณแผงปืนในหน้ากระเป๋า เก็บในเครื่อง (saved\samples) เมื่อชุดสโคป/ของแต่งเปลี่ยน ไม่เกิน 300 ภาพ
+        static string lastSample;
+        public static readonly string SampleDir = Path.Combine(Settings.KitDir, "samples");
+
+        static void Sample(Bitmap shot, Point origin, int w, int h, Panel[] res)
+        {
+            try
+            {
+                string sig = string.Join("|", res.Select(p => $"{p.Slot}/{p.Set}/{p.ScopeLabel}/{p.Score:0.0}/" +
+                             (p.Att == null ? "" : string.Join("", p.Att.Select(a => a ? 1 : 0))) + "/" + string.Join(",", p.AttId ?? new string[0])));
+                if (sig == lastSample) return;
+                lastSample = sig;
+                Directory.CreateDirectory(SampleDir);
+                if (Directory.GetFiles(SampleDir, "*.png").Length >= 300) return;
+                string name = $"{DateTime.Now:yyyyMMdd-HHmmss-fff}_{origin.X}_{origin.Y}_{w}x{h}.png";
+                shot.Save(Path.Combine(SampleDir, name), ImageFormat.Png);
+                File.AppendAllText(Path.Combine(SampleDir, "index.txt"), name + "  " + sig + Environment.NewLine);
+            }
+            catch (Exception ex) { Log.Error("sample", ex); }
         }
     }
 }
