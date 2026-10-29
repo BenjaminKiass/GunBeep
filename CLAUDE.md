@@ -326,7 +326,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   0.5 s bin vs the macro's pull → per-gun curve c.Learn[gun][8] (gain 0.6 first 5 sprays, then 0.35), and
   signed dx → c.LearnX[gun] (x bias). Skips sprays with lots of sideways tracking. User log 2026-10-30:
   Beryl/AKM defaults were ~15% too strong → BuiltinGun lowered.
-- AmmoReader.cs: reads the HUD ammo digits (centre x, 0.905–0.95 H; white digits, ∞ cut by aspect) with a
+- (removed 2026-10-30 at the user's request — less screen capture) AmmoReader: read the HUD ammo digits (centre x, 0.905–0.95 H; white digits, ∞ cut by aspect) with a
   7-segment test tuned to PUBG's square font (3 has corner stubs → side samples at 28–40% / 58–70%).
   Verified "30" at 1296×810 / 1728×1080 / 2303×1439. 0 twice = mag empty, >0 = reloaded; R key no longer used.
   Unreadable crops are saved to saved\samples\ammo-*.png.
+- Mag counting (no screen reading): RecoilCalc.GunInfo = per-gun mag / extended mag / ms per shot (community
+  values). Mag slot (attachment index 2) filled = extended. MagCap/GunShotMs use slotInfo[magSlot]; unknown gun
+  → cfg.MaxShots and 86 ms. Reload key (GameSettings.Reload) resets the count again.

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -34,7 +34,6 @@ namespace GunBeep
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
             BuildGameCard();
-            StartAmmoLoop();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
             BuildKeyCards();
@@ -220,7 +219,7 @@ namespace GunBeep
                 !on ? (PRed, PRedBg, B("#FCA5A5"), cfg.AutoOn ? "มาโครปิด · รอเข้าเกม" : "มาโครปิด")
                 : paused ? (PAmber, PAmberBg, B("#FCD34D"), "หยุดชั่วคราว · " + PauseText(pauseWhy))
                 : spraying ? (PCyan, PBlueBg, PCyan, "กำลังดึง")
-                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1] + (AmmoLive ? $" · กระสุน {ammoNow}" : ""));
+                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1] + (magSlot is 1 or 2 && cfg.MagMode != 0 ? $" · แม็ก ~{Math.Max(0, MagCap(magSlot) - (int)MagNow())}/{MagCap(magSlot)}" : ""));
             LiveDot.Fill = st.dot;
             LivePill.Background = st.bg;
             LiveText.Foreground = st.fg;
@@ -359,8 +358,10 @@ namespace GunBeep
 
             // ปืน
             double gf = RecoilCalc.GunFactor(c, gk);
+            string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
+                ? $" · แม็ก {(p.Att != null && p.Att[2] ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
             string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
-            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{learnTxt}",
+            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}",
                                   gf, PGold, gk == null ? null : () => AdjustGun(gk, -0.05), gk == null ? null : () => AdjustGun(gk, +0.05), gk == null));
 
             // ของแต่ง
@@ -607,7 +608,7 @@ namespace GunBeep
                 ("ปืนพก / มีด / ระเบิด", cfg.HolsterPause ? "ถืออยู่ = ไม่ดึง" : "ปิดอยู่ (ดึงตลอด)", $"{KeyName(gs.Pistol)} · {KeyName(gs.Melee)} · {KeyName(gs.Throwable)}"),
                 ("เก็บปืน", cfg.HolsterPause ? "ไม่ดึงจนกว่าจะหยิบปืน" : "ปิดอยู่", KeyName(gs.Holster)),
                 ("กระเป๋า / แผนที่", "เคอร์เซอร์โผล่ = ไม่ดึง", "Tab · M"),
-                ("แม็กหมด", cfg.MagMode != 0 ? "อ่านเลขกระสุนบนจอ เหลือ 0 = หยุดดึง" : "ไม่หยุด (เทรนนิ่ง)", "อัตโนมัติ"),
+                ("แม็กหมด", cfg.MagMode != 0 ? "นับตามขนาดแม็กของปืน (+แม็กขยาย) → รอรีโหลด" : "ไม่หยุด (เทรนนิ่ง)", KeyName(gs.ReloadKey)),
             }));
             KeyCards.Children.Add(KeyCard("", "ใช้แรงดึง", "ตอนยิง", PBlue, new[]
             {
@@ -827,76 +828,23 @@ namespace GunBeep
 
         void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
 
-        // ---------------------------------------------------------------- อ่านกระสุนจากจอ (แทนนับเวลา / กด R)
-        //   ระหว่างเล่น (เกมอยู่หน้า ไม่มีเคอร์เซอร์) อ่านเลขกระสุนล่างกลางจอ ~15 ครั้ง/วินาที
-        //   0 สองครั้งติด = แม็กหมด หยุดดึง · เลขกลับมามากกว่า 0 = รีโหลดแล้ว ดึงต่อ
-        volatile bool ammoWanted;
-        int ammoNow = -1, ammoZeros;
-        DateTime ammoAt = DateTime.MinValue, ammoSampleAt;
-        bool AmmoLive => DateTime.Now - ammoAt < TimeSpan.FromSeconds(1.5);
+        // ---------------------------------------------------------------- แม็กตามปืน (ไม่อ่านหน้าจอระหว่างเล่น)
+        //   ปืนที่ถือ (จากหน้ากระเป๋า) → ขนาดแม็ก, ช่องแม็กมีของ = แม็กขยาย, เวลาต่อนัดของปืนนั้น
+        //   ปืนที่ไม่รู้จัก = ใช้ "กระสุน/แม็ก" ที่ตั้งเอง และ 86 ms/นัด
+        ScopeDetect.Panel SlotPanelOf(int slot) => cfg.ScopeAuto && slot is 1 or 2 ? slotInfo[slot] : null;
 
-        void StartAmmoLoop()
+        int MagCap(int slot)
         {
-            var t = new System.Threading.Thread(() =>
-            {
-                while (true)
-                {
-                    System.Threading.Thread.Sleep(ammoWanted ? 66 : 300);
-                    if (!ammoWanted) continue;
-                    try
-                    {
-                        int w = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width, h = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
-                        using var crop = AmmoReader.Capture(w, h);
-                        int? n = AmmoReader.Read(crop);
-                        System.Drawing.Bitmap keep = null;
-                        if (n == null && AmmoReader.LastText != "-" && DateTime.Now - ammoSampleAt > TimeSpan.FromSeconds(3)) { ammoSampleAt = DateTime.Now; keep = new System.Drawing.Bitmap(crop); }
-                        Dispatcher.BeginInvoke(new Action(() => OnAmmo(n, keep)));
-                    }
-                    catch (Exception ex) { Log.Error("ammo", ex); System.Threading.Thread.Sleep(2000); }
-                }
-            }) { IsBackground = true, Name = "AmmoReader", Priority = System.Threading.ThreadPriority.BelowNormal };
-            t.Start();
+            var p = SlotPanelOf(slot);
+            if (p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi))
+                return p.Att != null && p.Att[2] ? gi.ext : gi.mag;
+            return cfg.MaxShots;
         }
 
-        void OnAmmo(int? n, System.Drawing.Bitmap unreadable)
+        double GunShotMs(int slot)
         {
-            if (unreadable != null)
-            {
-                // อ่านไม่ออก (เลขที่ยังไม่เคยเห็น) → เก็บไว้ดู/ปรับตัวอ่าน (saved\samples\ammo-*.png ไม่เกิน 60 ภาพ)
-                try
-                {
-                    Directory.CreateDirectory(ScopeDetect.SampleDir);
-                    if (Directory.GetFiles(ScopeDetect.SampleDir, "ammo-*.png").Length < 60)
-                        unreadable.Save(System.IO.Path.Combine(ScopeDetect.SampleDir, $"ammo-{DateTime.Now:HHmmss-fff}.png"), System.Drawing.Imaging.ImageFormat.Png);
-                    Log.Info("ammo unreadable: " + AmmoReader.LastText);
-                }
-                catch { }
-                unreadable.Dispose();
-            }
-            if (n == null) return;
-            ammoAt = DateTime.Now;
-            if (n != ammoNow) LiveDirty();
-            ammoNow = n.Value;
-            if (magSlot == 0 || cfg.MagMode == 0) return;
-            if (ammoNow == 0)
-            {
-                if (++ammoZeros >= 2 && !magEmptyBy[magSlot])
-                {
-                    magEmptyBy[magSlot] = true;
-                    Log.Info("mag empty (read 0 on screen) → stop pulling");
-                    PopOsd("แม็กหมด");
-                }
-            }
-            else
-            {
-                ammoZeros = 0;
-                magFiredBy[magSlot] = 0;
-                if (magEmptyBy[magSlot])
-                {
-                    magEmptyBy[magSlot] = false;
-                    Log.Info($"reloaded (read {ammoNow} on screen) → pull again");
-                }
-            }
+            var p = SlotPanelOf(slot);
+            return p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi) ? gi.ms : SHOT_MS;
         }
 
         // ---------------------------------------------------------------- ถืออะไรอยู่ (ตามปุ่มในเกม)

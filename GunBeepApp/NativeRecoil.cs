@@ -19,7 +19,8 @@ namespace GunBeep
 
         const int STEP_MS = 10, RELEASE_GRACE_MS = 30;
         const double X_NUDGE = 1;                        // Alt ค้าง = ดึงซ้ายเพิ่ม / Ctrl ค้าง = ดึงขวาเพิ่ม (เหมือนสคริปต์)
-        public const double SHOT_MS = 86;                // ~700 นัด/นาที (ใช้กับ MaxShots)
+        double shotMs = 86;                              // เวลาต่อนัดของปืนที่ถือ (ใช้กับ MaxShots)
+        public void SetShotMs(double ms) => Volatile.Write(ref shotMs, ms > 20 ? ms : 86);
 
         const int VK_LBUTTON = 0x01, VK_RBUTTON = 0x02, VK_LCONTROL = 0xA2, VK_LMENU = 0xA4;
 
@@ -135,7 +136,7 @@ namespace GunBeep
                 }
                 if (stop || !active || !front) { reason = "macro off / paused"; break; }
                 int max = MaxShots;
-                if (max > 0 && now >= max * SHOT_MS) { reason = "max shots"; break; }
+                if (max > 0 && now >= max * Volatile.Read(ref shotMs)) { reason = "max shots"; break; }
                 if (RequireAds && !Down(VK_RBUTTON)) { reason = null; break; }
 
                 loops++;

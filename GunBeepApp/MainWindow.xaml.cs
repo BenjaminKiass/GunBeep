@@ -329,7 +329,7 @@ namespace GunBeep
         //   ครบ "กระสุนต่อแม็ก" = หยุดดึง (ปิดไฟ Scroll ชั่วคราว) จนกว่าจะรีโหลด:
         //   กด R / แม็กหมดแล้วกดยิงอีก (เกมรีโหลดเอง) = เริ่มนับใหม่
         //   นับแยกตามช่องปืน: เปลี่ยนปืน (1 2 3 / ลูกกลิ้ง) แม็กในเกมไม่ได้เติม → สลับไปนับของช่องนั้นต่อ ไม่ล้างค่า
-        const double SHOT_MS = 86;                // ไรเฟิลส่วนใหญ่ ~700 นัด/นาที (ตรงกับ SHOT_MS ในสคริปต์)
+        const double SHOT_MS = 86;                // ปืนที่ไม่รู้จัก: ~700 นัด/นาที (ตรงกับ SHOT_MS ในสคริปต์)
         readonly double[] magFiredBy = new double[4];   // นัดที่ยิงไปแล้วในแม็กของแต่ละช่อง (ชุดที่ปล่อยแล้ว) — 0 = ไม่ใช่ปืน (ระเบิด/เก็บปืน)
         readonly bool[] magEmptyBy = new bool[4];
         int magSlot = 1;                          // ช่องที่ถืออยู่ตามปุ่มที่กด
@@ -338,7 +338,7 @@ namespace GunBeep
 
         bool magEmpty => magSlot != 0 && magEmptyBy[magSlot];
 
-        static double ShotsIn(TimeSpan held) => Math.Floor(held.TotalMilliseconds / SHOT_MS) + 1;   // นัดแรกออกทันที
+        double ShotsIn(TimeSpan held) => Math.Floor(held.TotalMilliseconds / GunShotMs(magSlot)) + 1;   // นัดแรกออกทันที
 
         bool Playing() => GameInFront() && !CursorShown();
 
@@ -393,11 +393,10 @@ namespace GunBeep
             WatchLanguage(front, front && !cursor);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
-            ammoWanted = Native && on && cfg.MagMode != 0 && front && !cursor;
-            if (!magEmpty && on && TimeCounting && !AmmoLive && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
+            if (!magEmpty && on && TimeCounting && MagCap(magSlot) > 0 && MagNow() >= MagCap(magSlot))
             {
                 magEmptyBy[magSlot] = true;
-                Log.Info($"mag empty: {MagNow():0}/{cfg.MaxShots} shots → stop pulling until reload");
+                Log.Info($"mag empty: {MagNow():0}/{MagCap(magSlot)} shots ({GunShotMs(magSlot):0} ms/shot) → stop pulling until reload");
                 PopOsd("แม็กหมด — กด R");
             }
             bool want = false;
@@ -946,7 +945,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {
@@ -1302,7 +1301,8 @@ namespace GunBeep
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
-            if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);                // (ไม่ดูปุ่ม R แล้ว: รีโหลดรู้จากเลขกระสุนบนจอ)          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+            if (vk == GameSettings.Current.ReloadKey) ResetMag("reload key");             // รีโหลด (ปุ่มตามที่ตั้งในเกม)
+            else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
             if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
             if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 
@@ -2144,7 +2144,7 @@ namespace GunBeep
         }
 
         // สคริปต์หยุดดึงเมื่อยิงค้างชุดเดียวเกินจำนวนนี้ (ไม่หยุด = 0)
-        int EffectiveMaxShots => cfg.MagMode != 0 ? cfg.MaxShots : 0;
+        int EffectiveMaxShots => cfg.MagMode != 0 ? MagCap(magSlot) + 2 : 0;
 
         // ---------------------------------------------------------------- หยุดดึงหลังยิงครบ N นัด
         DispatcherTimer shotsSave;

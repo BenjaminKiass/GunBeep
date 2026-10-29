@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -17,7 +17,7 @@ namespace GunBeep
         public readonly Dictionary<string, double> Scope = new();    // Scope2X … Scope15X (ค่าที่ตั้งไว้ แม้ไม่ได้ใช้)
         public string AdsMode = "Hold";
         public int Slot1 = 0x31, Slot2 = 0x32, Pistol = 0x33, Melee = 0x34, Throwable = 0x35, Holster = 0x58,
-                   Crouch = 'C', Prone = 'Z', HoldBreath = 0xA0;
+                   Crouch = 'C', Prone = 'Z', HoldBreath = 0xA0, ReloadKey = 'R';
 
         public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                                                       "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
@@ -111,6 +111,7 @@ namespace GunBeep
                 g.Crouch = Key("ToggleCrouch", g.Crouch);
                 g.Prone = Key("ToggleProne", g.Prone);
                 g.HoldBreath = Key("HoldBreath", g.HoldBreath);
+                g.ReloadKey = Key("Reload", g.ReloadKey);
             }
             catch (Exception ex) { Log.Error("read pubg settings", ex); }
             return g;

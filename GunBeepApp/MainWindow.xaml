@@ -953,7 +953,8 @@
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="58"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="กระสุน/แม็ก" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="แม็ก (ปืนอื่น)" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                                                               ToolTip="ปืนที่รู้จักใช้ขนาดแม็กของปืนนั้นเอง (+แม็กขยาย) — ค่านี้ใช้กับปืนที่อ่านชื่อไม่ได้"/>
                                                     <Button Grid.Column="1" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="-" Click="ShotsStep_Click"/>
                                                     <Slider x:Name="ShotsSlider" Grid.Column="2" Style="{StaticResource NiceSlider}" Minimum="5" Maximum="120"
                                                             IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="5" Margin="6,0"/>

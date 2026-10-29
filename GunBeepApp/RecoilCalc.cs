@@ -132,6 +132,20 @@ namespace GunBeep
             ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
+        // แม็กปกติ, แม็กขยาย, เวลาต่อนัด (ms) ตอนยิงออโต้ — ค่าที่ผู้เล่นรู้กันทั่วไป (ไม่ใช่ข้อมูลทางการ อาจต่างตามแพตช์)
+        public static readonly Dictionary<string, (int mag, int ext, double ms)> GunInfo = new()
+        {
+            ["M416"] = (30, 40, 86), ["SCAR"] = (30, 40, 96), ["QBZ"] = (30, 40, 92), ["G36C"] = (30, 40, 86),
+            ["AUG"] = (30, 40, 85), ["ACE32"] = (30, 40, 88), ["K2"] = (30, 40, 88), ["FAMAS"] = (25, 30, 67),
+            ["M16A4"] = (30, 40, 75), ["BERYL"] = (30, 40, 86), ["AKM"] = (30, 40, 100), ["GROZA"] = (30, 40, 80),
+            ["MK47"] = (20, 30, 100), ["UMP"] = (25, 35, 92), ["VECTOR"] = (19, 33, 55), ["MICRO"] = (25, 35, 48),
+            ["UZI"] = (25, 35, 48), ["TOMMY"] = (30, 50, 86), ["MP5K"] = (30, 40, 67), ["PP19"] = (53, 53, 86),
+            ["BIZON"] = (53, 53, 86), ["P90"] = (50, 50, 60), ["JS9"] = (30, 40, 67), ["MP9"] = (30, 40, 60),
+            ["DP28"] = (47, 47, 109), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 61), ["MINI14"] = (20, 30, 100),
+            ["SKS"] = (10, 20, 100), ["SLR"] = (10, 20, 100), ["MK12"] = (20, 30, 100), ["QBU"] = (10, 20, 100),
+            ["VSS"] = (10, 20, 86), ["MK14"] = (10, 20, 90), ["DRAGUNOV"] = (10, 20, 100),
+        };
+
         public static double GunFactor(CalcSettings c, string gunKey)
         {
             double Of(string k) => k != null && BuiltinGun.TryGetValue(k, out double v) ? v : 1;
@@ -160,12 +174,11 @@ namespace GunBeep
             ids = new string[4];
             for (int i = 0; i < 4; i++)
             {
-                if (i == 2) continue;
                 var r = ScopeDetect.Box(b[0] + SlotDx[i] * h / w, b[1] + SlotDy, SlotSize, w, h);
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
-                if (!has[i]) continue;
+                if (!has[i] || i == 2) continue;          // ช่องแม็ก: รู้แค่ว่ามีของ (แม็กขยาย) ไม่ต้องรู้ชนิด
                 // ชิ้นไหน: ลองเลื่อนกรอบ ±2 px เผื่อตำแหน่งเพี้ยนนิดหน่อย เอาที่ตรงสุด
                 (AttachmentId.Item item, double score) best = (null, -1);
                 int d = Math.Max(1, r.Width / 20);
