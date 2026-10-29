@@ -347,3 +347,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Panel.Name is the canonical name. (Old StartsWith made "Mk147 Mutant" → MK14 and showed raw OCR garbage.)
 - Scans run every 250 ms while in the inventory with no mouse button held; releasing a button (drop / right-click
   equip) rescans after 80 ms even before the cursor comes back.
+- ScopeDetect.ReadGun: OCR normal → black-on-white → black-on-white ×4, first that MatchGun accepts; each success
+  stores the name's white-text shape (48×12 grid, saved\names.json, ≤6 per gun); when all OCR passes fail the
+  shape is matched (≥0.85, aspect ±12%). Offline test on 385 real panels: single OCR 80%, three passes 89%.
+- Empty scope slot with gun art behind it used to read "?" (kept the previous gun's set). Now: no template match +
+  no teal icon pixels (< 0.5%; real icons 4–7%) + cursor not over the panels → "no scope".
+- Offline test harness: %TEMP%\gbatt\gbtest (references bin\Debug GunBeep.dll, replays saved\samples). Never run
+  GunBeep.exe for tests.

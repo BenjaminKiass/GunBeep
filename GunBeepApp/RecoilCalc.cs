@@ -266,8 +266,8 @@ namespace GunBeep
                 var r = ScopeDetect.Box(b[0] + SlotDx[i] * h / w, b[1] + SlotDy, SlotSize, w, h);
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
-                // เมาส์ชี้ช่องนี้อยู่ → พื้นช่องเป็นสีขาว (วัดจากภาพจริง: ชี้ 62–99% ขาว, ปกติ 0%) อ่านไม่ได้
-                if (c.Width > 4 && BrightShare(c) > 0.4) { unsure[i] = true; continue; }
+                // เมาส์ชี้ช่องนี้อยู่ (พื้นขาว) หรือป้ายรายละเอียดของบังอยู่ (เทาอ่อน) → อ่านไม่ได้ ใช้ค่าเดิม
+                if (c.Width > 4 && (BrightShare(c) > 0.4 || ScopeDetect.Obscured(c))) { unsure[i] = true; continue; }
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
                 if (!has[i] || i == 2) continue;          // ช่องแม็ก: รู้แค่ว่ามีของ (แม็กขยาย) ไม่ต้องรู้ชนิด
                 // ชิ้นไหน: ลองเลื่อนกรอบ ±2 px เผื่อตำแหน่งเพี้ยนนิดหน่อย เอาที่ตรงสุด

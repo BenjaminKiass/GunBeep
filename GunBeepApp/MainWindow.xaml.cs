@@ -877,9 +877,9 @@ namespace GunBeep
                         var nb = boxes[i].name;
                         nb.Offset(-origin.X, -origin.Y);
                         using var crop = ScopeDetect.Crop(shot, nb);
-                        string raw = await ScopeDetect.ReadName(crop);
-                        p.Name = RecoilCalc.MatchGun(raw).name ?? "";                // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
-                        if (p.Name == "" && raw != "" && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
+                        var (_, gunName, raw) = await ScopeDetect.ReadGun(crop);
+                        p.Name = gunName ?? "";                                          // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
+                        if (p.Name == "" && !string.IsNullOrEmpty(raw) && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
                     }
                     return res;
                 });

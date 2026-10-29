@@ -360,17 +360,27 @@ namespace GunBeep
             return ocr;
         }
 
-        public static async Task<string> ReadName(Bitmap name)
+        // mode 0 = ภาพเดิมขยาย 3 เท่า, 1 = ทำเป็นตัวดำบนพื้นขาว + ขอบว่าง (ชื่อสั้นอย่าง MP9 / DBS อ่านออกบ่อยกว่า)
+        public static async Task<string> ReadName(Bitmap name, int mode = 0, int scale = 3)
         {
             if (Ocr() == null) return "";
             try
             {
-                using var big = new Bitmap(name.Width * 3, name.Height * 3, PixelFormat.Format32bppArgb);
+                int pad = mode == 0 ? 0 : name.Height;
+                using var big = new Bitmap(name.Width * scale + pad * 2, name.Height * scale + pad * 2, PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(big))
                 {
+                    g.Clear(mode == 0 ? Color.Black : Color.White);
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.DrawImage(name, new Rectangle(0, 0, big.Width, big.Height));
+                    g.DrawImage(name, new Rectangle(pad, pad, name.Width * scale, name.Height * scale));
                 }
+                if (mode != 0)
+                    for (int y = pad; y < big.Height - pad; y++)
+                        for (int x = pad; x < big.Width - pad; x++)
+                        {
+                            var c = big.GetPixel(x, y);
+                            big.SetPixel(x, y, c.R > 170 && c.G > 170 && c.B > 170 ? Color.Black : Color.White);
+                        }
                 using var ms = new MemoryStream();
                 big.Save(ms, ImageFormat.Png);
                 using var ras = new Windows.Storage.Streams.InMemoryRandomAccessStream();
@@ -382,6 +392,100 @@ namespace GunBeep
                 return r.Text.Trim();
             }
             catch (Exception ex) { Log.Error("ocr read", ex); return ""; }
+        }
+
+        // อ่านชื่อปืน: OCR แบบปกติ → แบบขาวดำ → แบบขาวดำขยาย 4 เท่า → เทียบหน้าตาตัวหนังสือที่จำไว้
+        //   OCR อ่านออกเมื่อไหร่ จำหน้าตาตัวหนังสือชื่อนั้นไว้ (ตัวเลข ไม่ใช่ภาพ, saved\names.json)
+        //   ทดสอบกับภาพจริง 385 แผง: OCR แบบเดียวอ่านออก 80%, สามแบบรวมกัน 89%, + หน้าตาที่จำไว้ = ที่เหลือ
+        public static async Task<(string key, string name, string raw)> ReadGun(Bitmap crop)
+        {
+            string first = null;
+            foreach (var (mode, scale) in new[] { (0, 3), (1, 3), (1, 4) })
+            {
+                string raw = await ReadName(crop, mode, scale);
+                first ??= raw;
+                var m = RecoilCalc.MatchGun(raw);
+                if (m.key != null) { LearnNameShape(crop, m.key); return (m.key, m.name, raw); }
+            }
+            var s = MatchNameShape(crop);
+            return s != null ? (s, RecoilCalc.GunNames.First(g => g.key == s).name, first + " (shape)") : (null, null, first);
+        }
+
+        sealed class NameShape { public string Key { get; set; } public double Aspect { get; set; } public float[] F { get; set; } }
+        static List<NameShape> nameShapes;
+        static readonly string NamesPath = Path.Combine(Settings.KitDir, "names.json");
+        const int NW = 48, NH = 12;
+
+        // ตัวหนังสือขาวล้วน (ทุกสี > 200) → กรอบเฉพาะตัวหนังสือ → ตาราง 48×12 (สัดส่วนพิกเซลขาว) ปรับให้เทียบกันได้
+        static float[] Shape(Bitmap c, out double aspect)
+        {
+            aspect = 0;
+            int w = c.Width, h = c.Height;
+            var on = new bool[w, h];
+            int x0 = w, x1 = -1, y0 = h, y1 = -1;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    var p = c.GetPixel(x, y);
+                    if (Math.Min(p.R, Math.Min(p.G, p.B)) <= 200) continue;
+                    on[x, y] = true;
+                    x0 = Math.Min(x0, x); x1 = Math.Max(x1, x); y0 = Math.Min(y0, y); y1 = Math.Max(y1, y);
+                }
+            if (x1 - x0 < 4 || y1 - y0 < 4) return null;
+            aspect = (x1 - x0 + 1.0) / (y1 - y0 + 1.0);
+            var f = new float[NW * NH];
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    if (on[x, y]) f[(y - y0) * NH / (y1 - y0 + 1) * NW + (x - x0) * NW / (x1 - x0 + 1)] += 1;
+            double mean = f.Average(), norm = 0;
+            for (int i = 0; i < f.Length; i++) { f[i] -= (float)mean; norm += f[i] * f[i]; }
+            norm = Math.Sqrt(norm);
+            if (norm < 1e-6) return null;
+            for (int i = 0; i < f.Length; i++) f[i] /= (float)norm;
+            return f;
+        }
+
+        static List<NameShape> Shapes()
+        {
+            if (nameShapes != null) return nameShapes;
+            try { nameShapes = File.Exists(NamesPath) ? JsonSerializer.Deserialize<List<NameShape>>(File.ReadAllText(NamesPath)) : new(); }
+            catch (Exception ex) { Log.Error("names", ex); nameShapes = new(); }
+            return nameShapes ??= new();
+        }
+
+        static void LearnNameShape(Bitmap crop, string key)
+        {
+            var f = Shape(crop, out double a);
+            if (f == null) return;
+            lock (gate)
+            {
+                var list = Shapes();
+                var mine = list.Where(s => s.Key == key).ToList();
+                if (mine.Any(s => Math.Abs(s.Aspect - a) / a < 0.08 && Dot(s.F, f) > 0.95)) return;     // มีแบบนี้แล้ว
+                if (mine.Count >= 6) list.Remove(mine[0]);
+                list.Add(new NameShape { Key = key, Aspect = Math.Round(a, 3), F = f.Select(v => (float)Math.Round(v, 4)).ToArray() });
+                try { Directory.CreateDirectory(Settings.KitDir); File.WriteAllText(NamesPath, JsonSerializer.Serialize(list)); }
+                catch (Exception ex) { Log.Error("names save", ex); }
+            }
+        }
+
+        // ต้องเหมือน ≥ 0.85 สัดส่วนกว้าง/สูงต่างไม่เกิน 12% และชนะปืนอื่นชัด (≥ 0.05)
+        static string MatchNameShape(Bitmap crop)
+        {
+            var f = Shape(crop, out double a);
+            if (f == null) return null;
+            string best = null;
+            double bs = 0, other = 0;
+            lock (gate)
+                foreach (var s in Shapes())
+                {
+                    if (Math.Abs(s.Aspect - a) / a > 0.12) continue;
+                    double d = Dot(s.F, f);
+                    if (s.Key == best) bs = Math.Max(bs, d);
+                    else if (d > bs) { other = Math.Max(other, bs); best = s.Key; bs = d; }
+                    else other = Math.Max(other, d);
+                }
+            return bs >= 0.85 && bs - other >= 0.05 ? best : null;
         }
 
         // ---------------------------------------------------------------- อ่านทั้งแผง
@@ -431,6 +535,37 @@ namespace GunBeep
             catch (Exception ex) { Log.Error("read pubg keys", ex); return null; }
         }
 
+        // ช่องโดนบัง: เทาอ่อน/ขาว (ทุกสี > 150, ต่างกัน < 30) เกิน 30% — วัดจากภาพจริง: เมาส์ชี้ 98–99%, ป้ายบัง 81%, ช่องปกติ 0–2%
+        public static bool Obscured(Bitmap c)
+        {
+            int n = 0, l = 0;
+            for (int y = 0; y < c.Height; y += 2)
+                for (int x = 0; x < c.Width; x += 2)
+                {
+                    var p = c.GetPixel(x, y);
+                    n++;
+                    int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                    if (mn > 150 && mx - mn < 30) l++;
+                }
+            return n > 0 && (double)l / n > 0.3;
+        }
+
+        // สัดส่วนพิกเซลสีฟ้าอมเขียวสด (สีไอคอนของในกระเป๋า PUBG)
+        public static double TealShare(Bitmap c)
+        {
+            int n = 0, t = 0;
+            for (int y = 0; y < c.Height; y++)
+                for (int x = 0; x < c.Width; x++)
+                {
+                    var p = c.GetPixel(x, y);
+                    n++;
+                    int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                    float hue = p.GetHue();
+                    if (hue >= 170 && hue <= 225 && mx > 76 && (mx - mn) > 0.4 * mx) t++;
+                }
+            return n == 0 ? 0 : (double)t / n;
+        }
+
         public static Panel[] Read(Settings cfg, Bitmap shot, Point origin, int screenW, int screenH)
         {
             var boxes = Boxes(cfg, screenW, screenH);
@@ -463,6 +598,9 @@ namespace GunBeep
                             }
                         p.Score = best.s;
                         if (best.t != null && best.s >= 0.55 && best.margin >= 0.04) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
+                        // ไม่รู้จัก + ไม่มีสีฟ้าของไอคอนเลย = ช่องว่างที่รูปปืนหรือพื้นหลังทับ (ไอคอนสโคปทุกอันมีสีฟ้า 4–7%, ช่องว่าง 0%)
+                        //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน): ก็ไม่มีสีฟ้า → ไม่แน่ใจ ใช้ค่าเดิม
+                        else if (TealShare(ic) < 0.005 && !Obscured(ic)) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
