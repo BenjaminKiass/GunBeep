@@ -164,12 +164,8 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Pause: GunBeep turns Scroll Lock off while the cursor is visible (GetCursorInfo) or PUBG is not foreground; app stays ON.
 - SOCD (Socd.cs) runs inside KeyHook, which has its own thread + message loop (a slow UI thread made Windows skip
   the hook → missed key events → stuck keys). Key-ups are never blocked. Sim of the state machine: 0 stuck cases.
-- MagMode: 2 = AudioShots.cs (process loopback of the biggest TslGame pid via ActivateAudioInterfaceAsync "VAD\Process_Loopback",
-  16-bit 48k; verified it activates on the user's PC (audio goes through FxSound virtual device). Falls back to NAudio
-  whole-system loopback if activation fails. Detector: onset = 4 ms level > 2.2× previous 12 ms and > 1.4× slow avg,
-  40 ms refractory). Fire held + no onset for 170 ms (or 2.2× the burst's shot interval, max 320) → pause (Scroll off)
-  until release. 3 bursts >400 ms with no onset → falls back to time counting. Lua MAX_SHOTS is sent as 0 except in
-  mode 1 (time). Thresholds untested in-game — check "burst ... gunshot(s) heard" lines in saved\log.txt to tune.
+- MagMode: 1 = count shots from fire-hold time (per weapon slot), 0 = never stop. The gunshot-audio mode (AudioShots,
+  NAudio, process loopback) was removed on 2026-10-29 at the user's request: unstable. Settings MagMode 2 → 1 on load.
   Magazine counts are per weapon slot (keys 1–3, wheel toggles 1↔2, 4/5/X = not a gun); only R resets.
 - Resolution switch: SwitchRes saves all top-level window rects (Display.SaveLayout) while at desktop res;
   RestoreRes puts them back 4× over ~2.5 s (Windows re-arranges windows after a mode change).

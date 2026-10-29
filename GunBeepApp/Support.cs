@@ -39,7 +39,7 @@ namespace GunBeep
         public int[] SlotKeys { get; set; }                      // ปุ่มในเกมเลือกปืนช่อง 1 / ช่อง 2 (null = อ่านจาก PUBG)
         public int[] ShotMs { get; set; } = { 86, 86, 86 };      // ตารางรายนัด: เวลาต่อนัดของแต่ละชุดค่า (ms)
         public int[] ShotCount { get; set; } = { 42, 42, 42 };   // ตารางรายนัด: แสดง/แก้กี่นัด
-        public int MagMode { get; set; } = 2;       // รู้ว่าแม็กหมดยังไง: 2 ฟังเสียงปืน (กดยิงแต่ไม่มีเสียง = หยุดดึง), 1 นับเวลากดยิง (MaxShots), 0 ไม่หยุด
+        public int MagMode { get; set; } = 1;       // แม็กหมดแล้วหยุดดึง: 1 นับกระสุนจากเวลากดยิง (MaxShots), 0 ไม่หยุด (เทรนนิ่ง) — 2 (ฟังเสียงปืน) เลิกใช้แล้ว
         public bool Socd { get; set; } = false;      // SOCD: ปุ่มทิศตรงข้ามกดพร้อมกัน (Snap Tap)
         public int SocdMode { get; set; } = 0;       // 0 ปุ่มล่าสุดชนะ, 1 ปุ่มแรกชนะ, 2 กดคู่ = หยุดนิ่ง
         public bool SocdGameOnly { get; set; } = true;
@@ -82,6 +82,7 @@ namespace GunBeep
                     if (!File.Exists(p)) continue;
                     var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
                     if (s.Names == null || s.Names.Length < 3) s.Names = new Settings().Names;
+                    if (s.MagMode == 2) s.MagMode = 1;          // ฟังเสียงปืนเอาออกแล้ว (ไม่เสถียร) → นับกระสุนแทน
                     return s;
                 }
                 catch { }
