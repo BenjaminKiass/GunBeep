@@ -289,6 +289,65 @@ namespace GunBeep
             return b;
         }
 
+        // ---------------------------------------------------------------- สอนสโคป
+        //   สโคปที่ยังไม่รู้จัก (2x, 3x, Holo, 8x, 15x, สโคปมีสกิน …) หรืออ่านผิด → กดเลือกครั้งเดียว จำภาพช่องสโคปนั้นไว้ (saved\\scopes)
+        static readonly (string label, string text)[] ScopeChoices =
+            { ("reddot", "Red Dot"), ("holo", "Holo"), ("2x", "2x"), ("3x", "3x"), ("4x", "4x"), ("6x", "6x"), ("8x", "8x"), ("15x", "15x") };
+        readonly bool[] teachOpen = new bool[3];
+
+        static string ScopeName(string label) => ScopeChoices.FirstOrDefault(c => c.label == label).text ?? label;
+
+        Border Pill(string text, Brush fg, Action click)
+        {
+            var b = new Border
+            {
+                CornerRadius = new CornerRadius(7), Padding = new Thickness(9, 3, 9, 4), Margin = new Thickness(0, 0, 6, 6),
+                Background = PInner, BorderBrush = PLine, BorderThickness = new Thickness(1), Cursor = System.Windows.Input.Cursors.Hand,
+                Child = T(text, 11.5, fg, FontWeights.Bold)
+            };
+            b.MouseEnter += (s, e) => b.BorderBrush = PBlue;
+            b.MouseLeave += (s, e) => b.BorderBrush = PLine;
+            b.MouseLeftButtonUp += (s, e) => click();
+            return b;
+        }
+
+        UIElement ScopeTeachRow(int s, ScopeDetect.Panel p)
+        {
+            var wrap = new WrapPanel { Margin = new Thickness(2, -4, 0, 8) };
+            if (p.Set != -1 && !teachOpen[s])
+            {
+                wrap.Children.Add(Pill("สโคปผิด? แก้", PFaint, () => { teachOpen[s] = true; liveSig = null; LiveDirty(); }));
+                return wrap;
+            }
+            wrap.Children.Add(new TextBlock { Text = "สโคปนี้คือ:", FontSize = 11.5, Foreground = PMuted, Margin = new Thickness(0, 4, 8, 6) });
+            foreach (var (label, text) in ScopeChoices)
+                wrap.Children.Add(Pill(text, label == p.ScopeLabel ? PCyan : PText, () => TeachScope(s, label)));
+            if (p.Set != -1) wrap.Children.Add(Pill("ยกเลิก", PFaint, () => { teachOpen[s] = false; liveSig = null; LiveDirty(); }));
+            return wrap;
+        }
+
+        void TeachScope(int s, string label)
+        {
+            var p = slotInfo[s];
+            if (p?.Icon == null) return;
+            // ภาพช่องสโคปต้องเห็นไอคอนชัด (ไม่โดนเมาส์ชี้/ป้ายบัง) ไม่งั้นจำภาพผิด
+            if (ScopeDetect.Obscured(p.Icon) || ScopeDetect.TealShare(p.Icon) < 0.005)
+            {
+                PopOsd("ภาพช่องสโคปไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องสโคป แล้วกดเลือกอีกครั้ง");
+                return;
+            }
+            int set = ScopeDetect.SetFor(label, cfg.Names);
+            ScopeDetect.Teach(p.Icon, set, label);
+            p.Set = set;
+            p.ScopeLabel = label;
+            p.Score = 1;
+            teachOpen[s] = false;
+            liveSig = null;
+            ApplyScope("taught");
+            LiveDirty();
+            PopOsd($"จำแล้ว: สโคปนี้ = {ScopeName(label)}");
+        }
+
         UIElement SlotPanel(int s)
         {
             var p = slotInfo[s];
@@ -335,9 +394,10 @@ namespace GunBeep
             string setName = setOk ? cfg.Names[set - 1] : "ชุดเดิม";
 
             // สโคป
-            string scopeTitle = p.Set == 0 ? "ไม่มีสโคป (ศูนย์เหล็ก)" : p.Set == -1 ? "ยังไม่รู้จัก — กดปุ่มเลือกสโคปครั้งเดียว จำให้เอง" : p.ScopeLabel;
+            string scopeTitle = p.Set == 0 ? "ไม่มีสโคป (ศูนย์เหล็ก)" : p.Set == -1 ? "ยังไม่รู้จัก — เลือกด้านล่างครั้งเดียว จำให้เอง" : ScopeName(p.ScopeLabel);
             string scopeSub = setOk ? $"ใช้ชุด {setName}" + (Math.Abs(scopeMult - 1) > 0.005 ? $" × {scopeMult:0.00} (คำนวณจากความไวในเกม)" : "") : "ใช้ชุดที่เลือกอยู่";
             root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeMult, PBlue, null, null, p.Set == -1));
+            root.Children.Add(ScopeTeachRow(s, p));
 
             // แรงดึง: ตัวคูณรวม | กราฟ | ท่าทาง
             var mid = new Grid { Margin = new Thickness(0, 0, 0, 10) };

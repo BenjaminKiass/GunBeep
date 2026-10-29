@@ -1330,8 +1330,10 @@ namespace GunBeep
 
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
-            StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
-            if (vk == 0x09 || vk == 0x49 || vk == 0x1B)          // Tab / I / Esc
+            // ปุ่มในเกม (เลขปืน รีโหลด ย่อ/หมอบ Tab) นับเฉพาะตอนเกมอยู่หน้าจอ — พิมพ์เลขในแอปอื่นแล้วค่าเปลี่ยน = บัค
+            bool game = GameInFront();
+            if (game) StanceKey(vk);                             // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
+            if (game && (vk == 0x09 || vk == 0x49 || vk == 0x1B))   // Tab / I / Esc
             {
                 if (invSession) invCloseKeyAt = DateTime.Now;      // ปิดกระเป๋า
                 else if (vk != 0x1B) invKeyAt = DateTime.Now;      // เปิด — นับเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
@@ -1340,11 +1342,14 @@ namespace GunBeep
             // ในตัว: ไม่มีปุ่มเลือกชุด/จูนในเกม (Back/Forward) — ทุกอย่างออโต้จากหน้ากระเป๋า
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
-            if (ScopeKeyPressed(vk)) return;
-            if (vk == GameSettings.Current.ReloadKey) ResetMag("reload key");             // รีโหลด (ปุ่มตามที่ตั้งในเกม)
-            else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
-            if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
-            if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
+            if (game)
+            {
+                if (ScopeKeyPressed(vk)) return;
+                if (vk == GameSettings.Current.ReloadKey) ResetMag("reload key");             // รีโหลด (ปุ่มตามที่ตั้งในเกม)
+                else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+                if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
+                if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
+            }
 
             switch (vk)
             {

@@ -354,3 +354,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   no teal icon pixels (< 0.5%; real icons 4–7%) + cursor not over the panels → "no scope".
 - Offline test harness: %TEMP%\gbatt\gbtest (references bin\Debug GunBeep.dll, replays saved\samples). Never run
   GunBeep.exe for tests.
+- Macro page: under each gun's scope row, unknown scope → buttons Red Dot/Holo/2x/3x/4x/6x/8x/15x (known → "สโคปผิด? แก้")
+  → ScopeDetect.Teach(icon) into saved\\scopes (refused when the icon is obscured or has no teal pixels).
+  Built-in templates: 4x 39, reddot 20, 6x 18, 3x 1 — no 2x/holo/8x/15x yet.
+- Game keys (weapon numbers, reload, stance, Tab, scope keys) are ignored unless PUBG is the foreground window.
