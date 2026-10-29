@@ -29,7 +29,8 @@ namespace GunBeep
         public int MaxShots { get; set; } = 42;     // ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2), 0 = ไม่จำกัด
         // ตรวจสโคปจากหน้ากระเป๋า: ตำแหน่งเป็นสัดส่วนของจอ (x, y = จุดกลาง) — กล่องเลขช่องปืนแผงบน/แผงล่าง, ช่องสโคปแผงบน
         //   ช่องสโคปแผงล่าง = ช่องสโคปแผงบน + ระยะห่างระหว่างกล่องเลขทั้งสอง
-        public bool ScopeAuto { get; set; }
+        public bool ScopeAuto { get; set; } = true;
+        public string ScopeCalib { get; set; }                   // ความละเอียดที่หาตำแหน่งแผงปืนไว้แล้ว ("1728x1080"), null = ยังไม่หา
         public double[] ScopeBadge1 { get; set; } = { 0.702, 0.101 };
         public double[] ScopeBadge2 { get; set; } = { 0.702, 0.311 };
         public double[] ScopeIcon1 { get; set; } = { 0.849, 0.128 };

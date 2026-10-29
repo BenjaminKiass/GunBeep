@@ -31,7 +31,8 @@ namespace GunBeep
         public sealed class Panel
         {
             public int Slot;                          // 1 / 2, 0 = ไม่มีปืน / อ่านไม่ออก
-            public int Set = -1;                      // 1–3, 0 = ไม่มีสโคป, -1 = ไม่รู้จัก
+            public int Set = -1;                      // 1–3, 0 = ไม่มีสโคป, -1 = ไม่รู้จัก, -2 = รู้จักแต่ไม่มีการ์ดชุดนี้
+            public Bitmap Icon;                       // ภาพช่องสโคปล่าสุด
             public double Score;
             public string ScopeLabel = "?";
             public string Name = "";
@@ -171,21 +172,167 @@ namespace GunBeep
             return Math.Sqrt(Math.Max(0, sum2 / n - m * m));
         }
 
-        // เทียบกับตัวอย่างที่สอนไว้: เอาตัวที่ใกล้สุด และต้องห่างจากชุดอื่นพอ
-        public static (Template best, double score, double margin) Match(Bitmap icon)
+        // ---------------------------------------------------------------- สโคปที่รู้จักในตัว (ไม่ต้องสอน)
+        //   ลักษณะ (ตัวเลข) ของสโคปที่ติดบนปืนจริง: 4x, 3x, 6x — ชุดค่าเลือกจากชื่อการ์ด (เช่นการ์ดชื่อ "4x")
+        sealed class Builtin { public string Label { get; set; } public float[] Feature { get; set; } }
+        static List<Builtin> builtins;
+
+        static List<Builtin> Builtins
+        {
+            get
+            {
+                if (builtins != null) return builtins;
+                try
+                {
+                    using var s = typeof(ScopeDetect).Assembly.GetManifestResourceStream("scopes-builtin.json");
+                    builtins = s == null ? new() : JsonSerializer.Deserialize<List<Builtin>>(s);
+                }
+                catch (Exception ex) { Log.Error("builtin scopes", ex); builtins = new(); }
+                return builtins;
+            }
+        }
+
+        // การ์ดชุดค่าไหนชื่อมีสโคปนี้ (เช่น "4x", "Red/Holo") — ไม่มี = -2 (รู้จักแต่ไม่มีชุด ไม่เปลี่ยน)
+        public static int SetFor(string label, string[] names)
+        {
+            if (names == null) return -2;
+            string l = label.ToLowerInvariant();
+            for (int i = 0; i < names.Length; i++)
+            {
+                string n = (names[i] ?? "").ToLowerInvariant().Replace(" ", "");
+                if (n.Split('/', ',', '+', '|', '·').Any(p => p == l || p == l.Replace("x", "")) || n.Contains(l)) return i + 1;
+                if ((l == "reddot" && n.Contains("red")) || (l == "holo" && n.Contains("holo"))) return i + 1;
+            }
+            return -2;
+        }
+
+        // เทียบภาพ: ตัวอย่างที่ผู้ใช้สอน (หรือเรียนจากปุ่มเลือกสโคป) มาก่อน ไม่เจอค่อยใช้ที่รู้จักในตัว
+        //   ต้องคะแนนพอและห่างจากชุดอื่นพอ ไม่งั้น = ไม่รู้จัก
+        public static (Template best, double score, double margin) Match(Bitmap icon, string[] names = null)
         {
             var f = Feature(icon);
             List<Template> list;
             lock (gate) list = Templates.ToList();
+            var user = Best(f, list);
+            if (user.best != null && user.score >= 0.55) return user;
+            var bi = Best(f, Builtins.Select(b => new Template { Label = b.Label, Feature = b.Feature, Set = SetFor(b.Label, names) }).ToList());
+            return bi.best != null && bi.score > user.score ? bi : user;
+        }
+
+        static (Template best, double score, double margin) Best(float[] f, List<Template> list)
+        {
             Template best = null;
             double bs = -1, other = -1;
             foreach (var t in list)
             {
                 double s = Dot(f, t.Feature);
-                if (s > bs) { if (best != null && best.Set != t.Set) other = Math.Max(other, bs); best = t; bs = s; }
-                else if (best != null && t.Set != best.Set) other = Math.Max(other, s);
+                if (s > bs) { if (best != null && best.Label != t.Label) other = Math.Max(other, bs); best = t; bs = s; }
+                else if (best != null && t.Label != best.Label) other = Math.Max(other, s);
             }
             return (best, bs, other < 0 ? bs : bs - other);
+        }
+
+        // ---------------------------------------------------------------- หาตำแหน่งแผงปืนเอง (OCR ชื่อปืน)
+        static readonly string[] GunWords =
+        {
+            "AKM", "M416", "BERYL", "MK12", "SCAR", "AUG", "ACE32", "QBZ", "G36C", "K2", "FAMAS", "M16A4", "GROZA", "MK47",
+            "SLR", "SKS", "MINI14", "MK14", "QBU", "VSS", "UMP", "VECTOR", "MICRO", "UZI", "TOMMY", "MP5K", "PP19", "BIZON", "P90",
+            "JS9", "MP9", "DP28", "M249", "MG3", "KAR98K", "M24", "AWM", "MOSIN", "LYNX", "WIN94", "S12K", "S1897", "S686", "DBS",
+            "O12", "SAWED", "DRAGUNOV", "P92", "P1911", "P18C", "R1895", "R45", "DEAGLE", "SKORPION", "CROSSBOW", "PANZERFAUST", "M79", "MGL",
+        };
+
+        static bool IsGunWord(string w)
+        {
+            string n = new string(w.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+            if (n.Length < 2) return false;
+            string fixedN = n.Replace('O', '0').Replace('I', '1').Replace('L', '1');
+            return GunWords.Any(g => n == g || fixedN == g.Replace('O', '0').Replace('I', '1').Replace('L', '1') || (g.Length >= 4 && n.StartsWith(g)));
+        }
+
+        // เปิดกระเป๋าครั้งแรก (หรือเปลี่ยนความละเอียด): อ่านตัวหนังสือฝั่งขวาของจอ หาชื่อปืน → คำนวณตำแหน่งกล่องเลข/ช่องสโคป
+        //   ตำแหน่งอิงจาก UI ของ PUBG (ขนาดตามความสูงจอ): กล่องเลขอยู่ซ้ายชื่อ 0.0205H, ช่องสโคปห่างกล่องเลข (0.261H, 0.027H)
+        public static async Task<bool> AutoLocate(Settings cfg)
+        {
+            if (Ocr() == null) return false;
+            int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
+            var area = new Rectangle(w / 2, 0, w - w / 2, (int)(h * 0.75));
+            using var bmp = new Bitmap(area.Width, area.Height, PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(area.Location, Point.Empty, area.Size);
+            return await LocateIn(cfg, bmp, area.X, w, h);
+        }
+
+        // กล่องเลขช่อง = กรอบขาวบาง ข้างในดำ: หาตำแหน่งในระยะ ±10 px ที่ขอบสว่างกว่าข้างในมากที่สุด
+        static (double x, double y) Snap(Bitmap bmp, int offsetX, int w, int h, (double x, double y) est)
+        {
+            int s = (int)Math.Round(BadgeSize * h);
+            int cx = (int)Math.Round(est.x * w) - offsetX, cy = (int)Math.Round(est.y * h);
+            double Lum(int x, int y)
+            {
+                if (x < 0 || y < 0 || x >= bmp.Width || y >= bmp.Height) return 0;
+                var p = bmp.GetPixel(x, y);
+                return (p.R + p.G + p.B) / 765.0;
+            }
+            double best = double.MinValue;
+            int bx = cx, by = cy;
+            for (int dy = -10; dy <= 10; dy++)
+                for (int dx = -10; dx <= 10; dx++)
+                {
+                    int x0 = cx + dx - s / 2, y0 = cy + dy - s / 2, x1 = x0 + s - 1, y1 = y0 + s - 1;
+                    double edge = 0, inner = 0;
+                    for (int i = 0; i < s; i++)
+                    {
+                        edge += Lum(x0 + i, y0) + Lum(x0 + i, y1) + Lum(x0, y0 + i) + Lum(x1, y0 + i);
+                        inner += Lum(x0 + i, y0 + 3) + Lum(x0 + i, y1 - 3) + Lum(x0 + 3, y0 + i) + Lum(x1 - 3, y0 + i);
+                    }
+                    double score = (edge - inner) / (4.0 * s);
+                    if (score > best) { best = score; bx = cx + dx; by = cy + dy; }
+                }
+            return best > 0.15 ? ((bx + offsetX) / (double)w, by / (double)h) : est;   // ไม่เจอกรอบชัด = ใช้ค่าประมาณ
+        }
+
+        // หาตำแหน่งจากภาพ (ฝั่งขวาของจอ เริ่มที่ x = offsetX) — แยกออกมาไว้ทดสอบกับภาพแคปได้
+        public static async Task<bool> LocateIn(Settings cfg, Bitmap bmp, int offsetX, int w, int h)
+        {
+            if (Ocr() == null) return false;
+            var area = new Rectangle(offsetX, 0, bmp.Width, bmp.Height);
+            var found = new List<(double x, double y)>();
+            try
+            {
+                using var ms = new MemoryStream();
+                bmp.Save(ms, ImageFormat.Png);
+                using var ras = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                await ras.WriteAsync(ms.ToArray().AsBuffer());
+                ras.Seek(0);
+                var dec = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ras);
+                using var sb = await dec.GetSoftwareBitmapAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
+                var r = await ocr.RecognizeAsync(sb);
+                foreach (var line in r.Lines)
+                {
+                    var word = line.Words.FirstOrDefault(x => IsGunWord(x.Text));
+                    if (word == null) continue;
+                    var b = word.BoundingRect;
+                    if (b.Height < h * 0.012) continue;                          // ตัวเล็ก = ไม่ใช่หัวแผงปืน (เช่นข้อความฆ่า)
+                    found.Add(((area.X + b.X) / w - 0.0205 * h / w, (b.Y + b.Height / 2) / h));
+                }
+            }
+            catch (Exception ex) { Log.Error("auto locate", ex); return false; }
+            // แผงปืนหลักคือสองอันบนสุดในแนวเดียวกัน (ปืนพก/ระเบิดอยู่ล่าง)
+            found = found.OrderBy(p => p.y).ToList();
+            if (found.Count == 0) return false;
+            var first = found[0];
+            if (!found.All(p => Math.Abs(p.x - first.x) < 0.02 || p.y - first.y > 0.5)) found = found.Where(p => Math.Abs(p.x - first.x) < 0.02).ToList();
+            const double SPACING = 0.2097;                                       // ระยะระหว่างแผงปืน (สัดส่วนความสูงจอ)
+            var second = found.Skip(1).FirstOrDefault(p => Math.Abs(p.y - first.y - SPACING) < 0.03);
+            // ตำแหน่งจากตัวหนังสือคลาดได้ 3–5 px → ขยับหากรอบสี่เหลี่ยมขาวของกล่องเลขให้ตรงเป๊ะ
+            first = Snap(bmp, area.X, w, h, first);
+            if (second != default) second = Snap(bmp, area.X, w, h, second);
+            cfg.ScopeBadge1 = new[] { Math.Round(first.x, 4), Math.Round(first.y, 4) };
+            cfg.ScopeBadge2 = second != default ? new[] { Math.Round(second.x, 4), Math.Round(second.y, 4) }
+                                                : new[] { Math.Round(first.x, 4), Math.Round(first.y + SPACING, 4) };
+            cfg.ScopeIcon1 = new[] { Math.Round(first.x + 0.261 * h / w, 4), Math.Round(first.y + 0.027, 4) };
+            cfg.ScopeCalib = $"{w}x{h}";
+            Log.Info($"scope auto-locate {cfg.ScopeCalib}: badge1 {first.x:0.000},{first.y:0.000} ({found.Count} gun names)");
+            return true;
         }
 
         // ---------------------------------------------------------------- เลขช่อง 1 / 2
@@ -224,7 +371,7 @@ namespace GunBeep
         static Windows.Media.Ocr.OcrEngine ocr;
         static bool ocrTried;
 
-        public static async Task<string> ReadName(Bitmap name)
+        static Windows.Media.Ocr.OcrEngine Ocr()
         {
             if (!ocrTried)
             {
@@ -233,7 +380,12 @@ namespace GunBeep
                 catch (Exception ex) { Log.Error("ocr", ex); }
                 if (ocr == null) Log.Info("ocr: English OCR not available");
             }
-            if (ocr == null) return "";
+            return ocr;
+        }
+
+        public static async Task<string> ReadName(Bitmap name)
+        {
+            if (Ocr() == null) return "";
             try
             {
                 using var big = new Bitmap(name.Width * 3, name.Height * 3, PixelFormat.Format32bppArgb);
@@ -330,12 +482,13 @@ namespace GunBeep
                                 var r = icon;
                                 r.Offset(ox, oy);
                                 using var c = (ox | oy) == 0 ? null : Crop(shot, r);
-                                var m = Match(c ?? ic);
+                                var m = Match(c ?? ic, cfg.Names);
                                 if (m.score > best.s) best = m;
                             }
                         p.Score = best.s;
                         if (best.t != null && best.s >= 0.55 && best.margin >= 0.04) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
                     }
+                    p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
                 res[i] = p;
             }

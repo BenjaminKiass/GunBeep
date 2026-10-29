@@ -33,6 +33,8 @@
   <ItemGroup>
     <!-- สคริปต์ G Hub ที่ GunBeep ใส่ให้ -->
     <EmbeddedResource Include="..\recoil.lua" LogicalName="recoil.lua" />
+    <!-- ลักษณะภาพสโคปที่ติดบนปืน (ตัวเลข ไม่ใช่ภาพ) ไว้รู้จักสโคปได้เลยโดยไม่ต้องสอน -->
+    <EmbeddedResource Include="scopes-builtin.json" LogicalName="scopes-builtin.json" />
     <EmbeddedResource Include="..\logo.png" LogicalName="logo.png" Condition="Exists('..\logo.png')" />
   </ItemGroup>
 

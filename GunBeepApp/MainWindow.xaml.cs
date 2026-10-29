@@ -446,6 +446,8 @@ namespace GunBeep
             if (now == gameWas) { KeepRes(); return; }
             gameWas = now;
             Log.Info(now ? "PUBG started" : "PUBG closed");
+            pubgSlotKeys = null;                      // อาจแก้ปุ่มในเกมมา → อ่านใหม่
+            Array.Clear(slotInfo);                    // เกมใหม่ ปืนใหม่
             if (now && cfg.AutoRes && !cfg.ResAlways) SwitchRes();
             else if (!now && resSwitched && !cfg.ResAlways) RestoreRes();
             if (!now) ShowDeferred();
@@ -730,9 +732,17 @@ namespace GunBeep
         DateTime invOpenedAt, lastScan;
 
         void UpdateScopeAutoBtn() =>
-            ScopeAutoBtn.Content = cfg.ScopeAuto ? $"เปิด · สอนแล้ว {ScopeDetect.Templates.Count} ภาพ" : "ปิด";
+            ScopeAutoBtn.Content = cfg.ScopeAuto ? "เปิด" : "ปิด";
 
         void ScopeAuto_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.ScopeAuto = !cfg.ScopeAuto;
+            cfg.Save();
+            UpdateScopeAutoBtn();
+            Flash(cfg.ScopeAuto ? "ตรวจสโคปอัตโนมัติ: เปิดกระเป๋าในเกมครั้งเดียว แล้วเปลี่ยนปืน = ใช้ชุดตามสโคปเอง" : "ปิดตรวจสโคปอัตโนมัติ");
+        }
+
+        void ScopeSetup_Click(object sender, RoutedEventArgs e)
         {
             if (scopeWin != null) { scopeWin.Activate(); return; }
             scopeWin = new ScopeWindow(cfg, KeyName, UpdateScopeAutoBtn) { Owner = this };
@@ -740,7 +750,12 @@ namespace GunBeep
             scopeWin.Show();
         }
 
-        int[] SlotKeys => cfg.SlotKeys ??= ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 };
+        // ปุ่มเลือกปืนช่อง 1/2: ตั้งเอง หรืออ่านจากไฟล์ตั้งค่า PUBG (อ่านใหม่ทุกครั้งที่เปิดเกม)
+        int[] pubgSlotKeys;
+        int[] SlotKeys => cfg.SlotKeys ?? (pubgSlotKeys ??= ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 });
+
+        bool locating;
+        DateTime lastLocate;
 
         void WatchScope(bool front, bool cursor)
         {
@@ -750,10 +765,47 @@ namespace GunBeep
             if (inv && !invWas) invOpenedAt = now;
             if (!inv && invWas) ApplyScope("inventory closed");
             invWas = inv;
-            if (!inv || scanBusy || now - invOpenedAt < TimeSpan.FromMilliseconds(250) || now - lastScan < TimeSpan.FromMilliseconds(400)) return;
+            if (!inv || scanBusy || locating || now - invOpenedAt < TimeSpan.FromMilliseconds(250) || now - lastScan < TimeSpan.FromMilliseconds(400)) return;
+            // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
+            var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
+            if (cfg.ScopeCalib != $"{size.Width}x{size.Height}")
+            {
+                if (now - lastLocate < TimeSpan.FromSeconds(2)) return;
+                lastLocate = now;
+                locating = true;
+                _ = LocateAsync();
+                return;
+            }
             lastScan = now;
             scanBusy = true;
             _ = ScanScopesAsync();
+        }
+
+        async Task LocateAsync()
+        {
+            try
+            {
+                if (await ScopeDetect.AutoLocate(cfg))
+                {
+                    cfg.Save();
+                    Array.Clear(slotInfo);
+                    PopOsd("✓ เจอแผงปืนแล้ว — ตรวจสโคปอัตโนมัติพร้อม");
+                }
+            }
+            catch (Exception ex) { Log.Error("locate", ex); }
+            finally { locating = false; }
+        }
+
+        // ผู้ใช้กดปุ่มเลือกสโคปเอง ตอนปืนที่ถือติดสโคปที่ยังไม่รู้จัก (หรือรู้ผิด) → จำว่าสโคปนี้ = ชุดนั้น ครั้งหน้าเลือกเอง
+        void LearnScope(int set)
+        {
+            if (!cfg.ScopeAuto) return;
+            var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
+            if (p?.Icon == null || p.Set == set || p.Set == 0) return;
+            ScopeDetect.Teach(p.Icon, set, cfg.Names[set - 1]);
+            p.Set = set;
+            p.ScopeLabel = cfg.Names[set - 1];
+            PopOsd($"จำแล้ว: สโคปนี้ = {cfg.Names[set - 1]}");
         }
 
         async Task ScanScopesAsync()
@@ -785,10 +837,12 @@ namespace GunBeep
                 {
                     if (p.Slot is not (1 or 2)) continue;
                     var old = slotInfo[p.Slot];
-                    if (p.Set < 0 && old != null && old.Name == p.Name) continue;     // อ่านสโคปไม่ชัดรอบนี้ → ใช้ของเดิม
+                    if (p.Set == -1 && old != null && old.Set != -1 && old.Name == p.Name) { p.Icon?.Dispose(); continue; }   // อ่านสโคปไม่ชัดรอบนี้ → ใช้ของเดิม
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p);
+                    old?.Icon?.Dispose();
                     slotInfo[p.Slot] = p;
                 }
+                foreach (var p in panels) if (p.Slot is not (1 or 2)) p.Icon?.Dispose();
                 ApplyScope("scan");
             }
             catch (Exception ex) { Log.Error("scope scan", ex); }
@@ -800,7 +854,7 @@ namespace GunBeep
         {
             if (!cfg.ScopeAuto || vals == null) return;
             var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
-            if (p == null || p.Set < 0) return;
+            if (p == null || p.Set < 0) return;                  // ไม่รู้จัก / รู้จักแต่ไม่มีการ์ดชุดนี้ = ไม่เปลี่ยน
             int set = p.Set == 0 ? cfg.ScopeNoneSet : p.Set;
             if (set < 1 || set > vals.Length || set == gun) return;
             Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}");
@@ -2167,6 +2221,7 @@ namespace GunBeep
         {
             int i = Array.IndexOf(ScopeKeys, vk);
             if (vk == 0 || i < 0 || vals == null || i >= vals.Length) return false;
+            LearnScope(i + 1);
             if (i + 1 != gun) SelectGun(i + 1);
             if (!on) PopOsd();
             return true;

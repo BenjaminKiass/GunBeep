@@ -186,6 +186,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   (read from GameUserSettings.ini Weapon_1/Weapon_2: on this PC Three/Two — unverified meaning) or wheel.
   Local build: Malwarebytes/Defender deletes the freshly generated apphost.exe for the new TFM → local checks use
   `-p:UseAppHost=false -p:SelfContained=false`; CI is unaffected.
+- Auto-locate: OCR of the right half finds gun-name words (GunWords list), badge ≈ name left − 0.0205H, then Snap() searches ±10 px for the white badge frame; icon = badge + (0.261H, 0.027H); panel spacing 0.2097H. Stored per resolution in ScopeCalib. Learning: pressing a scope key while the held slot's scope is unknown/different teaches that icon. Verified fully automatic on 3 screenshots.
 - Fast loot (Loot.cs + LootWindow.cs): LootKey pressed while PUBG is foreground AND the cursor is shown → background
   thread drags ground slots N..1 (bottom-up so rows don't shift) to LootDrop with SendInput absolute moves (dwExtraInfo
   MAGIC), then moves to LootCenter. Positions are fractions of the primary screen; the calibrator uses a user-supplied

@@ -75,7 +75,7 @@ namespace GunBeep
             row1.Children.Add(Btn("ตำแหน่งเริ่มต้น", () =>
             {
                 var d = new Settings();
-                cfg.ScopeBadge1 = d.ScopeBadge1; cfg.ScopeBadge2 = d.ScopeBadge2; cfg.ScopeIcon1 = d.ScopeIcon1;
+                cfg.ScopeBadge1 = d.ScopeBadge1; cfg.ScopeBadge2 = d.ScopeBadge2; cfg.ScopeIcon1 = d.ScopeIcon1; cfg.ScopeCalib = null;   // ให้หาตำแหน่งเองใหม่
                 Save(); Analyze();
             }, 6));
             head.Children.Add(row1);
@@ -100,7 +100,7 @@ namespace GunBeep
             {
                 var k = ScopeDetect.ReadPubgSlotKeys();
                 if (k == null) { Hint("อ่านปุ่มจากไฟล์ตั้งค่า PUBG ไม่ได้ — ตั้งเองโดยคลิกช่องปุ่ม", Gold); return; }
-                cfg.SlotKeys = k; Save();
+                cfg.SlotKeys = null; Save();                     // null = อ่านจาก PUBG ทุกครั้งที่เปิดเกม
                 Hint($"อ่านจาก PUBG: ปืนช่อง 1 = {keyName(k[0])}, ช่อง 2 = {keyName(k[1])}", Green);
             }, 6));
             head.Children.Add(row2);
@@ -129,11 +129,10 @@ namespace GunBeep
 
             canvas.MouseLeftButtonDown += Canvas_Down;
             canvas.MouseMove += Canvas_Move;
-            canvas.MouseLeftButtonUp += (s, e) => { if (dragging != null) { dragging = null; canvas.ReleaseMouseCapture(); Save(); Analyze(); } };
+            canvas.MouseLeftButtonUp += (s, e) => { if (dragging != null) { dragging = null; canvas.ReleaseMouseCapture(); cfg.ScopeCalib = $"{W}x{H}"; Save(); Analyze(); } };
             PreviewKeyDown += OnKey;
             Closed += (s, e) => refBmp?.Dispose();
 
-            if (cfg.SlotKeys == null) cfg.SlotKeys = ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 };
             LoadImage();
             Refresh();
             Analyze();
@@ -186,8 +185,9 @@ namespace GunBeep
                 noneBtns[i].Foreground = sel ? Orange : Text;
             }
             Look(key1); Look(key2);
-            key1.Content = capturing == 1 ? "กดปุ่ม..." : keyName(cfg.SlotKeys?[0] ?? 0x31);
-            key2.Content = capturing == 2 ? "กดปุ่ม..." : keyName(cfg.SlotKeys?[1] ?? 0x32);
+            var keys = cfg.SlotKeys ?? ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 };
+            key1.Content = capturing == 1 ? "กดปุ่ม..." : keyName(keys[0]);
+            key2.Content = capturing == 2 ? "กดปุ่ม..." : keyName(keys[1]);
             if (capturing == 1) key1.BorderBrush = Accent;
             if (capturing == 2) key2.BorderBrush = Accent;
             if (hint.Text == "") Hint(refBmp == null
@@ -467,7 +467,7 @@ namespace GunBeep
                 int vk = KeyInterop.VirtualKeyFromKey(key);
                 if (vk > 0 && vk < 256)
                 {
-                    var k = (cfg.SlotKeys ?? new[] { 0x31, 0x32 }).ToArray();
+                    var k = (cfg.SlotKeys ?? ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 }).ToArray();
                     k[which - 1] = vk;
                     cfg.SlotKeys = k;
                     cfg.Save();

@@ -768,6 +768,10 @@
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="40" ToolTip="ตรวจสโคปอัตโนมัติ: เปิดกระเป๋าแล้ว GunBeep ดูว่าปืนแต่ละช่องติดสโคปอะไร → เปลี่ยนปืนแล้วใช้ชุดค่าตามสโคปเอง — คลิกเพื่อตั้งค่าและสอนสโคป">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="5,0,0,0" Padding="7,3"
+                                            VerticalAlignment="Center" Click="ScopeSetup_Click" ToolTip="ดู/แก้ตำแหน่งและสโคปที่จำไว้ (ปกติไม่ต้องใช้)">
+                                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                                    </Button>
                                     <Button x:Name="ScopeAutoBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
                                             VerticalAlignment="Center" Click="ScopeAuto_Click"/>
                                     <TextBlock Text="&#xE8B3;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
