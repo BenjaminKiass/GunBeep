@@ -630,7 +630,7 @@
                                         </StackPanel>
                                     </RadioButton>
                                 </Grid>
-                                <Grid Margin="0,10,0,0" ToolTip="ยิงครบกี่นัดแล้วหยุดดึง — กระสุนหมดแล้วกดยิงค้าง จอจะไม่กดลงต่อ (แม็ก 40 + เผื่อ 2 = 42, แม็ก 30 ตั้ง 32)">
+                                <Grid Margin="0,10,0,0" ToolTip="นับกระสุนที่ยิงไปทุกชุดรวมกัน ครบแล้วหยุดดึงจนกว่าจะกด R (หรือเปลี่ยนปืน) — แม็กหมดแล้วจอไม่ก้มลงเอง · แม็ก 40 ตั้ง 42, แม็ก 30 ตั้ง 32">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="82"/>
                                         <ColumnDefinition Width="Auto"/>
@@ -638,7 +638,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="62"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="หยุดหลังยิง" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="กระสุน/แม็ก" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Style="{StaticResource StepBtn}" Content="&#xE738;" Tag="-" Click="ShotsStep_Click"/>
                                     <Slider x:Name="ShotsSlider" Grid.Column="2" Style="{StaticResource NiceSlider}" Minimum="5" Maximum="120"
                                             IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="5" Margin="8,0"/>

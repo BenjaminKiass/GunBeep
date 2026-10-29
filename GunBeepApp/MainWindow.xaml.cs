@@ -114,6 +114,7 @@ namespace GunBeep
             {
                 RawMouse.Shared.Button += vk => OnKey(vk);
                 RawMouse.Shared.Wheel += OnWheel;
+            RawMouse.Shared.Input += (dev, dx, dy, left) => { if (left != 0) MagFire(left > 0); };
             }
             catch (Exception ex) { Log.Error("raw mouse", ex); }
 
@@ -310,14 +311,60 @@ namespace GunBeep
             Flash(cfg.AutoEnglish ? "เข้าเกมแล้วสลับเป็นภาษาอังกฤษให้เอง" : "ไม่สลับภาษาให้แล้ว");
         }
 
+        // ---------------------------------------------------------------- นับกระสุนในแม็ก
+        // เกมไม่บอกจำนวนกระสุน (อ่านภาพ/หน่วยความจำเกม = เสี่ยงแบน) → นับเองจากเวลากดยิงทุกชุดรวมกัน
+        //   ครบ "กระสุนต่อแม็ก" = หยุดดึง (ปิดไฟ Scroll ชั่วคราว) จนกว่าจะรีโหลด:
+        //   กด R / เปลี่ยนปืน (1 2 3 / ลูกกลิ้ง) / แม็กหมดแล้วกดยิงอีก (เกมรีโหลดเอง) = เริ่มนับใหม่
+        const double SHOT_MS = 86;                // ไรเฟิลส่วนใหญ่ ~700 นัด/นาที (ตรงกับ SHOT_MS ในสคริปต์)
+        double magFired;                          // นัดที่ยิงไปแล้วในแม็กนี้ (ชุดที่ปล่อยแล้ว)
+        DateTime? fireStart;                      // กำลังกดยิงค้างตั้งแต่
+        bool magEmpty;
+
+        static double ShotsIn(TimeSpan held) => Math.Floor(held.TotalMilliseconds / SHOT_MS) + 1;   // นัดแรกออกทันที
+
+        bool Playing() => GameInFront() && !CursorShown();
+
+        void MagFire(bool down)
+        {
+            if (down)
+            {
+                if (!Playing()) return;
+                if (magEmpty) { ResetMag("empty mag clicked = game reloads"); return; }
+                fireStart = DateTime.Now;
+            }
+            else if (fireStart != null)
+            {
+                magFired += ShotsIn(DateTime.Now - fireStart.Value);
+                fireStart = null;
+            }
+        }
+
+        double MagNow() => magFired + (fireStart != null ? ShotsIn(DateTime.Now - fireStart.Value) : 0);
+
+        void ResetMag(string why)
+        {
+            if (magFired == 0 && fireStart == null && !magEmpty) return;
+            if (magEmpty || magFired > 0) Log.Info($"mag reset ({why}) after {MagNow():0} shots");
+            magFired = 0;
+            fireStart = null;
+            magEmpty = false;
+        }
+
         void WatchMenu()
         {
             bool front = GameInFront();
             WatchLanguage(front, front && !CursorShown());
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
+            if (!magEmpty && on && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
+            {
+                magEmpty = true;
+                Log.Info($"mag empty: {MagNow():0}/{cfg.MaxShots} shots → stop pulling until reload");
+                PopOsd("แม็กหมด — กด R");
+            }
             bool want = false;
             string why = null;
-            if (cfg.PauseInMenu && on && gameWas)
+            if (on && magEmpty) { want = true; why = "mag empty"; }
+            else if (cfg.PauseInMenu && on && gameWas)
             {
                 if (!GameInFront()) { want = true; why = "game not in front"; }
                 else if (CursorShown()) { want = true; why = "cursor shown (inventory/map/menu)"; }
@@ -623,6 +670,7 @@ namespace GunBeep
 
         void OnWheel(int delta)
         {
+            if (Playing()) ResetMag("wheel = weapon switch");
             if (cfg.SlotSwitch != 2 || !on || capturing) return;
             var now = DateTime.Now;
             if (now - lastWheel < TimeSpan.FromMilliseconds(180)) return;    // หมุนหลายแก๊กติดกัน = เปลี่ยนครั้งเดียว
@@ -865,6 +913,7 @@ namespace GunBeep
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
+            if (vk == 0x52 || (vk >= 0x31 && vk <= 0x33)) ResetMag(vk == 0x52 ? "R" : "weapon key");   // รีโหลด / เปลี่ยนปืน
             if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 
             switch (vk)
