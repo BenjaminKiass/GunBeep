@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -64,7 +64,7 @@ namespace GunBeep
             root.Children.Add(Header("สโคป (คำนวณจากความไวในเกม — ไม่ต้องตั้ง)"));
             root.Children.Add(ScopeTable());
 
-            root.Children.Add(Header("ปืน: มีค่าแรงดีดในตัวทุกปืนแล้ว (เทียบปืนที่ใช้จูนตาราง: " + (C.RefGun ?? "M416") + ") — ตรงนี้คือปรับเพิ่ม ×1 = ตามค่าในตัว"));
+            root.Children.Add(Header("ปืน: มีค่าแรงดีดในตัวทุกปืนแล้ว (เทียบปืนที่ใช้จูนตาราง: " + (C.RefGun ?? "AUG") + ") — ตรงนี้คือปรับเพิ่ม ×1 = ตามค่าในตัว"));
             root.Children.Add(guns);
             root.Children.Add(example);
 

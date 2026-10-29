@@ -97,17 +97,33 @@ namespace GunBeep
                         g.Engine = d.Engine; g.AutoOn = d.AutoOn; g.HolsterPause = d.HolsterPause; g.Page = 0;
                         if (g.Names == null || g.Names.Length < 3) g.Names = d.Names;
                         if (g.MagMode == 2) g.MagMode = 1;
+                        MigrateCalc(g);
                         Log.Info("settings imported from the G Hub app");
                         return g;
                     }
                     var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
                     if (s.Names == null || s.Names.Length < 3) s.Names = new Settings().Names;
                     if (s.MagMode == 2) s.MagMode = 1;          // ฟังเสียงปืนเอาออกแล้ว (ไม่เสถียร) → นับกระสุนแทน
+                    MigrateCalc(s);
                     return s;
                 }
                 catch { }
             }
             return new Settings();
+        }
+
+        // ค่าเก่าที่ผมเดาไว้ (−15%, ปืนอ้างอิง M416) → ตัวเลขจากเกม และปืนที่ผู้ใช้จูนจริง (AUG)
+        static void MigrateCalc(Settings s)
+        {
+            var c = s.Calc ??= new CalcSettings();
+            if (c.Ver >= 1) return;
+            if (c.MuzzlePct == -15) c.MuzzlePct = -10;
+            if (c.GripPct == -15) c.GripPct = -10;
+            c.RefGun = "AUG";
+            c.RefMuzzle = true;
+            c.RefGrip = true;
+            c.RefStock = false;
+            c.Ver = 1;
         }
 
         public void Save()

@@ -308,5 +308,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Ban-risk note shown to user: SendInput is flagged LLMHF_INJECTED, easier to see than G Hub's driver input.
 - cfg.Engine 0 native / 1 G Hub (switch in Settings page); cfg.AutoOn (macro on while TslGame runs);
   cfg.HolsterPause (4/5/X = pause until a gun key); RecoilCalc.BuiltinGun = estimated vertical recoil per gun
-  vs M416 (CalcSettings.RefGun = gun the tables were tuned with; c.Guns = user extra factor).
+  vs M416 (CalcSettings.RefGun = gun the tables were tuned with = AUG + muzzle brake + angled grip per user,
+  2026-10-30; c.Guns = user extra factor). Muzzle/grip −10% = in-game tooltip "+10% vertical recoil control".
+  Settings.MigrateCalc (Calc.Ver 1) moves old −15% guesses / RefGun M416 to these.
 - UI: sidebar nav (มาโคร live slot panels built in MacroPage.cs, จูนแรงดีด, เก็บของเร็ว, ตั้งค่า), 1210×800.

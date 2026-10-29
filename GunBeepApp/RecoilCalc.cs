@@ -15,8 +15,9 @@ namespace GunBeep
     public sealed class CalcSettings
     {
         public bool On { get; set; } = true;
-        public double MuzzlePct { get; set; } = -15;
-        public double GripPct { get; set; } = -15;
+        // ตัวเลขจากคำอธิบายของในเกม: เบรกปากกระบอก / ด้ามจับหัวแม่มือ = คุมแรงดีดแนวตั้ง +10% → แรงดึง −10%
+        public double MuzzlePct { get; set; } = -10;
+        public double GripPct { get; set; } = -10;
         public double StockPct { get; set; } = -8;
         public bool RefMuzzle { get; set; } = true;          // ตารางที่จูนไว้ จูนตอนติดปากกระบอก
         public bool RefGrip { get; set; } = true;            // ... ติดกริป
@@ -24,7 +25,8 @@ namespace GunBeep
         public double CrouchPct { get; set; } = -28;
         public double PronePct { get; set; } = -45;
         public Dictionary<string, double> Guns { get; set; } = new();   // ชื่อปืน → ปรับเพิ่มจากค่าในตัว (1 = ตามค่าในตัว)
-        public string RefGun { get; set; } = "M416";         // ตารางในการ์ดชุดค่าจูนไว้กับปืนนี้
+        public string RefGun { get; set; } = "AUG";          // ตารางในการ์ดชุดค่าจูนไว้กับปืนนี้ (ผู้ใช้จูนกับ AUG + เบรกปากกระบอก + ด้ามจับ)
+        public int Ver { get; set; }                          // 1 = ย้ายค่าเริ่มต้นเป็นตัวเลขจากเกมแล้ว
     }
 
     public static class RecoilCalc
@@ -130,7 +132,7 @@ namespace GunBeep
         {
             double Of(string k) => k != null && BuiltinGun.TryGetValue(k, out double v) ? v : 1;
             double user = gunKey != null && c.Guns.TryGetValue(gunKey, out double u) ? u : 1;
-            return Of(gunKey) / Of(c.RefGun ?? "M416") * user;
+            return Of(gunKey) / Of(c.RefGun ?? "AUG") * user;
         }
 
         public static string GunKey(string ocrName)
