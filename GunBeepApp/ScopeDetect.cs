@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -35,6 +35,8 @@ namespace GunBeep
             public Bitmap Icon;                       // ภาพช่องสโคปล่าสุด
             public bool[] Att;                        // ของแต่ง: [0] ปากกระบอก, [1] กริป, [3] พานท้าย
             public string[] AttId;                    // ชนิดของแต่งที่รู้จัก (AttachmentId), null = ไม่แน่ใจ
+            public Bitmap Pic;                        // ภาพปืนจากหน้ากระเป๋าของผู้ใช้ (ไว้โชว์ในหน้ามาโคร)
+            public object PicUi;                      // ภาพเดียวกันแบบ WPF (แปลงครั้งเดียว)
             public double Score;
             public string ScopeLabel = "?";
             public string Name = "";
@@ -93,6 +95,13 @@ namespace GunBeep
         {
             int bw = (int)Math.Round((widthH < 0 ? sizeH : widthH) * h), bh = (int)Math.Round(sizeH * h);
             return new Rectangle((int)Math.Round(cx * w - bw / 2.0), (int)Math.Round(cy * h - bh / 2.0), Math.Max(4, bw), Math.Max(4, bh));
+        }
+
+        // ภาพปืนบนแผง: ขวาของป้ายเลข เหนือแถวของแต่ง (สัดส่วนความสูงจอ วัดจากภาพจริง)
+        public static Rectangle PicBox(Settings cfg, int w, int h, int panel)
+        {
+            var b = panel == 0 ? cfg.ScopeBadge1 : cfg.ScopeBadge2;
+            return new Rectangle((int)(b[0] * w + 0.08 * h), (int)(b[1] * h - 0.012 * h), (int)(0.34 * h), (int)(0.128 * h));
         }
 
         public static (Rectangle badge, Rectangle name, Rectangle icon)[] Boxes(Settings cfg, int w, int h)
@@ -385,7 +394,8 @@ namespace GunBeep
         {
             int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
             var boxes = Boxes(cfg, w, h);
-            var all = boxes.SelectMany(b => new[] { b.badge, b.name, b.icon }).Append(RecoilCalc.AttachmentArea(cfg, w, h)).Aggregate(Rectangle.Union);
+            var all = boxes.SelectMany(b => new[] { b.badge, b.name, b.icon }).Append(RecoilCalc.AttachmentArea(cfg, w, h))
+                           .Append(PicBox(cfg, w, h, 0)).Append(PicBox(cfg, w, h, 1)).Aggregate(Rectangle.Union);
             all.Intersect(new Rectangle(0, 0, w, h));
             origin = all.Location;
             if (all.Width < 4 || all.Height < 4) return null;
@@ -455,7 +465,13 @@ namespace GunBeep
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
-                if (p.Slot != 0) p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId);
+                if (p.Slot != 0)
+                {
+                    p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId);
+                    var pb = PicBox(cfg, screenW, screenH, i);
+                    pb.Offset(-origin.X, -origin.Y);
+                    p.Pic = Crop(shot, pb);
+                }
                 res[i] = p;
             }
             Sample(shot, origin, screenW, screenH, res);

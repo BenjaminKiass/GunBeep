@@ -33,6 +33,27 @@ namespace GunBeep
         public volatile int MaxShots;
         public volatile bool Spraying;                   // กำลังดึงอยู่ (ไว้โชว์บนหน้าจอ)
 
+        // เรียนรู้: แรงคูณแยกตามช่วงเวลาของการยิงค้าง (ช่วงละ 0.5 วิ, 8 ช่วง = 4 วิ, เกินนั้นใช้ช่วงสุดท้าย)
+        public const int BIN_MS = 500, BINS = 8;
+        volatile double[] curve = Fill(1);
+        public volatile int SprayId;
+        public long SprayStartTs;                        // Stopwatch.GetTimestamp() ตอนเริ่มชุด
+        // จบชุด: แรงที่มาโครดึงลงในแต่ละช่วง, ยิงนานกี่ ms, สัดส่วนเวลาที่กดคลิกขวาค้าง (เล็ง), เลขชุด
+        public event Action<double[], double, double, int> SprayEnded;
+
+        static double[] Fill(double v) { var a = new double[BINS]; Array.Fill(a, v); return a; }
+        public void SetCurve(double[] c) => curve = c != null && c.Length == BINS ? (double[])c.Clone() : Fill(1);
+
+        // ค่ากลางของช่วงเชื่อมกันแบบเส้นตรง (ไม่กระโดดตอนข้ามช่วง)
+        static double CurveAt(double[] c, double ms)
+        {
+            double p = ms / BIN_MS - 0.5;
+            if (p <= 0) return c[0];
+            if (p >= BINS - 1) return c[BINS - 1];
+            int i = (int)p;
+            return c[i] + (c[i + 1] - c[i]) * (p - i);
+        }
+
         public NativeRecoil()
         {
             thread = new Thread(Run) { IsBackground = true, Name = "NativeRecoil", Priority = ThreadPriority.Highest };
@@ -88,7 +109,12 @@ namespace GunBeep
             int n = rc.Length;
             double bas = g.Base;
 
+            SprayStartTs = Stopwatch.GetTimestamp();
+            SprayId++;
             var sw = Stopwatch.StartNew();
+            var cv = curve;
+            var movedY = new double[BINS];
+            int loops = 0, adsLoops = 0;
             double last = 0, carryY = 0, carryX = 0;
             double releaseAt = -1;
             string reason;
@@ -110,7 +136,9 @@ namespace GunBeep
                 if (max > 0 && now >= max * SHOT_MS) { reason = "max shots"; break; }
                 if (RequireAds && !Down(VK_RBUTTON)) { reason = null; break; }
 
-                double factor = Volatile.Read(ref gear) * Volatile.Read(ref stance);
+                loops++;
+                if (Down(VK_RBUTTON)) adsLoops++;
+                double factor = Volatile.Read(ref gear) * Volatile.Read(ref stance) * CurveAt(cv, now);
 
                 double dt = now - last;
                 if (dt > 0 && !pending)
@@ -141,6 +169,7 @@ namespace GunBeep
                     carryX = wantX - moveX;
 
                     if (moveX != 0 || moveY != 0) Move(moveX, moveY);
+                    movedY[Math.Min(BINS - 1, (int)(now / BIN_MS))] += moveY;
                     last = now;
                 }
 
@@ -148,6 +177,8 @@ namespace GunBeep
             }
 
             if (reason != null) Log.Info($"native: stopped ({reason}) t={last:0}ms");
+            try { SprayEnded?.Invoke(movedY, last, loops == 0 ? 0 : adsLoops / (double)loops, SprayId); }
+            catch (Exception ex) { Log.Error("spray ended", ex); }
         }
 
         // ---------------------------------------------------------------- SendInput (ขยับแบบสัมพัทธ์)

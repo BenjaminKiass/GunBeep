@@ -852,7 +852,12 @@ namespace GunBeep
                     // ปืนที่เจอครั้งแรก → เพิ่มในหน้าคำนวณแรงดีด (×1) ให้ปรับทีหลังได้
                     if (RecoilCalc.GunKey(p.Name) is string gk && (cfg.Calc ??= new CalcSettings()).Guns.TryAdd(gk, 1)) cfg.Save();
                     var old = slotInfo[p.Slot];
-                    if (p.Set == -1 && old != null && old.Set != -1 && old.Name == p.Name) { p.Icon?.Dispose(); continue; }   // อ่านสโคปไม่ชัดรอบนี้ → ใช้ของเดิม
+                    // อ่านสโคปไม่ชัดรอบนี้ (เช่นเมาส์ชี้ช่องสโคปอยู่ พื้นเป็นสีขาว) → ใช้สโคปเดิม แต่ของแต่ง/ภาพปืนใช้ของรอบนี้
+                    if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
+                    {
+                        p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
+                        if (p.Name == "") p.Name = old.Name;
+                    }
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p);
                     old?.Icon?.Dispose();
                     slotInfo[p.Slot] = p;
@@ -924,7 +929,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {

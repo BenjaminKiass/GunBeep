@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -31,6 +31,8 @@ namespace GunBeep
             NavMacro.IsChecked = true;                    // เปิดมาที่หน้ามาโครเสมอ (ไม่ต้องจูนอะไร)
             AutoOnSwitch.IsChecked = cfg.AutoOn;
             GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
+            try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
+            engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
             BuildGameCard();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
@@ -238,7 +240,7 @@ namespace GunBeep
             var c = cfg.Calc ??= new CalcSettings();
             string Sig(ScopeDetect.Panel p) => p == null ? "-" :
                 $"{p.Name}|{p.Set}|{p.ScopeLabel}|{(p.Att == null ? "" : string.Join("", p.Att.Select(a => a ? 1 : 0)))}|{string.Join(",", p.AttId ?? new string[0])}";
-            string sig = $"{Sig(slotInfo[1])}#{Sig(slotInfo[2])}#{heldSlot}#{on}#{stance}#{c.On}#{c.MuzzlePct}#{c.GripPct}#{c.StockPct}#{c.CrouchPct}#{c.PronePct}#{c.RefGun}" +
+            string sig = $"{string.Join(",", c.LearnN.Select(kv => kv.Key + kv.Value))}#{Sig(slotInfo[1])}#{Sig(slotInfo[2])}#{heldSlot}#{on}#{stance}#{c.On}#{c.MuzzlePct}#{c.GripPct}#{c.StockPct}#{c.CrouchPct}#{c.PronePct}#{c.RefGun}" +
                          $"#{string.Join(",", c.Guns.Select(kv => kv.Key + kv.Value))}#{string.Join(",", cfg.Names)}" +
                          $"#{(vals == null ? "" : string.Join(",", vals.Select(v => v.Base + "/" + (v.Steps?.Length ?? 0))))}";
             if (sig == liveSig) return;
@@ -344,7 +346,7 @@ namespace GunBeep
             left.Children.Add(Stat("ตัวคูณ", "×" + mult.ToString("0.00"), Pct(mult)));
             left.Children.Add(Stat("ชุดค่า", setName, setOk ? $"base {GHub.Fmt(vals[set - 1].Base)}" : ""));
             mid.Children.Add(left);
-            var graph = Graph(setOk ? vals[set - 1] : null, mult, gk);
+            var graph = Graph(setOk ? vals[set - 1] : null, mult, gk, PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null);
             Grid.SetColumn(graph, 1);
             mid.Children.Add(graph);
             var right = new StackPanel();
@@ -356,7 +358,8 @@ namespace GunBeep
 
             // ปืน
             double gf = RecoilCalc.GunFactor(c, gk);
-            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"} (ค่าในตัว{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")})",
+            string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
+            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{learnTxt}",
                                   gf, PGold, gk == null ? null : () => AdjustGun(gk, -0.05), gk == null ? null : () => AdjustGun(gk, +0.05), gk == null));
 
             // ของแต่ง
@@ -493,9 +496,36 @@ namespace GunBeep
         };
 
         // กราฟแรงดึงของชุดค่า (× ตัวคูณ) 3 วินาทีแรก
-        Border Graph(GHub.GunVals v, double mult, string gk)
+        static System.Windows.Media.Imaging.BitmapSource PicOf(ScopeDetect.Panel p)
+        {
+            if (p?.PicUi is System.Windows.Media.Imaging.BitmapSource done) return done;
+            if (p?.Pic == null) return null;
+            try
+            {
+                using var ms = new MemoryStream();
+                p.Pic.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                ms.Position = 0;
+                var bi = new System.Windows.Media.Imaging.BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bi.StreamSource = ms;
+                bi.EndInit();
+                bi.Freeze();
+                p.PicUi = bi;
+                return bi;
+            }
+            catch { return null; }
+        }
+
+        Border Graph(GHub.GunVals v, double mult, string gk, System.Windows.Media.Imaging.BitmapSource pic, double[] learned)
         {
             var g = new Grid();
+            if (pic != null)
+                g.Children.Add(new Image
+                {
+                    Source = pic, Stretch = Stretch.Uniform, Margin = new Thickness(10, 22, 10, 30), Opacity = 0.95,
+                    Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0xC9, 0xA5, 0x4A), BlurRadius = 18, ShadowDepth = 0, Opacity = 0.55 }
+                });
             var cap = new DockPanel { Margin = new Thickness(10, 7, 10, 0), VerticalAlignment = VerticalAlignment.Top };
             var r = T(gk == null ? "" : "MUL " + mult.ToString("0.00"), 9, PFaint, FontWeights.Bold, Mono);
             DockPanel.SetDock(r, Dock.Right);
@@ -523,7 +553,20 @@ namespace GunBeep
                     Points = pts, StrokeThickness = 1.6, StrokeLineJoin = PenLineJoin.Round,
                     Stroke = new LinearGradientBrush(Color.FromRgb(0x1D, 0x6B, 0xFF), Color.FromRgb(0x5C, 0xE1, 0xFF), 0)
                 });
-                g.Children.Add(new Viewbox { Stretch = Stretch.Fill, Child = canvas, Margin = new Thickness(10, 26, 10, 22) });
+                g.Children.Add(new Viewbox
+                {
+                    Stretch = Stretch.Fill, Child = canvas, Opacity = pic != null ? 0.55 : 1,
+                    Margin = pic != null ? new Thickness(10, 0, 10, 20) : new Thickness(10, 26, 10, 22),
+                    Height = pic != null ? 34 : double.NaN, VerticalAlignment = pic != null ? VerticalAlignment.Bottom : VerticalAlignment.Stretch
+                });
+            }
+            if (learned != null)
+            {
+                var lt = T("LEARN " + string.Join(" ", learned.Take(6).Select(x => x.ToString("0.00"))), 8.5, PCyan, FontWeights.Bold, Mono);
+                lt.HorizontalAlignment = HorizontalAlignment.Left;
+                lt.VerticalAlignment = VerticalAlignment.Bottom;
+                lt.Margin = new Thickness(10, 0, 0, 6);
+                g.Children.Add(lt);
             }
             var ready = T(on && !paused ? "[ SPRAY READY ]" : "[ STANDBY ]", 9, on && !paused ? PGreen : PFaint, FontWeights.Bold, Mono);
             ready.HorizontalAlignment = HorizontalAlignment.Right;
@@ -698,6 +741,72 @@ namespace GunBeep
     public partial class MainWindow
     {
         // ---------------------------------------------------------------- ตั้งค่าเกม PUBG (อ่านเองจากไฟล์ตั้งค่าเกม)
+        // ---------------------------------------------------------------- เรียนรู้แรงดีดจากมือผู้ใช้ (ไม่ต้องจูน)
+        //   ระหว่างมาโครดึง ถ้ามือยังดึงลงช่วย = มาโครดึงน้อยไป, ถ้ามือดันขึ้น = ดึงเกิน → ปรับปืนนั้นทีละนิด แยกตามช่วงเวลา
+        //   นับเฉพาะเมาส์ตัวที่กดยิง (การขยับของมาโครมาจากอุปกรณ์ 0) · เฉพาะตอนเล็ง ยิงค้าง ≥ 0.9 วิ และไม่ได้ลากซ้ายขวาเยอะ (ไม่ได้ไล่เป้า)
+        readonly double[] learnY = new double[NativeRecoil.BINS];
+        double learnX;
+        int learnId = -1;
+        IntPtr fireDev;
+        System.Windows.Threading.DispatcherTimer learnSave;
+
+        string HeldGunKey() => cfg.ScopeAuto && slotInfo[Math.Clamp(heldSlot, 1, 2)] is ScopeDetect.Panel p ? RecoilCalc.GunKey(p.Name) : null;
+
+        double[] HeldCurve()
+        {
+            var c = cfg.Calc;
+            string gk = HeldGunKey();
+            return c != null && c.AutoLearn && gk != null && c.Learn.TryGetValue(gk, out var cv) && cv?.Length == NativeRecoil.BINS ? cv : null;
+        }
+
+        void LearnInput(IntPtr dev, int dx, int dy, int left)
+        {
+            if (left > 0) fireDev = dev;
+            if (engine == null || !engine.Spraying || dev == IntPtr.Zero || dev != fireDev) return;
+            int id = engine.SprayId;
+            if (id != learnId) { learnId = id; Array.Clear(learnY); learnX = 0; }
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - engine.SprayStartTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            learnY[Math.Clamp((int)(ms / NativeRecoil.BIN_MS), 0, NativeRecoil.BINS - 1)] += dy;
+            learnX += Math.Abs(dx);
+        }
+
+        void LearnSpray(double[] macroY, double ms, double ads, int id)
+        {
+            var c = cfg.Calc;
+            string gk = HeldGunKey();
+            if (c == null || !c.AutoLearn || gk == null || !Native) return;
+            if (ms < 900 || ads < 0.8 || paused) return;
+            double total = macroY.Sum();
+            if (total < 40) return;
+            double[] user = id == learnId ? learnY.ToArray() : new double[NativeRecoil.BINS];
+            if (learnX > total * 0.35) { Log.Info($"learn {gk}: skipped (tracking sideways {learnX:0} vs pull {total:0})"); return; }
+            var cv = c.Learn.TryGetValue(gk, out var old) && old?.Length == NativeRecoil.BINS ? old : Enumerable.Repeat(1.0, NativeRecoil.BINS).ToArray();
+            var parts = new List<string>();
+            for (int b = 0; b < NativeRecoil.BINS; b++)
+            {
+                if (macroY[b] < 15) continue;
+                double r = Math.Clamp(user[b] / macroY[b], -0.3, 0.3);
+                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + 0.4 * r), 0.6, 1.6), 4);
+                parts.Add($"{b * 0.5:0.0}s {r:+0.00;-0.00}→×{cv[b]:0.00}");
+            }
+            if (parts.Count == 0) return;
+            // ช่วงหลังที่ยังไม่เคยยิงถึง เริ่มจากค่าของช่วงสุดท้ายที่เรียนแล้ว
+            int lastSeen = Enumerable.Range(0, NativeRecoil.BINS).Last(b => macroY[b] >= 15 || b == 0);
+            if (!c.LearnN.ContainsKey(gk)) for (int b = lastSeen + 1; b < NativeRecoil.BINS; b++) cv[b] = cv[lastSeen];
+            c.Learn[gk] = cv;
+            c.LearnN[gk] = (c.LearnN.TryGetValue(gk, out int n) ? n : 0) + 1;
+            Log.Info($"learn {gk} #{c.LearnN[gk]}: " + string.Join(" · ", parts));
+            engine.SetCurve(HeldCurve());
+            LiveDirty();
+            learnSave ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            learnSave.Tick -= LearnSaveTick;
+            learnSave.Tick += LearnSaveTick;
+            learnSave.Stop();
+            learnSave.Start();
+        }
+
+        void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
+
         // ---------------------------------------------------------------- ถืออะไรอยู่ (ตามปุ่มในเกม)
         //   ปืน 1/2 = ดึง, ปืนพก/มีด/ระเบิด = ไม่ดึง
         //   เก็บปืน (X) ในเกมเป็นปุ่มสลับ: กดอีกครั้ง = หยิบปืนเดิมกลับ

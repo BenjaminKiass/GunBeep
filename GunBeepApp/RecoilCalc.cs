@@ -32,6 +32,10 @@ namespace GunBeep
         public string RefGripId { get; set; } = "thumb";
         public string RefStockId { get; set; }
         public Dictionary<string, double> RefNeed { get; set; } = new();
+        // เรียนรู้จากมือผู้ใช้ตอนยิงค้าง: ปืน → แรงคูณแต่ละช่วงเวลา (8 ช่วง × 0.5 วิ) และจำนวนชุดที่เรียนแล้ว
+        public bool AutoLearn { get; set; } = true;
+        public Dictionary<string, double[]> Learn { get; set; } = new();
+        public Dictionary<string, int> LearnN { get; set; } = new();
     }
 
     public static class RecoilCalc
@@ -173,6 +177,8 @@ namespace GunBeep
                         if (m.item != null && m.score > best.score) best = (m.item, m.score);
                     }
                 ids[i] = best.item?.Id;
+                // ปืนที่ไม่มีช่องพานท้าย (AUG, Beryl …) ตำแหน่งนี้ทับรูปแม็กของปืน → นับว่ามีพานท้ายเฉพาะตอนรู้จักว่าเป็นพานท้ายจริง
+                if (i == 3 && ids[i] == null) has[i] = false;
             }
             return has;
         }
