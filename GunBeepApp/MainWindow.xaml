@@ -630,7 +630,27 @@
                                         </StackPanel>
                                     </RadioButton>
                                 </Grid>
-                                <Grid Margin="0,10,0,0" ToolTip="นับกระสุนที่ยิงไปทุกชุดรวมกัน ครบแล้วหยุดดึงจนกว่าจะกด R (หรือเปลี่ยนปืน) — แม็กหมดแล้วจอไม่ก้มลงเอง · แม็ก 40 ตั้ง 42, แม็ก 30 ตั้ง 32">
+                                <Grid Margin="0,10,0,0" ToolTip="นับกระสุน = แม็กหมดแล้วหยุดดึง (เกมจริง) · ไม่นับ = ดึงตลอด ไม่หยุด (เทรนนิ่ง กระสุนไม่จำกัด)">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="82"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="นับกระสุน" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                    <RadioButton x:Name="MagOnRb" Grid.Column="1" GroupName="mag" Style="{StaticResource SegRadio}" Checked="MagRb_Checked">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8EF;" FontFamily="Segoe MDL2 Assets" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Text="นับ (เกมจริง)" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="MagOffRb" Grid.Column="2" GroupName="mag" Style="{StaticResource SegRadio}" Margin="6,0,0,0" Checked="MagRb_Checked">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE7FC;" FontFamily="Segoe MDL2 Assets" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Text="ไม่นับ (เทรนนิ่ง)" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </Grid>
+                                <Grid x:Name="ShotsRow" Margin="0,10,0,0" ToolTip="นับกระสุนแยกตามช่องปืน ครบแล้วหยุดดึงจนกว่าจะกด R — เปลี่ยนปืนไม่ล้างค่า (แม็กในเกมก็ไม่เติม) · แม็ก 40 ตั้ง 42, แม็ก 30 ตั้ง 32">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="82"/>
                                         <ColumnDefinition Width="Auto"/>

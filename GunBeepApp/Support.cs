@@ -27,6 +27,7 @@ namespace GunBeep
         public int CycleKey { get; set; }           // หรือปุ่มคีย์บอร์ด (GunBeep จัดการเอง), 0 = ไม่ใช้
         public bool ResAlways { get; set; }
         public int MaxShots { get; set; } = 42;     // ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2), 0 = ไม่จำกัด
+        public bool MagCount { get; set; } = true;  // นับกระสุน/หยุดตอนแม็กหมด — ปิดตอนเล่นเทรนนิ่ง (กระสุนไม่จำกัด)
         public bool Socd { get; set; } = false;      // SOCD: ปุ่มทิศตรงข้ามกดพร้อมกัน (Snap Tap)
         public int SocdMode { get; set; } = 0;       // 0 ปุ่มล่าสุดชนะ, 1 ปุ่มแรกชนะ, 2 กดคู่ = หยุดนิ่ง
         public bool SocdGameOnly { get; set; } = true;

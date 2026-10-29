@@ -155,6 +155,7 @@ namespace GunBeep
             num = KeyHook.ReadLockNow(VK_NUM);
             on = false;
             UpdateAdsModeButton();
+            UpdateMagMode();
             UpdateShotsText();
             ShotsSlider.Value = cfg.MaxShots > 0 ? cfg.MaxShots : ShotsSlider.Maximum;
             ShotsSlider.ValueChanged += (s, e) => ShotsMoved((int)Math.Round(e.NewValue));
@@ -315,11 +316,16 @@ namespace GunBeep
         // ---------------------------------------------------------------- นับกระสุนในแม็ก
         // เกมไม่บอกจำนวนกระสุน (อ่านภาพ/หน่วยความจำเกม = เสี่ยงแบน) → นับเองจากเวลากดยิงทุกชุดรวมกัน
         //   ครบ "กระสุนต่อแม็ก" = หยุดดึง (ปิดไฟ Scroll ชั่วคราว) จนกว่าจะรีโหลด:
-        //   กด R / เปลี่ยนปืน (1 2 3 / ลูกกลิ้ง) / แม็กหมดแล้วกดยิงอีก (เกมรีโหลดเอง) = เริ่มนับใหม่
+        //   กด R / แม็กหมดแล้วกดยิงอีก (เกมรีโหลดเอง) = เริ่มนับใหม่
+        //   นับแยกตามช่องปืน: เปลี่ยนปืน (1 2 3 / ลูกกลิ้ง) แม็กในเกมไม่ได้เติม → สลับไปนับของช่องนั้นต่อ ไม่ล้างค่า
         const double SHOT_MS = 86;                // ไรเฟิลส่วนใหญ่ ~700 นัด/นาที (ตรงกับ SHOT_MS ในสคริปต์)
-        double magFired;                          // นัดที่ยิงไปแล้วในแม็กนี้ (ชุดที่ปล่อยแล้ว)
+        readonly double[] magFiredBy = new double[4];   // นัดที่ยิงไปแล้วในแม็กของแต่ละช่อง (ชุดที่ปล่อยแล้ว) — 0 = ไม่ใช่ปืน (ระเบิด/เก็บปืน)
+        readonly bool[] magEmptyBy = new bool[4];
+        int magSlot = 1;                          // ช่องที่ถืออยู่ตามปุ่มที่กด
+        DateTime lastMagWheel;
         DateTime? fireStart;                      // กำลังกดยิงค้างตั้งแต่
-        bool magEmpty;
+
+        bool magEmpty => magSlot != 0 && magEmptyBy[magSlot];
 
         static double ShotsIn(TimeSpan held) => Math.Floor(held.TotalMilliseconds / SHOT_MS) + 1;   // นัดแรกออกทันที
 
@@ -329,26 +335,39 @@ namespace GunBeep
         {
             if (down)
             {
-                if (!Playing()) return;
+                if (!Playing() || magSlot == 0) return;
                 if (magEmpty) { ResetMag("empty mag clicked = game reloads"); return; }
                 fireStart = DateTime.Now;
             }
-            else if (fireStart != null)
-            {
-                magFired += ShotsIn(DateTime.Now - fireStart.Value);
-                fireStart = null;
-            }
+            else EndBurst();
         }
 
-        double MagNow() => magFired + (fireStart != null ? ShotsIn(DateTime.Now - fireStart.Value) : 0);
+        void EndBurst()
+        {
+            if (fireStart == null) return;
+            if (magSlot != 0) magFiredBy[magSlot] += ShotsIn(DateTime.Now - fireStart.Value);
+            fireStart = null;
+        }
+
+        double MagNow() => magSlot == 0 ? 0 : magFiredBy[magSlot] + (fireStart != null ? ShotsIn(DateTime.Now - fireStart.Value) : 0);
 
         void ResetMag(string why)
         {
-            if (magFired == 0 && fireStart == null && !magEmpty) return;
-            if (magEmpty || magFired > 0) Log.Info($"mag reset ({why}) after {MagNow():0} shots");
-            magFired = 0;
+            if (magSlot == 0) return;
+            if (magFiredBy[magSlot] == 0 && fireStart == null && !magEmpty) return;
+            Log.Info($"mag reset slot {magSlot} ({why}) after {MagNow():0} shots");
+            magFiredBy[magSlot] = 0;
             fireStart = null;
-            magEmpty = false;
+            magEmptyBy[magSlot] = false;
+        }
+
+        // เปลี่ยนอาวุธในมือ: 1–3 = ช่องปืน, 0 = ระเบิด/เก็บปืน (ไม่นับ)
+        void MagSlotTo(int s)
+        {
+            if (s == magSlot) return;
+            EndBurst();
+            magSlot = s;
+            if (s != 0) Log.Info($"mag slot {s}: {magFiredBy[s]:0} shots fired{(magEmptyBy[s] ? " (empty)" : "")}");
         }
 
         void WatchMenu()
@@ -356,9 +375,9 @@ namespace GunBeep
             bool front = GameInFront();
             WatchLanguage(front, front && !CursorShown());
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
-            if (!magEmpty && on && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
+            if (!magEmpty && on && cfg.MagCount && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
             {
-                magEmpty = true;
+                magEmptyBy[magSlot] = true;
                 Log.Info($"mag empty: {MagNow():0}/{cfg.MaxShots} shots → stop pulling until reload");
                 PopOsd("แม็กหมด — กด R");
             }
@@ -671,7 +690,11 @@ namespace GunBeep
 
         void OnWheel(int delta)
         {
-            if (Playing()) ResetMag("wheel = weapon switch");
+            if (Playing() && DateTime.Now - lastMagWheel > TimeSpan.FromMilliseconds(180))   // หมุนหลายแก๊กติดกัน = สลับครั้งเดียว
+            {
+                lastMagWheel = DateTime.Now;
+                MagSlotTo(magSlot == 1 ? 2 : 1);                // ลูกกลิ้ง = สลับปืนหลัก/รอง (โดยประมาณ)
+            }
             if (cfg.SlotSwitch != 2 || !on || capturing) return;
             var now = DateTime.Now;
             if (now - lastWheel < TimeSpan.FromMilliseconds(180)) return;    // หมุนหลายแก๊กติดกัน = เปลี่ยนครั้งเดียว
@@ -917,7 +940,9 @@ namespace GunBeep
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
-            if (vk == 0x52 || (vk >= 0x31 && vk <= 0x33)) ResetMag(vk == 0x52 ? "R" : "weapon key");   // รีโหลด / เปลี่ยนปืน
+            if (vk == 0x52) ResetMag("R");                                       // รีโหลด
+            else if (vk >= 0x31 && vk <= 0x33) MagSlotTo(vk - 0x30);              // เปลี่ยนปืน: นับของช่องนั้นต่อ
+            else if (vk == 0x34 || vk == 0x35 || vk == 0x58) MagSlotTo(0);        // ระเบิด / เก็บปืน (X)
             if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 
             switch (vk)
@@ -1687,6 +1712,31 @@ namespace GunBeep
             _ = SendAdsModeAsync();
         }
 
+        void UpdateMagMode()
+        {
+            MagOnRb.IsChecked = cfg.MagCount;
+            MagOffRb.IsChecked = !cfg.MagCount;
+            ShotsRow.Opacity = cfg.MagCount ? 1 : 0.4;
+            ShotsRow.IsEnabled = cfg.MagCount;
+        }
+
+        void MagRb_Checked(object sender, RoutedEventArgs e)
+        {
+            bool count = sender == MagOnRb;
+            if (count == cfg.MagCount) return;          // ตั้งค่าตอนเปิดโปรแกรม ไม่ใช่ผู้ใช้กด
+            cfg.MagCount = count;
+            cfg.Save();
+            UpdateMagMode();
+            Array.Clear(magFiredBy);
+            Array.Clear(magEmptyBy);
+            fireStart = null;
+            Flash(count ? "นับกระสุน: แม็กหมดแล้วหยุดดึง" : "ไม่นับกระสุน: ดึงตลอด (เทรนนิ่ง)");
+            Sfx.Play(Sfx.Pick, cfg.Sound);
+            _ = SendMaxShotsAsync();                    // สคริปต์ก็เลิกหยุดดึงตอนยิงยาว
+        }
+
+        int EffectiveMaxShots => cfg.MagCount ? cfg.MaxShots : 0;
+
         // ---------------------------------------------------------------- หยุดดึงหลังยิงครบ N นัด
         DispatcherTimer shotsSave;
 
@@ -1773,7 +1823,8 @@ namespace GunBeep
 
         async Task SendMaxShotsAsync()
         {
-            try { GHub.WriteMaxShots(cfg.MaxShots); } catch { }
+            int max = EffectiveMaxShots;
+            try { GHub.WriteMaxShots(max); } catch { }
             if (scriptVersion < LiveLink.SHOTS_VERSION)
             {
                 Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้จำนวนนัด");
@@ -1784,10 +1835,10 @@ namespace GunBeep
             liveBusy = true;
             RefreshApplyButton();
             bool ok;
-            try { ok = await SendFrameAsync(LiveLink.CfgFrame(2, cfg.MaxShots)); }
+            try { ok = await SendFrameAsync(LiveLink.CfgFrame(2, max)); }
             finally { liveAck = null; liveBusy = false; RefreshApplyButton(); }
-            Log.Info($"live max shots {cfg.MaxShots}: {(ok ? "ok" : "no ack")}");
-            Flash(ok ? $"หยุดดึงหลังยิง {(cfg.MaxShots > 0 ? cfg.MaxShots + " นัด" : "ไม่จำกัด")}" : "G Hub ไม่ตอบรับ — จะใช้ได้หลัง G Hub เปิดใหม่");
+            Log.Info($"live max shots {max}: {(ok ? "ok" : "no ack")}");
+            Flash(ok ? $"หยุดดึงหลังยิง {(max > 0 ? max + " นัด" : "ไม่จำกัด")}" : "G Hub ไม่ตอบรับ — จะใช้ได้หลัง G Hub เปิดใหม่");
         }
 
         async Task SendAdsModeAsync()
