@@ -35,6 +35,7 @@ namespace GunBeep
             public Bitmap Icon;                       // ภาพช่องสโคปล่าสุด
             public bool[] Att;                        // ของแต่ง: [0] ปากกระบอก, [1] กริป, [3] พานท้าย
             public string[] AttId;                    // ชนิดของแต่งที่รู้จัก (AttachmentId), null = ไม่แน่ใจ
+            public bool[] AttUnsure;                  // ช่องที่เมาส์ชี้อยู่ (พื้นขาว) → อ่านรอบนี้ไม่ได้ ใช้ค่าเดิม
             public Bitmap Pic;                        // ภาพปืนจากหน้ากระเป๋าของผู้ใช้ (ไว้โชว์ในหน้ามาโคร)
             public object PicUi;                      // ภาพเดียวกันแบบ WPF (แปลงครั้งเดียว)
             public double Score;
@@ -467,7 +468,7 @@ namespace GunBeep
                 }
                 if (p.Slot != 0)
                 {
-                    p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId);
+                    p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
                     var pb = PicBox(cfg, screenW, screenH, i);
                     pb.Offset(-origin.X, -origin.Y);
                     p.Pic = Crop(shot, pb);

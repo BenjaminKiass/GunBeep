@@ -337,3 +337,8 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   downward kick over 70 ms (no time table). Kick = AUG-table pull for one 85 ms shot × SemiKick / GunFactor
   (gear already has GunFactor) × c.LearnKick[gun]. Learned from the hand's dy in the 400 ms after each kick.
   Mag counts 1 per click. No rapid-fire (synthetic clicks) — declined.
+- Inventory session (MainWindow.TrackInventory): starts when the cursor appears ≤1.5 s after Tab/I while playing; PUBG
+  HIDES the cursor while dragging an item (LMB held) → session stays open (no pull, no shot counting, scan resumes on
+  drop). Ends on Tab/I/Esc + cursor gone, or cursor gone with LMB up > 0.6 s. Before 2.0.56 a drag ended the session,
+  so new attachments were only read after pressing Tab again. Gun name is OCR'd every scan (same scope on another gun
+  kept the old name). Hovered attachment slot (white, >40% bright pixels) = AttUnsure → keep the previous value.

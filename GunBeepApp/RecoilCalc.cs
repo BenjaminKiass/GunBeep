@@ -175,16 +175,19 @@ namespace GunBeep
         static readonly double[] SlotDx = { 0.009, 0.104, 0.206, 0.308 };
         const double SlotDy = 0.140, SlotSize = 0.044;
 
-        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids)
+        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids, out bool[] unsure)
         {
             var b = panel == 0 ? cfg.ScopeBadge1 : cfg.ScopeBadge2;
             var has = new bool[4];
             ids = new string[4];
+            unsure = new bool[4];
             for (int i = 0; i < 4; i++)
             {
                 var r = ScopeDetect.Box(b[0] + SlotDx[i] * h / w, b[1] + SlotDy, SlotSize, w, h);
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
+                // เมาส์ชี้ช่องนี้อยู่ → พื้นช่องเป็นสีขาว (วัดจากภาพจริง: ชี้ 62–99% ขาว, ปกติ 0%) อ่านไม่ได้
+                if (c.Width > 4 && BrightShare(c) > 0.4) { unsure[i] = true; continue; }
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
                 if (!has[i] || i == 2) continue;          // ช่องแม็ก: รู้แค่ว่ามีของ (แม็กขยาย) ไม่ต้องรู้ชนิด
                 // ชิ้นไหน: ลองเลื่อนกรอบ ±2 px เผื่อตำแหน่งเพี้ยนนิดหน่อย เอาที่ตรงสุด
@@ -204,6 +207,19 @@ namespace GunBeep
                 if (i == 3 && ids[i] == null) has[i] = false;
             }
             return has;
+        }
+
+        static double BrightShare(Bitmap c)
+        {
+            int n = 0, hi = 0;
+            for (int y = 0; y < c.Height; y += 2)
+                for (int x = 0; x < c.Width; x += 2)
+                {
+                    var px = c.GetPixel(x, y);
+                    n++;
+                    if (0.3 * px.R + 0.59 * px.G + 0.11 * px.B > 200) hi++;
+                }
+            return n == 0 ? 0 : (double)hi / n;
         }
 
         public static Rectangle AttachmentArea(Settings cfg, int w, int h)

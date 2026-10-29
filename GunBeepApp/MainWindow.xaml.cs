@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -340,7 +340,7 @@ namespace GunBeep
 
         double ShotsIn(TimeSpan held) => Math.Floor(held.TotalMilliseconds / GunShotMs(magSlot)) + 1;   // นัดแรกออกทันที
 
-        bool Playing() => GameInFront() && !CursorShown();
+        bool Playing() => GameInFront() && !CursorShown() && !invSession;
 
         void MagFire(bool down)
         {
@@ -391,7 +391,8 @@ namespace GunBeep
             bool front = GameInFront();
             bool cursor = CursorShown();
             engine?.SetFront(front);
-            WatchLanguage(front, front && !cursor);
+            TrackInventory(front, cursor);
+            WatchLanguage(front, front && !cursor && !invSession);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
             if (!magEmpty && on && TimeCounting && MagCap(magSlot) > 0 && MagNow() >= MagCap(magSlot))
@@ -408,6 +409,7 @@ namespace GunBeep
             {
                 if (!GameInFront()) { want = true; why = "game not in front"; }
                 else if (CursorShown()) { want = true; why = "cursor shown (inventory/map/menu)"; }
+                else if (invSession) { want = true; why = "inventory (dragging item)"; }
             }
             if (want != paused)
             {
@@ -745,8 +747,29 @@ namespace GunBeep
         bool invWas, scanBusy;
         // เปิดกระเป๋าจริง = กด Tab/I ตอนกำลังเล่น (ไม่มีเคอร์เซอร์) แล้วเคอร์เซอร์โผล่ภายใน 1.5 วิ
         //   ล็อบบี้ / หน้าตั้งค่า / Esc / แผนที่ มีเคอร์เซอร์แต่ไม่ได้มาจาก Tab → ไม่ตรวจ
-        DateTime invKeyAt;
-        bool invByKey, cursorWasForInv;
+        //   ระหว่างลากของ (ถือคลิกซ้าย) เกมซ่อนเคอร์เซอร์ — ยังนับว่าอยู่ในกระเป๋า: ไม่ดึง ไม่นับกระสุน วางของแล้วอ่านต่อเอง
+        //   (เดิมเคอร์เซอร์หายตอนลาก = นับว่าปิดกระเป๋า เลยไม่อ่านของแต่งที่เพิ่งใส่จนกว่าจะกด Tab ใหม่)
+        //   ปิด = เพิ่งกด Tab/I/Esc แล้วเคอร์เซอร์หาย หรือเคอร์เซอร์หายโดยไม่ได้ถือคลิกซ้ายเกิน 0.6 วิ
+        DateTime invKeyAt, invCloseKeyAt, hiddenIdleSince;
+        bool invSession, sessionWas, cursorPrev;
+
+        void TrackInventory(bool front, bool cursor)
+        {
+            var now = DateTime.Now;
+            if (!front) invSession = false;
+            else if (cursor)
+            {
+                if (!invSession && !cursorPrev && now - invKeyAt < TimeSpan.FromSeconds(1.5)) { invSession = true; invCloseKeyAt = DateTime.MinValue; }
+                hiddenIdleSince = now;
+            }
+            else if (invSession)
+            {
+                bool closeKey = now - invCloseKeyAt < TimeSpan.FromSeconds(1.5);
+                if (!closeKey && KeyHook.GetAsyncKeyState(0x01) < 0) hiddenIdleSince = now;     // กำลังลากของ
+                else if (closeKey || now - hiddenIdleSince > TimeSpan.FromMilliseconds(600)) invSession = false;
+            }
+            cursorPrev = front && cursor;
+        }
         DateTime invOpenedAt, lastScan;
 
         void UpdateScopeAutoBtn() =>
@@ -778,14 +801,12 @@ namespace GunBeep
         void WatchScope(bool front, bool cursor)
         {
             if (!cfg.ScopeAuto) return;
-            if (!front || !cursor) invByKey = false;
-            else if (!cursorWasForInv && DateTime.Now - invKeyAt < TimeSpan.FromSeconds(1.5)) invByKey = true;
-            cursorWasForInv = front && cursor;
-            bool inv = front && cursor && invByKey;
+            bool inv = front && cursor && invSession;
             var now = DateTime.Now;
-            if (inv && !invWas) invOpenedAt = now;
-            if (!inv && invWas) ApplyScope("inventory closed");
+            if (inv && !invWas) invOpenedAt = now;                 // เปิดใหม่ / เพิ่งวางของ: รอภาพนิ่งก่อนอ่าน
+            if (!invSession && sessionWas) ApplyScope("inventory closed");
             invWas = inv;
+            sessionWas = invSession;
             if (!inv || scanBusy || locating || now - invOpenedAt < TimeSpan.FromMilliseconds(250) || now - lastScan < TimeSpan.FromMilliseconds(400)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
@@ -844,8 +865,6 @@ namespace GunBeep
                     {
                         var p = res[i];
                         if (p.Slot == 0) continue;
-                        var known = slotInfo[p.Slot];
-                        if (known != null && known.Set == p.Set && known.Name != "") { p.Name = known.Name; continue; }   // เหมือนเดิม ไม่ต้อง OCR ซ้ำ
                         var nb = boxes[i].name;
                         nb.Offset(-origin.X, -origin.Y);
                         using var crop = ScopeDetect.Crop(shot, nb);
@@ -875,7 +894,12 @@ namespace GunBeep
                         p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         if (p.Name == "") p.Name = old.Name;
                     }
-                    if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p);
+                    if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
+                        for (int k = 0; k < 4; k++)
+                            if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
+                    string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
+                    if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p + " att " + attSig(p));
+                    else if (attSig(old) != attSig(p)) Log.Info($"scope scan: slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
                     old?.Icon?.Dispose();
                     slotInfo[p.Slot] = p;
                 }
@@ -1296,7 +1320,11 @@ namespace GunBeep
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
-            if (vk == 0x09 || vk == 0x49) invKeyAt = DateTime.Now;   // Tab / I — นับเป็นเปิดกระเป๋าเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
+            if (vk == 0x09 || vk == 0x49 || vk == 0x1B)          // Tab / I / Esc
+            {
+                if (invSession) invCloseKeyAt = DateTime.Now;      // ปิดกระเป๋า
+                else if (vk != 0x1B) invKeyAt = DateTime.Now;      // เปิด — นับเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
+            }
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             // ในตัว: ไม่มีปุ่มเลือกชุด/จูนในเกม (Back/Forward) — ทุกอย่างออโต้จากหน้ากระเป๋า
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
