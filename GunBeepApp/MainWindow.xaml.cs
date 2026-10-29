@@ -357,13 +357,13 @@ namespace GunBeep
         {
             if (fireStart == null) return;
             var held = DateTime.Now - fireStart.Value;
-            if (magSlot != 0) magFiredBy[magSlot] += ShotsIn(held);
+            if (magSlot != 0) magFiredBy[magSlot] += IsSemi(magSlot) ? 1 : ShotsIn(held);     // ปืนเคาะ: คลิกละนัด
             fireStart = null;
         }
 
         bool TimeCounting => cfg.MagMode != 0;
 
-        double MagNow() => magSlot == 0 ? 0 : magFiredBy[magSlot] + (fireStart != null ? ShotsIn(DateTime.Now - fireStart.Value) : 0);
+        double MagNow() => magSlot == 0 ? 0 : magFiredBy[magSlot] + (fireStart != null ? (IsSemi(magSlot) ? 1 : ShotsIn(DateTime.Now - fireStart.Value)) : 0);
 
         void ResetMag(string why)
         {
@@ -382,6 +382,7 @@ namespace GunBeep
             EndBurst();
             magSlot = s;
             LiveDirty();
+            if (Native) PushMults();                  // ปืนในมือเปลี่ยน → เคาะ/ออโต้, ความเร็วยิง, แม็ก ของกระบอกนั้น
             if (s != 0) Log.Info($"mag slot {s}: {magFiredBy[s]:0} shots fired{(magEmptyBy[s] ? " (empty)" : "")}");
         }
 
@@ -945,7 +946,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); PushSemi(); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {

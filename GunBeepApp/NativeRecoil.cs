@@ -68,6 +68,14 @@ namespace GunBeep
         public void SetGear(double m) => Volatile.Write(ref gear, m);
         public void SetStance(double m) => Volatile.Write(ref stance, m);
         double xBias;
+
+        // ปืนเคาะ: คลิกหนึ่งครั้ง = ดึงลงหนึ่งจังหวะ (kick × ตัวคูณ) กระจายใน SEMI_MS แล้วรอปล่อยคลิก
+        public volatile bool Semi;
+        double semiKick;
+        public const int SEMI_MS = 70;
+        public long KickTs;                              // Stopwatch.GetTimestamp() ตอนเตะล่าสุด
+        public event Action<double, int, bool> Kicked;   // แรงที่ดึงจริง (count), เลขนัด, กดคลิกขวา (เล็ง) อยู่ไหม
+        public void SetSemiKick(double k) => Volatile.Write(ref semiKick, k);
         public void SetXBias(double x) => Volatile.Write(ref xBias, x);     // ซ้าย/ขวาที่เรียนรู้ของปืนที่ถือ (บวกกับ x ของชุดค่า)
 
         public void Dispose() => stop = true;
@@ -93,7 +101,7 @@ namespace GunBeep
                 {
                     if (Ready && Down(VK_LBUTTON) && (!RequireAds || Down(VK_RBUTTON)))
                     {
-                        try { Spraying = true; Spray(); }
+                        try { Spraying = true; if (Semi) Kick(); else Spray(); }
                         catch (Exception ex) { Log.Error("native spray", ex); }
                         finally { Spraying = false; }
                         while (!stop && Down(VK_LBUTTON)) Thread.Sleep(5);    // หยุดดึงแล้วแต่ยังกดค้าง = รอปล่อย
@@ -102,6 +110,27 @@ namespace GunBeep
                 }
             }
             finally { timeEndPeriod(1); }
+        }
+
+        void Kick()
+        {
+            KickTs = Stopwatch.GetTimestamp();
+            SprayId++;
+            bool ads = Down(VK_RBUTTON);
+            double total = Volatile.Read(ref semiKick) * Volatile.Read(ref gear) * Volatile.Read(ref stance);
+            if (total <= 0) return;
+            var sw = Stopwatch.StartNew();
+            int moved = 0;
+            while (!stop && active && front)
+            {
+                double t = sw.Elapsed.TotalMilliseconds;
+                int want = (int)Math.Round(total * Math.Min(1, t / SEMI_MS));
+                if (want > moved) { Move(0, want - moved); moved = want; }
+                if (t >= SEMI_MS) break;
+                Thread.Sleep(1);
+            }
+            try { Kicked?.Invoke(moved, SprayId, ads); }
+            catch (Exception ex) { Log.Error("kick", ex); }
         }
 
         void Spray()

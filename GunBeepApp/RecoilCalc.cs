@@ -37,6 +37,7 @@ namespace GunBeep
         public Dictionary<string, double[]> Learn { get; set; } = new();
         public Dictionary<string, int> LearnN { get; set; } = new();
         public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)
+        public Dictionary<string, double> LearnKick { get; set; } = new();  // ปืนเคาะ → แรงต่อนัดที่เรียนรู้ (คูณ)
     }
 
     public static class RecoilCalc
@@ -144,6 +145,13 @@ namespace GunBeep
             ["DP28"] = (47, 47, 109), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 61), ["MINI14"] = (20, 30, 100),
             ["SKS"] = (10, 20, 100), ["SLR"] = (10, 20, 100), ["MK12"] = (20, 30, 100), ["QBU"] = (10, 20, 100),
             ["VSS"] = (10, 20, 86), ["MK14"] = (10, 20, 90), ["DRAGUNOV"] = (10, 20, 100),
+        };
+
+        // ปืนเคาะ (ยิงทีละนัด): ดึงลงหนึ่งจังหวะต่อคลิก แรงต่อนัด = แรงต่อนัดของตาราง AUG × ค่านี้ (ประมาณ, เรียนรู้ต่อเอง)
+        public static readonly Dictionary<string, double> SemiKick = new()
+        {
+            ["MINI14"] = 1.6, ["MK12"] = 1.8, ["QBU"] = 1.8, ["SKS"] = 2.4, ["SLR"] = 2.8, ["DRAGUNOV"] = 2.8,
+            ["M16A4"] = 1.2, ["MK47"] = 1.6,
         };
 
         public static double GunFactor(CalcSettings c, string gunKey)

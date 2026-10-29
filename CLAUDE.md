@@ -333,3 +333,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Mag counting (no screen reading): RecoilCalc.GunInfo = per-gun mag / extended mag / ms per shot (community
   values). Mag slot (attachment index 2) filled = extended. MagCap/GunShotMs use slotInfo[magSlot]; unknown gun
   → cfg.MaxShots and 86 ms. Reload key (GameSettings.Reload) resets the count again.
+- Semi-auto (RecoilCalc.SemiKick: Mini14/Mk12/QBU/SKS/SLR/Dragunov/M16A4/MK47): engine.Semi → each click = one
+  downward kick over 70 ms (no time table). Kick = AUG-table pull for one 85 ms shot × SemiKick / GunFactor
+  (gear already has GunFactor) × c.LearnKick[gun]. Learned from the hand's dy in the 400 ms after each kick.
+  Mag counts 1 per click. No rapid-fire (synthetic clicks) — declined.

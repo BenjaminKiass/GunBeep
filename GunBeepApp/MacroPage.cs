@@ -33,6 +33,7 @@ namespace GunBeep
             GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
+            engine.Kicked += (moved, id, ads) => Dispatcher.BeginInvoke(new Action(() => KickDone(moved, id, ads)));
             BuildGameCard();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
@@ -90,6 +91,7 @@ namespace GunBeep
             engine.SetGear(multWant[0]);
             engine.SetStance(multWant[1]);
             engine.SetActive(Native && on && !paused);
+            PushSemi();
             LiveDirty();
         }
 
@@ -360,6 +362,7 @@ namespace GunBeep
             double gf = RecoilCalc.GunFactor(c, gk);
             string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
                 ? $" · แม็ก {(p.Att != null && p.Att[2] ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
+            if (gk != null && RecoilCalc.SemiKick.ContainsKey(gk)) magTxt += " · ปืนเคาะ: ดึงทีละนัด";
             string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
             root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}",
                                   gf, PGold, gk == null ? null : () => AdjustGun(gk, -0.05), gk == null ? null : () => AdjustGun(gk, +0.05), gk == null));
@@ -764,7 +767,17 @@ namespace GunBeep
         void LearnInput(IntPtr dev, int dx, int dy, int left)
         {
             if (left > 0) fireDev = dev;
-            if (engine == null || !engine.Spraying || dev == IntPtr.Zero || dev != fireDev) return;
+            if (engine == null || dev == IntPtr.Zero || dev != fireDev) return;
+            // ปืนเคาะ: นับมือในช่วง 0.4 วิหลังเตะ
+            double sinceKick = (System.Diagnostics.Stopwatch.GetTimestamp() - engine.KickTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (engine.Semi && sinceKick < KICK_WINDOW_MS)
+            {
+                if (engine.SprayId != kickId) { kickId = engine.SprayId; kickUserY = 0; kickUserX = 0; }
+                kickUserY += dy;
+                kickUserX += Math.Abs(dx);
+                return;
+            }
+            if (!engine.Spraying) return;
             int id = engine.SprayId;
             if (id != learnId) { learnId = id; Array.Clear(learnY); learnX = 0; learnDx = 0; }
             double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - engine.SprayStartTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -828,6 +841,34 @@ namespace GunBeep
 
         void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
 
+        // ปืนเคาะ: หลังเตะ 0.4 วิ ดูว่ามือยังดึงลงช่วย (เตะน้อยไป) หรือดันขึ้น (เตะเกิน) → ปรับแรงต่อนัดของปืนนั้น
+        const int KICK_WINDOW_MS = 400;
+        int kickId = -1;
+        double kickUserY, kickUserX;
+
+        async void KickDone(double moved, int id, bool ads)
+        {
+            await System.Threading.Tasks.Task.Delay(KICK_WINDOW_MS + 30);
+            var c = cfg.Calc;
+            string gk = SlotGunKey(magSlot);
+            if (c == null || !c.AutoLearn || gk == null || !RecoilCalc.SemiKick.ContainsKey(gk) || !ads || moved < 8) return;
+            double uy = kickId == id ? kickUserY : 0, ux = kickId == id ? kickUserX : 0;
+            if (ux > moved * 0.6) return;                       // ลากไล่เป้า ไม่นับ
+            double r = Math.Clamp(uy / moved, -0.4, 0.4);
+            double old = c.LearnKick.TryGetValue(gk, out double o) ? o : 1;
+            double nk = Math.Round(Math.Clamp(old * (1 + 0.35 * r), 0.4, 2.5), 4);
+            c.LearnKick[gk] = nk;
+            c.LearnN[gk] = (c.LearnN.TryGetValue(gk, out int n) ? n : 0) + 1;
+            Log.Info($"learn kick {gk} #{c.LearnN[gk]}: pulled {moved:0}, hand {uy:+0;-0} → ×{nk:0.00}");
+            PushSemi();
+            LiveDirty();
+            learnSave ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            learnSave.Tick -= LearnSaveTick;
+            learnSave.Tick += LearnSaveTick;
+            learnSave.Stop();
+            learnSave.Start();
+        }
+
         // ---------------------------------------------------------------- แม็กตามปืน (ไม่อ่านหน้าจอระหว่างเล่น)
         //   ปืนที่ถือ (จากหน้ากระเป๋า) → ขนาดแม็ก, ช่องแม็กมีของ = แม็กขยาย, เวลาต่อนัดของปืนนั้น
         //   ปืนที่ไม่รู้จัก = ใช้ "กระสุน/แม็ก" ที่ตั้งเอง และ 86 ms/นัด
@@ -839,6 +880,30 @@ namespace GunBeep
             if (p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi))
                 return p.Att != null && p.Att[2] ? gi.ext : gi.mag;
             return cfg.MaxShots;
+        }
+
+        string SlotGunKey(int slot) => SlotPanelOf(slot) is ScopeDetect.Panel p ? RecoilCalc.GunKey(p.Name) : null;
+
+        bool IsSemi(int slot) => SlotGunKey(slot) is string gk && RecoilCalc.SemiKick.ContainsKey(gk);
+
+        // แรงต่อนัดของปืนเคาะ (ก่อนคูณสโคป/ของแต่ง/ท่า ซึ่งตัวยิงคูณเอง):
+        //   แรงที่ตารางชุดค่านี้ดึงใน 1 นัดของปืนออโต้ (เวลาต่อนัดของ AUG) × ความแรงปืนเคาะ / ตัวคูณปืน (อยู่ในตัวคูณรวมแล้ว) × ที่เรียนรู้
+        void PushSemi()
+        {
+            if (engine == null) return;
+            string gk = SlotGunKey(magSlot);
+            bool semi = gk != null && RecoilCalc.SemiKick.ContainsKey(gk);
+            engine.Semi = semi;
+            if (!semi || vals == null || gun < 1 || gun > vals.Length) return;
+            var v = vals[gun - 1];
+            var st = v.Steps ?? GHub.DefaultSteps();
+            int steps = (int)Math.Round(RecoilCalc.GunInfo["AUG"].ms / 10);
+            double perShot = 0;
+            for (int k = 0; k < steps; k++) perShot += st[Math.Min(k, st.Length - 1)] + v.Base;
+            var c = cfg.Calc ??= new CalcSettings();
+            double learned = c.AutoLearn && c.LearnKick.TryGetValue(gk, out double lk) ? lk : 1;
+            double kick = perShot * RecoilCalc.SemiKick[gk] / Math.Max(0.2, RecoilCalc.GunFactor(c, gk)) * learned;
+            engine.SetSemiKick(kick);
         }
 
         double GunShotMs(int slot)
