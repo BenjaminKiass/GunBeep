@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -34,6 +34,7 @@ namespace GunBeep
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
             BuildGameCard();
+            StartAmmoLoop();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
             BuildKeyCards();
@@ -219,7 +220,7 @@ namespace GunBeep
                 !on ? (PRed, PRedBg, B("#FCA5A5"), cfg.AutoOn ? "มาโครปิด · รอเข้าเกม" : "มาโครปิด")
                 : paused ? (PAmber, PAmberBg, B("#FCD34D"), "หยุดชั่วคราว · " + PauseText(pauseWhy))
                 : spraying ? (PCyan, PBlueBg, PCyan, "กำลังดึง")
-                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1]);
+                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1] + (AmmoLive ? $" · กระสุน {ammoNow}" : ""));
             LiveDot.Fill = st.dot;
             LivePill.Background = st.bg;
             LiveText.Foreground = st.fg;
@@ -606,7 +607,7 @@ namespace GunBeep
                 ("ปืนพก / มีด / ระเบิด", cfg.HolsterPause ? "ถืออยู่ = ไม่ดึง" : "ปิดอยู่ (ดึงตลอด)", $"{KeyName(gs.Pistol)} · {KeyName(gs.Melee)} · {KeyName(gs.Throwable)}"),
                 ("เก็บปืน", cfg.HolsterPause ? "ไม่ดึงจนกว่าจะหยิบปืน" : "ปิดอยู่", KeyName(gs.Holster)),
                 ("กระเป๋า / แผนที่", "เคอร์เซอร์โผล่ = ไม่ดึง", "Tab · M"),
-                ("แม็กหมด", cfg.MagMode != 0 ? $"ยิงครบ {cfg.MaxShots} นัด → รอ R" : "ไม่หยุด (เทรนนิ่ง)", "R"),
+                ("แม็กหมด", cfg.MagMode != 0 ? "อ่านเลขกระสุนบนจอ เหลือ 0 = หยุดดึง" : "ไม่หยุด (เทรนนิ่ง)", "อัตโนมัติ"),
             }));
             KeyCards.Children.Add(KeyCard("", "ใช้แรงดึง", "ตอนยิง", PBlue, new[]
             {
@@ -745,7 +746,7 @@ namespace GunBeep
         //   ระหว่างมาโครดึง ถ้ามือยังดึงลงช่วย = มาโครดึงน้อยไป, ถ้ามือดันขึ้น = ดึงเกิน → ปรับปืนนั้นทีละนิด แยกตามช่วงเวลา
         //   นับเฉพาะเมาส์ตัวที่กดยิง (การขยับของมาโครมาจากอุปกรณ์ 0) · เฉพาะตอนเล็ง ยิงค้าง ≥ 0.9 วิ และไม่ได้ลากซ้ายขวาเยอะ (ไม่ได้ไล่เป้า)
         readonly double[] learnY = new double[NativeRecoil.BINS];
-        double learnX;
+        double learnX, learnDx;                   // |ซ้ายขวา| รวม (ไว้กรองตอนไล่เป้า), ซ้ายขวาแบบมีทิศ (ไว้เรียนรู้การไหล)
         int learnId = -1;
         IntPtr fireDev;
         System.Windows.Threading.DispatcherTimer learnSave;
@@ -764,10 +765,18 @@ namespace GunBeep
             if (left > 0) fireDev = dev;
             if (engine == null || !engine.Spraying || dev == IntPtr.Zero || dev != fireDev) return;
             int id = engine.SprayId;
-            if (id != learnId) { learnId = id; Array.Clear(learnY); learnX = 0; }
+            if (id != learnId) { learnId = id; Array.Clear(learnY); learnX = 0; learnDx = 0; }
             double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - engine.SprayStartTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             learnY[Math.Clamp((int)(ms / NativeRecoil.BIN_MS), 0, NativeRecoil.BINS - 1)] += dy;
             learnX += Math.Abs(dx);
+            learnDx += dx;
+        }
+
+        double HeldXBias()
+        {
+            var c = cfg.Calc;
+            string gk = HeldGunKey();
+            return c != null && c.AutoLearn && gk != null && c.LearnX.TryGetValue(gk, out double x) ? x : 0;
         }
 
         void LearnSpray(double[] macroY, double ms, double ads, int id)
@@ -785,8 +794,9 @@ namespace GunBeep
             for (int b = 0; b < NativeRecoil.BINS; b++)
             {
                 if (macroY[b] < 15) continue;
-                double r = Math.Clamp(user[b] / macroY[b], -0.3, 0.3);
-                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + 0.4 * r), 0.6, 1.6), 4);
+                double r = Math.Clamp(user[b] / macroY[b], -0.35, 0.35);
+                double gain = (c.LearnN.TryGetValue(gk, out int seen) ? seen : 0) < 5 ? 0.6 : 0.35;   // ชุดแรกๆ ปรับเร็ว แล้วค่อยละเอียด
+                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain * r), 0.5, 1.7), 4);
                 parts.Add($"{b * 0.5:0.0}s {r:+0.00;-0.00}→×{cv[b]:0.00}");
             }
             if (parts.Count == 0) return;
@@ -794,9 +804,19 @@ namespace GunBeep
             int lastSeen = Enumerable.Range(0, NativeRecoil.BINS).Last(b => macroY[b] >= 15 || b == 0);
             if (!c.LearnN.ContainsKey(gk)) for (int b = lastSeen + 1; b < NativeRecoil.BINS; b++) cv[b] = cv[lastSeen];
             c.Learn[gk] = cv;
+            // ซ้ายขวา: ปืนไหลไปทางเดียวเป็นประจำ → มือดึงกลับ → จำเป็นค่า x ของปืนนั้น (หน่วยเดียวกับ x ต่อ 10 ms)
+            if (id == learnId && ms > 0)
+            {
+                double xPer10 = Math.Clamp(learnDx / (ms / 10.0), -1.5, 1.5);
+                double xb = c.LearnX.TryGetValue(gk, out double ox) ? ox : 0;
+                double xn = Math.Round(Math.Clamp(xb + 0.5 * xPer10, -4, 4), 3);
+                c.LearnX[gk] = xn;
+                parts.Add($"x {xb:+0.00;-0.00}→{xn:+0.00;-0.00}");
+            }
             c.LearnN[gk] = (c.LearnN.TryGetValue(gk, out int n) ? n : 0) + 1;
             Log.Info($"learn {gk} #{c.LearnN[gk]}: " + string.Join(" · ", parts));
             engine.SetCurve(HeldCurve());
+            engine.SetXBias(HeldXBias());
             LiveDirty();
             learnSave ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             learnSave.Tick -= LearnSaveTick;
@@ -806,6 +826,78 @@ namespace GunBeep
         }
 
         void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
+
+        // ---------------------------------------------------------------- อ่านกระสุนจากจอ (แทนนับเวลา / กด R)
+        //   ระหว่างเล่น (เกมอยู่หน้า ไม่มีเคอร์เซอร์) อ่านเลขกระสุนล่างกลางจอ ~15 ครั้ง/วินาที
+        //   0 สองครั้งติด = แม็กหมด หยุดดึง · เลขกลับมามากกว่า 0 = รีโหลดแล้ว ดึงต่อ
+        volatile bool ammoWanted;
+        int ammoNow = -1, ammoZeros;
+        DateTime ammoAt = DateTime.MinValue, ammoSampleAt;
+        bool AmmoLive => DateTime.Now - ammoAt < TimeSpan.FromSeconds(1.5);
+
+        void StartAmmoLoop()
+        {
+            var t = new System.Threading.Thread(() =>
+            {
+                while (true)
+                {
+                    System.Threading.Thread.Sleep(ammoWanted ? 66 : 300);
+                    if (!ammoWanted) continue;
+                    try
+                    {
+                        int w = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width, h = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
+                        using var crop = AmmoReader.Capture(w, h);
+                        int? n = AmmoReader.Read(crop);
+                        System.Drawing.Bitmap keep = null;
+                        if (n == null && AmmoReader.LastText != "-" && DateTime.Now - ammoSampleAt > TimeSpan.FromSeconds(3)) { ammoSampleAt = DateTime.Now; keep = new System.Drawing.Bitmap(crop); }
+                        Dispatcher.BeginInvoke(new Action(() => OnAmmo(n, keep)));
+                    }
+                    catch (Exception ex) { Log.Error("ammo", ex); System.Threading.Thread.Sleep(2000); }
+                }
+            }) { IsBackground = true, Name = "AmmoReader", Priority = System.Threading.ThreadPriority.BelowNormal };
+            t.Start();
+        }
+
+        void OnAmmo(int? n, System.Drawing.Bitmap unreadable)
+        {
+            if (unreadable != null)
+            {
+                // อ่านไม่ออก (เลขที่ยังไม่เคยเห็น) → เก็บไว้ดู/ปรับตัวอ่าน (saved\samples\ammo-*.png ไม่เกิน 60 ภาพ)
+                try
+                {
+                    Directory.CreateDirectory(ScopeDetect.SampleDir);
+                    if (Directory.GetFiles(ScopeDetect.SampleDir, "ammo-*.png").Length < 60)
+                        unreadable.Save(System.IO.Path.Combine(ScopeDetect.SampleDir, $"ammo-{DateTime.Now:HHmmss-fff}.png"), System.Drawing.Imaging.ImageFormat.Png);
+                    Log.Info("ammo unreadable: " + AmmoReader.LastText);
+                }
+                catch { }
+                unreadable.Dispose();
+            }
+            if (n == null) return;
+            ammoAt = DateTime.Now;
+            if (n != ammoNow) LiveDirty();
+            ammoNow = n.Value;
+            if (magSlot == 0 || cfg.MagMode == 0) return;
+            if (ammoNow == 0)
+            {
+                if (++ammoZeros >= 2 && !magEmptyBy[magSlot])
+                {
+                    magEmptyBy[magSlot] = true;
+                    Log.Info("mag empty (read 0 on screen) → stop pulling");
+                    PopOsd("แม็กหมด");
+                }
+            }
+            else
+            {
+                ammoZeros = 0;
+                magFiredBy[magSlot] = 0;
+                if (magEmptyBy[magSlot])
+                {
+                    magEmptyBy[magSlot] = false;
+                    Log.Info($"reloaded (read {ammoNow} on screen) → pull again");
+                }
+            }
+        }
 
         // ---------------------------------------------------------------- ถืออะไรอยู่ (ตามปุ่มในเกม)
         //   ปืน 1/2 = ดึง, ปืนพก/มีด/ระเบิด = ไม่ดึง

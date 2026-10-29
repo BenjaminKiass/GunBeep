@@ -322,3 +322,11 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   a separate console tool compiling AttachmentId.cs + ImageFeature.cs — never launch GunBeep for tooling:
   it auto-switches resolution and auto-powers on while PUBG runs). Vertical % from the tooltips.
   Validated only on one AUG crop (brake / thumb correct).
+- Auto-learn (MacroPage.LearnSpray): during native sprays with ADS ≥ 0.9 s, the physical mouse's dy per
+  0.5 s bin vs the macro's pull → per-gun curve c.Learn[gun][8] (gain 0.6 first 5 sprays, then 0.35), and
+  signed dx → c.LearnX[gun] (x bias). Skips sprays with lots of sideways tracking. User log 2026-10-30:
+  Beryl/AKM defaults were ~15% too strong → BuiltinGun lowered.
+- AmmoReader.cs: reads the HUD ammo digits (centre x, 0.905–0.95 H; white digits, ∞ cut by aspect) with a
+  7-segment test tuned to PUBG's square font (3 has corner stubs → side samples at 28–40% / 58–70%).
+  Verified "30" at 1296×810 / 1728×1080 / 2303×1439. 0 twice = mag empty, >0 = reloaded; R key no longer used.
+  Unreadable crops are saved to saved\samples\ammo-*.png.

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -393,7 +393,8 @@ namespace GunBeep
             WatchLanguage(front, front && !cursor);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
-            if (!magEmpty && on && TimeCounting && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
+            ammoWanted = Native && on && cfg.MagMode != 0 && front && !cursor;
+            if (!magEmpty && on && TimeCounting && !AmmoLive && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
             {
                 magEmptyBy[magSlot] = true;
                 Log.Info($"mag empty: {MagNow():0}/{cfg.MaxShots} shots → stop pulling until reload");
@@ -929,7 +930,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {
@@ -1284,8 +1285,7 @@ namespace GunBeep
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
-            if (vk == 0x52) ResetMag("R");                                       // รีโหลด
-            else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+            if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);                // (ไม่ดูปุ่ม R แล้ว: รีโหลดรู้จากเลขกระสุนบนจอ)          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
             if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
             if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 

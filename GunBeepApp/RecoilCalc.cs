@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -36,6 +36,7 @@ namespace GunBeep
         public bool AutoLearn { get; set; } = true;
         public Dictionary<string, double[]> Learn { get; set; } = new();
         public Dictionary<string, int> LearnN { get; set; } = new();
+        public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)
     }
 
     public static class RecoilCalc
@@ -120,14 +121,15 @@ namespace GunBeep
         // ---------------------------------------------------------------- ปืน
         // แรงดีดแนวตั้งโดยประมาณของแต่ละปืน เทียบ M416 = 1 (ค่าประมาณจากประสบการณ์ผู้เล่น ไม่ใช่ตัวเลขทางการของเกม)
         //   ตัวคูณปืน = ค่าของปืนที่ถือ / ค่าของปืนที่ใช้จูนตาราง (RefGun) × ที่ผู้ใช้ปรับเพิ่ม
+        //   2026-10-30: ปืนแรง (Beryl/AKM/…) ลดลง ~12% ตามที่ระบบเรียนรู้เห็นจากมือผู้ใช้ (ดันเมาส์ขึ้นทุกชุด)
         public static readonly Dictionary<string, double> BuiltinGun = new()
         {
-            ["M416"] = 1.00, ["SCAR"] = 0.95, ["QBZ"] = 0.95, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.15,
-            ["K2"] = 1.02, ["FAMAS"] = 1.10, ["M16A4"] = 0.90, ["BERYL"] = 1.35, ["AKM"] = 1.25, ["GROZA"] = 1.20,
-            ["MK47"] = 1.20, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
+            ["M416"] = 1.00, ["SCAR"] = 0.95, ["QBZ"] = 0.95, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.08,
+            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.15, ["GROZA"] = 1.10,
+            ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
-            ["DP28"] = 0.85, ["M249"] = 0.90, ["MG3"] = 1.30, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.20,
-            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.40, ["DRAGUNOV"] = 1.30,
+            ["DP28"] = 0.85, ["M249"] = 0.90, ["MG3"] = 1.20, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
+            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
         public static double GunFactor(CalcSettings c, string gunKey)

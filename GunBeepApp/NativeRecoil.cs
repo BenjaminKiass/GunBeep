@@ -66,6 +66,8 @@ namespace GunBeep
         public void SetFront(bool f) => front = f;        // หน้าต่าง PUBG อยู่ข้างหน้า
         public void SetGear(double m) => Volatile.Write(ref gear, m);
         public void SetStance(double m) => Volatile.Write(ref stance, m);
+        double xBias;
+        public void SetXBias(double x) => Volatile.Write(ref xBias, x);     // ซ้าย/ขวาที่เรียนรู้ของปืนที่ถือ (บวกกับ x ของชุดค่า)
 
         public void Dispose() => stop = true;
 
@@ -155,7 +157,7 @@ namespace GunBeep
                     }
 
                     var cur = guns;                      // ค่า x ปรับระหว่างยิงได้
-                    double bx = gi <= cur.Length && cur[gi - 1] != null ? cur[gi - 1].X : g.X;
+                    double bx = (gi <= cur.Length && cur[gi - 1] != null ? cur[gi - 1].X : g.X) + Volatile.Read(ref xBias);
                     if (Down(VK_LMENU)) bx -= X_NUDGE;
                     if (Down(VK_LCONTROL)) bx += X_NUDGE;
                     double x = bx * dt / STEP_MS;
