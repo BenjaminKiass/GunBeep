@@ -581,6 +581,13 @@
                                             <TextBlock Text="อัดค่า" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
+                                    <Button x:Name="ShotsBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="8,0,0,0"
+                                            Click="Shots_Click" ToolTip="ตารางแรงดึงรายนัด: นัดที่ 1–42 ดึงลงเท่าไหร่ · ความเร็วยิง · จำนวนนัด · ปรับทีละช่วง">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8FD;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Text="รายนัด" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
                                     <Button x:Name="SegsBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="8,0,0,0"
                                             Click="Segs_Click" ToolTip="แก้กราฟแรงดีดตามเวลา (ตาราง segs) ของแต่ละปืน">
                                         <StackPanel Orientation="Horizontal">

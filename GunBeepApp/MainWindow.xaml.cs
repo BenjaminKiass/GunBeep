@@ -1366,6 +1366,27 @@ namespace GunBeep
             await ApplyRestartAsync();
         }
 
+        // ตารางรายนัด: ค่าละเอียดทุกนัด ส่งแบบ real time ไม่ได้ (เฟรมกราฟปัดเป็นแท่ง 100 ms) → เขียนไฟล์ + รีสตาร์ท G Hub
+        async void Shots_Click(object sender, RoutedEventArgs e)
+        {
+            if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
+            if (setupBusy || liveBusy) return;
+            var d = ShotEditor.Edit(this, cfg.Names.Take(vals.Length).ToArray(), vals.Select(v => v.Steps).ToArray(),
+                                    vals.Select(v => v.Base).ToArray(), cfg.ShotMs, cfg.ShotCount, gun);
+            if (d == null) return;
+            cfg.ShotMs = d.ResultMs.ToArray();
+            cfg.ShotCount = d.ResultCount.ToArray();
+            cfg.Save();
+            var res = d.ResultSteps;
+            if (res.All(s => s == null)) return;
+            for (int i = 0; i < vals.Length; i++)
+                if (res[i] != null) vals[i].Steps = res[i];
+            var all = vals.Select(v => (v.Steps ?? GHub.DefaultSteps()).ToArray()).ToArray();
+            UpdatePresetButton();
+            Log.Info("shot table: " + string.Join(" | ", res.Select((s, i) => s == null ? "-" : $"set {i + 1} {cfg.ShotCount[i]} shots @ {cfg.ShotMs[i]} ms")));
+            await ApplyRestartAsync(all);
+        }
+
         void ImportPreset()
         {
             var dlg = new Microsoft.Win32.OpenFileDialog { Title = "นำเข้าโปรไฟล์ค่าปืน", Filter = "โปรไฟล์ GunBeep (*.json)|*.json" };

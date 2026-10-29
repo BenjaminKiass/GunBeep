@@ -173,6 +173,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Magazine counts are per weapon slot (keys 1–3, wheel toggles 1↔2, 4/5/X = not a gun); only R resets.
 - Resolution switch: SwitchRes saves all top-level window rects (Display.SaveLayout) while at desktop res;
   RestoreRes puts them back 4× over ~2.5 s (Windows re-arranges windows after a mode change).
+- Per-shot table (ShotEditor.cs) is a view over the same segs steps: ToShots integrates (step+base) over each shot
+  window (ShotMs per set, cfg); FromShots blends steps that straddle two shots and solves the inner steps so every
+  shot total is exact (verified 0.004 error incl. Lua-style integration). Saved via WriteSegs + G Hub restart (the
+  live graph frame would quantize to 100 ms bars). Opening the old graph editor and saving re-quantizes.
 - Fast loot (Loot.cs + LootWindow.cs): LootKey pressed while PUBG is foreground AND the cursor is shown → background
   thread drags ground slots N..1 (bottom-up so rows don't shift) to LootDrop with SendInput absolute moves (dwExtraInfo
   MAGIC), then moves to LootCenter. Positions are fractions of the primary screen; the calibrator uses a user-supplied
