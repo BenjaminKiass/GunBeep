@@ -97,6 +97,69 @@ namespace GunBeep
         [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
         const uint SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20, SWP_NOOWNERZORDER = 0x200;
 
+        // ---------------------------------------------------------------- จำตำแหน่งหน้าต่าง
+        // เปลี่ยนความละเอียดไปมา Windows จะจัดหน้าต่างใหม่เอง (ที่ย่อ/แบ่งจอไว้กลายเป็นเต็มจอ)
+        //   → จำตำแหน่ง/ขนาดทุกหน้าต่างก่อนเปลี่ยน แล้ววางกลับที่เดิมหลังคืนความละเอียด
+        [StructLayout(LayoutKind.Sequential)]
+        struct WINDOWPLACEMENT { public int length, flags, showCmd; public int minX, minY, maxX, maxY; public RECT normal; }
+        [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr h, ref WINDOWPLACEMENT p);
+        [DllImport("user32.dll")] static extern bool SetWindowPlacement(IntPtr h, ref WINDOWPLACEMENT p);
+        [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int idx);
+        [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+        [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int v, int size);
+        const int SW_SHOWMINIMIZED = 2, SW_SHOWMAXIMIZED = 3, GWL_EXSTYLE = -20, WS_EX_TOOLWINDOW = 0x80, DWMWA_CLOAKED = 14;
+
+        sealed class Saved { public IntPtr H; public WINDOWPLACEMENT P; public RECT R; }
+        static List<Saved> layout;
+
+        public static int SaveLayout(string skipProcess)
+        {
+            var skip = System.Diagnostics.Process.GetProcessesByName(skipProcess).Select(p => { int id = p.Id; p.Dispose(); return (uint)id; }).ToHashSet();
+            skip.Add((uint)Environment.ProcessId);
+            var list = new List<Saved>();
+            EnumWindows((hw, l) =>
+            {
+                GetWindowThreadProcessId(hw, out uint pid);
+                if (skip.Contains(pid) || !IsWindowVisible(hw) || GetWindow(hw, 4 /* GW_OWNER */) != IntPtr.Zero) return true;
+                if ((GetWindowLong(hw, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) return true;
+                if (DwmGetWindowAttribute(hw, DWMWA_CLOAKED, out int cloaked, 4) == 0 && cloaked != 0) return true;
+                var p = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
+                if (!GetWindowPlacement(hw, ref p) || !GetWindowRect(hw, out var r)) return true;
+                if (r.R - r.L < 50 || r.B - r.T < 50) return true;
+                list.Add(new Saved { H = hw, P = p, R = r });
+                return true;
+            }, IntPtr.Zero);
+            layout = list;
+            return list.Count;
+        }
+
+        // วางกลับที่เดิม (เรียกได้หลายรอบ: Windows อาจจัดหน้าต่างซ้ำอีกทีหลังเปลี่ยนจอ)
+        public static int RestoreLayout()
+        {
+            if (layout == null) return 0;
+            int n = 0;
+            foreach (var s in layout)
+            {
+                if (!IsWindow(s.H)) continue;
+                var p = s.P;
+                if (p.showCmd == SW_SHOWMINIMIZED) continue;           // ย่อลงทาสก์บาร์อยู่ ไม่ต้องยุ่ง
+                if (p.showCmd == SW_SHOWMAXIMIZED) { SetWindowPlacement(s.H, ref p); n++; continue; }
+                // แบ่งจอ (Snap) ใช้ตำแหน่งจริงบนจอ ไม่ใช่ตำแหน่ง "ปกติ" ใน placement
+                var cur = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
+                if (GetWindowPlacement(s.H, ref cur) && cur.showCmd == SW_SHOWMAXIMIZED)
+                {
+                    cur.showCmd = 1;                                  // SW_SHOWNORMAL — เลิกเต็มจอก่อน
+                    SetWindowPlacement(s.H, ref cur);
+                }
+                SetWindowPos(s.H, IntPtr.Zero, s.R.L, s.R.T, s.R.R - s.R.L, s.R.B - s.R.T, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+                n++;
+            }
+            return n;
+        }
+
+        public static void ForgetLayout() => layout = null;
+
         // คืนขนาดหน้าต่างก่อน/หลัง (ไว้ลง log) หรือ null ถ้าไม่เจอหน้าต่างเกม
         public static string FitWindow(string process, int w, int h)
         {

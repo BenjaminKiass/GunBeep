@@ -338,6 +338,7 @@ namespace GunBeep
                 if (!Playing() || magSlot == 0) return;
                 if (magEmpty) { ResetMag("empty mag clicked = game reloads"); return; }
                 fireStart = DateTime.Now;
+                BurstStart();
             }
             else EndBurst();
         }
@@ -345,9 +346,14 @@ namespace GunBeep
         void EndBurst()
         {
             if (fireStart == null) return;
-            if (magSlot != 0) magFiredBy[magSlot] += ShotsIn(DateTime.Now - fireStart.Value);
+            var held = DateTime.Now - fireStart.Value;
+            if (magSlot != 0) magFiredBy[magSlot] += ShotsIn(held);
             fireStart = null;
+            BurstEnd(held.TotalMilliseconds);
         }
+
+        // นับเวลากดยิง (MaxShots) ใช้ตอนโหมดนับเวลา หรือโหมดเสียงที่ไม่ได้ยินเสียงเกม
+        bool TimeCounting => cfg.MagMode == 1 || (cfg.MagMode == 2 && !AudioActive);
 
         double MagNow() => magSlot == 0 ? 0 : magFiredBy[magSlot] + (fireStart != null ? ShotsIn(DateTime.Now - fireStart.Value) : 0);
 
@@ -375,7 +381,7 @@ namespace GunBeep
             bool front = GameInFront();
             WatchLanguage(front, front && !CursorShown());
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
-            if (!magEmpty && on && cfg.MagCount && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
+            if (!magEmpty && on && TimeCounting && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
             {
                 magEmptyBy[magSlot] = true;
                 Log.Info($"mag empty: {MagNow():0}/{cfg.MaxShots} shots → stop pulling until reload");
@@ -384,6 +390,7 @@ namespace GunBeep
             bool want = false;
             string why = null;
             if (on && magEmpty) { want = true; why = "mag empty"; }
+            else if (on && DryFire()) { want = true; why = "no gunshot sound (empty mag / single shot)"; }
             else if (cfg.PauseInMenu && on && gameWas)
             {
                 if (!GameInFront()) { want = true; why = "game not in front"; }
@@ -506,6 +513,11 @@ namespace GunBeep
 
         void SwitchRes()
         {
+            // ยังเป็นจอปกติ → จำตำแหน่งหน้าต่างไว้ คืนจอแล้ววางกลับที่เดิม (ไม่งั้นที่ย่อ/แบ่งจอไว้กลายเป็นเต็มจอ)
+            var desk = Display.Desktop();
+            var cur = Display.Current();
+            if (!resSwitched && cur.w == desk.w && cur.h == desk.h)
+                Log.Info($"remember {Display.SaveLayout("TslGame")} window(s)");
             var r = Display.Switch(cfg.GameResW, cfg.GameResH);
             string res = $"{cfg.GameResW}×{cfg.GameResH}";
             Log.Info($"switch display to {res}: {r}");
@@ -532,6 +544,22 @@ namespace GunBeep
             Log.Info("restore display");
             Display.Restore();
             resSwitched = false;
+            RestoreLayoutSoon();
+        }
+
+        // Windows จัดหน้าต่างใหม่หลังเปลี่ยนจอ (บางทีช้า) → วางกลับหลายรอบ
+        void RestoreLayoutSoon()
+        {
+            Display.RestoreLayout();
+            int n = 0;
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            t.Tick += (s, e) =>
+            {
+                int moved = Display.RestoreLayout();
+                if (++n >= 3) { t.Stop(); Log.Info($"window layout restored ({moved})"); }
+                else t.Interval = TimeSpan.FromMilliseconds(1000);
+            };
+            t.Start();
         }
 
         void UpdateResButton() =>
@@ -1714,28 +1742,76 @@ namespace GunBeep
 
         void UpdateMagMode()
         {
-            MagOnRb.IsChecked = cfg.MagCount;
-            MagOffRb.IsChecked = !cfg.MagCount;
-            ShotsRow.Opacity = cfg.MagCount ? 1 : 0.4;
-            ShotsRow.IsEnabled = cfg.MagCount;
+            MagSoundRb.IsChecked = cfg.MagMode == 2;
+            MagOnRb.IsChecked = cfg.MagMode == 1;
+            MagOffRb.IsChecked = cfg.MagMode == 0;
+            bool time = cfg.MagMode == 1;
+            ShotsRow.Opacity = time ? 1 : 0.4;
+            ShotsRow.IsEnabled = time;
+            if (cfg.MagMode == 2 && audio == null) { audio = new AudioShots(); audio.Start(); deafBursts = 0; }
+            if (cfg.MagMode != 2 && audio != null) { audio.Dispose(); audio = null; }
         }
 
         void MagRb_Checked(object sender, RoutedEventArgs e)
         {
-            bool count = sender == MagOnRb;
-            if (count == cfg.MagCount) return;          // ตั้งค่าตอนเปิดโปรแกรม ไม่ใช่ผู้ใช้กด
-            cfg.MagCount = count;
+            int mode = sender == MagSoundRb ? 2 : sender == MagOnRb ? 1 : 0;
+            if (mode == cfg.MagMode) return;            // ตั้งค่าตอนเปิดโปรแกรม ไม่ใช่ผู้ใช้กด
+            cfg.MagMode = mode;
             cfg.Save();
             UpdateMagMode();
             Array.Clear(magFiredBy);
             Array.Clear(magEmptyBy);
             fireStart = null;
-            Flash(count ? "นับกระสุน: แม็กหมดแล้วหยุดดึง" : "ไม่นับกระสุน: ดึงตลอด (เทรนนิ่ง)");
+            Flash(mode == 2 ? "🔊 ฟังเสียงปืน: กดยิงแต่ไม่มีเสียงปืน = หยุดดึงทันที (ใช้ได้ทุกปืน รวมเทรนนิ่ง)"
+                : mode == 1 ? "นับเวลากดยิง: ครบจำนวนนัดแล้วหยุดดึง" : "ไม่หยุด: ดึงตลอด");
             Sfx.Play(Sfx.Pick, cfg.Sound);
-            _ = SendMaxShotsAsync();                    // สคริปต์ก็เลิกหยุดดึงตอนยิงยาว
+            _ = SendMaxShotsAsync();                    // สคริปต์หยุดดึงตอนยิงยาวเฉพาะโหมดนับเวลา
         }
 
-        int EffectiveMaxShots => cfg.MagCount ? cfg.MaxShots : 0;
+        int EffectiveMaxShots => cfg.MagMode == 1 ? cfg.MaxShots : 0;
+
+        // ---------------------------------------------------------------- ฟังเสียงปืน
+        // กดยิงค้างอยู่ แต่ไม่มีเสียงปืนออกมา (แม็กหมด → เกมรีโหลด / ปืนยิงทีละนัด) = หยุดดึงจนกว่าจะปล่อย
+        //   ไม่ได้ยินเสียงปืนเลย 3 ชุดติด (ปิดเสียงเกม/หูฟังคนละตัว) = กลับไปนับเวลาแทนเอง
+        AudioShots audio;
+        long burstOnsets0;
+        double burstStartMs;
+        int deafBursts;
+        bool deafTold;
+
+        bool AudioActive => cfg.MagMode == 2 && audio != null && deafBursts < 3;
+
+        void BurstStart()
+        {
+            burstStartMs = AudioShots.NowMs;
+            burstOnsets0 = audio?.Onsets ?? 0;
+        }
+
+        void BurstEnd(double heldMs)
+        {
+            if (cfg.MagMode != 2 || audio == null) return;
+            long n = audio.Onsets - burstOnsets0;
+            if (heldMs > 300) Log.Info($"burst {heldMs:0} ms: {n} gunshot(s) heard");
+            if (n > 0) { deafBursts = 0; deafTold = false; }
+            else if (heldMs > 400 && ++deafBursts >= 3 && !deafTold)
+            {
+                deafTold = true;
+                Log.Info("audio: no gunshots heard in 3 bursts → time counting");
+                Flash("ไม่ได้ยินเสียงปืนจากลำโพง/หูฟัง — ใช้นับเวลาแทนชั่วคราว (ลองเช็กเสียงเกม)");
+            }
+        }
+
+        // ยิงอยู่แต่ไม่มีเสียงปืนแล้ว?
+        bool DryFire()
+        {
+            if (!AudioActive || fireStart == null) return false;
+            double now = AudioShots.NowMs;
+            long n = audio.Onsets - burstOnsets0;
+            if (n <= 0) return now - burstStartMs > 170;                 // กดแล้วปืนไม่ลั่นเลย
+            double last = audio.LastOnsetMs;
+            double gap = Math.Clamp((last - burstStartMs) / Math.Max(1, n - 1) * 2.2, 170, 320);   // ห่างกว่าจังหวะยิงปกติ 2 เท่า
+            return now - last > gap;
+        }
 
         // ---------------------------------------------------------------- หยุดดึงหลังยิงครบ N นัด
         DispatcherTimer shotsSave;
@@ -2465,6 +2541,7 @@ namespace GunBeep
             cfg.Save();
             Socd.SetActive(false);
             hook?.Dispose();
+            audio?.Dispose();
             osd?.Close();
             calibWin?.Close();
             visionWin?.Close();
