@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -743,6 +743,10 @@ namespace GunBeep
         readonly ScopeDetect.Panel[] slotInfo = new ScopeDetect.Panel[3];
         int heldSlot = 1;
         bool invWas, scanBusy;
+        // เปิดกระเป๋าจริง = กด Tab/I ตอนกำลังเล่น (ไม่มีเคอร์เซอร์) แล้วเคอร์เซอร์โผล่ภายใน 1.5 วิ
+        //   ล็อบบี้ / หน้าตั้งค่า / Esc / แผนที่ มีเคอร์เซอร์แต่ไม่ได้มาจาก Tab → ไม่ตรวจ
+        DateTime invKeyAt;
+        bool invByKey, cursorWasForInv;
         DateTime invOpenedAt, lastScan;
 
         void UpdateScopeAutoBtn() =>
@@ -774,7 +778,10 @@ namespace GunBeep
         void WatchScope(bool front, bool cursor)
         {
             if (!cfg.ScopeAuto) return;
-            bool inv = front && cursor;
+            if (!front || !cursor) invByKey = false;
+            else if (!cursorWasForInv && DateTime.Now - invKeyAt < TimeSpan.FromSeconds(1.5)) invByKey = true;
+            cursorWasForInv = front && cursor;
+            bool inv = front && cursor && invByKey;
             var now = DateTime.Now;
             if (inv && !invWas) invOpenedAt = now;
             if (!inv && invWas) ApplyScope("inventory closed");
@@ -850,6 +857,15 @@ namespace GunBeep
                 foreach (var p in panels)
                 {
                     if (p.Slot is not (1 or 2)) continue;
+                    // กันหลอน: ปืนต้องอ่านชื่อได้เป็นปืนจริง (ชื่อมาจากตัวอักษรบนแผง สกินปืนไม่มีผล)
+                    if (RecoilCalc.GunKey(p.Name) == null && (slotInfo[p.Slot] == null || RecoilCalc.GunKey(slotInfo[p.Slot].Name) == null))
+                    {
+                        Log.Info($"scope scan: slot {p.Slot} ignored (name '{p.Name}' is not a gun)");
+                        p.Icon?.Dispose();
+                        p.Slot = 0;
+                        continue;
+                    }
+                    if (RecoilCalc.GunKey(p.Name) == null) p.Name = slotInfo[p.Slot].Name;     // อ่านชื่อรอบนี้ไม่ชัด ใช้ชื่อเดิม
                     // ปืนที่เจอครั้งแรก → เพิ่มในหน้าคำนวณแรงดีด (×1) ให้ปรับทีหลังได้
                     if (RecoilCalc.GunKey(p.Name) is string gk && (cfg.Calc ??= new CalcSettings()).Guns.TryAdd(gk, 1)) cfg.Save();
                     var old = slotInfo[p.Slot];
@@ -1280,6 +1296,7 @@ namespace GunBeep
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
+            if (vk == 0x09 || vk == 0x49) invKeyAt = DateTime.Now;   // Tab / I — นับเป็นเปิดกระเป๋าเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             // ในตัว: ไม่มีปุ่มเลือกชุด/จูนในเกม (Back/Forward) — ทุกอย่างออโต้จากหน้ากระเป๋า
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
