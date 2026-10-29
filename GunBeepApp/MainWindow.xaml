@@ -767,6 +767,14 @@
                                     <TextBlock Text="ปุ่มเลือกสโคป" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="40" ToolTip="ตรวจสโคปอัตโนมัติ: เปิดกระเป๋าแล้ว GunBeep ดูว่าปืนแต่ละช่องติดสโคปอะไร → เปลี่ยนปืนแล้วใช้ชุดค่าตามสโคปเอง — คลิกเพื่อตั้งค่าและสอนสโคป">
+                                    <Button x:Name="ScopeAutoBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="ScopeAuto_Click"/>
+                                    <TextBlock Text="&#xE8B3;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="ตรวจสโคปอัตโนมัติ" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="40" ToolTip="ในเกมกด 1 = ปืน 1, กด 2 = ปืน 2 (ช่องปืนหลัก/รอง) · ลูกกลิ้ง = สลับไปอีกช่อง — ทำงานตอนเปิดมาโคร">
                                     <Button x:Name="SlotBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
                                             VerticalAlignment="Center" Click="Slot_Click"/>

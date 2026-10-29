@@ -164,6 +164,7 @@ namespace GunBeep
             ApplySocd();
             UpdateSocdBtn();
             UpdateLootBtn();
+            UpdateScopeAutoBtn();
             UpdateLangBtn();
             ApplyState();
             UpdatePower();
@@ -379,7 +380,9 @@ namespace GunBeep
         void WatchMenu()
         {
             bool front = GameInFront();
-            WatchLanguage(front, front && !CursorShown());
+            bool cursor = CursorShown();
+            WatchLanguage(front, front && !cursor);
+            WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
             if (!magEmpty && on && TimeCounting && cfg.MaxShots > 0 && MagNow() >= cfg.MaxShots)
             {
@@ -717,12 +720,117 @@ namespace GunBeep
             SelectGun(s);
         }
 
+        // ---------------------------------------------------------------- ตรวจสโคปอัตโนมัติ
+        // เปิดกระเป๋า → อ่านแผงปืน (เลขช่อง, ชื่อ, สโคป) ทุก 0.4 วิ → จำว่าช่อง 1/2 ติดสโคปอะไร
+        // ถือปืนช่องไหน (ตามปุ่มที่กด) → ใช้ชุดค่าตามสโคปของปืนนั้น
+        ScopeWindow scopeWin;
+        readonly ScopeDetect.Panel[] slotInfo = new ScopeDetect.Panel[3];
+        int heldSlot = 1;
+        bool invWas, scanBusy;
+        DateTime invOpenedAt, lastScan;
+
+        void UpdateScopeAutoBtn() =>
+            ScopeAutoBtn.Content = cfg.ScopeAuto ? $"เปิด · สอนแล้ว {ScopeDetect.Templates.Count} ภาพ" : "ปิด";
+
+        void ScopeAuto_Click(object sender, RoutedEventArgs e)
+        {
+            if (scopeWin != null) { scopeWin.Activate(); return; }
+            scopeWin = new ScopeWindow(cfg, KeyName, UpdateScopeAutoBtn) { Owner = this };
+            scopeWin.Closed += (s, a) => { scopeWin = null; UpdateScopeAutoBtn(); };
+            scopeWin.Show();
+        }
+
+        int[] SlotKeys => cfg.SlotKeys ??= ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 };
+
+        void WatchScope(bool front, bool cursor)
+        {
+            if (!cfg.ScopeAuto) return;
+            bool inv = front && cursor;
+            var now = DateTime.Now;
+            if (inv && !invWas) invOpenedAt = now;
+            if (!inv && invWas) ApplyScope("inventory closed");
+            invWas = inv;
+            if (!inv || scanBusy || now - invOpenedAt < TimeSpan.FromMilliseconds(250) || now - lastScan < TimeSpan.FromMilliseconds(400)) return;
+            lastScan = now;
+            scanBusy = true;
+            _ = ScanScopesAsync();
+        }
+
+        async Task ScanScopesAsync()
+        {
+            try
+            {
+                var panels = await Task.Run(async () =>
+                {
+                    int w = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width, h = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
+                    using var shot = ScopeDetect.CaptureArea(cfg, out var origin);
+                    if (shot == null) return null;
+                    var res = ScopeDetect.Read(cfg, shot, origin, w, h);
+                    var boxes = ScopeDetect.Boxes(cfg, w, h);
+                    for (int i = 0; i < 2; i++)
+                    {
+                        var p = res[i];
+                        if (p.Slot == 0) continue;
+                        var known = slotInfo[p.Slot];
+                        if (known != null && known.Set == p.Set && known.Name != "") { p.Name = known.Name; continue; }   // เหมือนเดิม ไม่ต้อง OCR ซ้ำ
+                        var nb = boxes[i].name;
+                        nb.Offset(-origin.X, -origin.Y);
+                        using var crop = ScopeDetect.Crop(shot, nb);
+                        p.Name = await ScopeDetect.ReadName(crop);
+                    }
+                    return res;
+                });
+                if (panels == null) return;
+                foreach (var p in panels)
+                {
+                    if (p.Slot is not (1 or 2)) continue;
+                    var old = slotInfo[p.Slot];
+                    if (p.Set < 0 && old != null && old.Name == p.Name) continue;     // อ่านสโคปไม่ชัดรอบนี้ → ใช้ของเดิม
+                    if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p);
+                    slotInfo[p.Slot] = p;
+                }
+                ApplyScope("scan");
+            }
+            catch (Exception ex) { Log.Error("scope scan", ex); }
+            finally { scanBusy = false; }
+        }
+
+        // ใช้ชุดค่าตามสโคปของปืนที่ถืออยู่
+        void ApplyScope(string why)
+        {
+            if (!cfg.ScopeAuto || vals == null) return;
+            var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
+            if (p == null || p.Set < 0) return;
+            int set = p.Set == 0 ? cfg.ScopeNoneSet : p.Set;
+            if (set < 1 || set > vals.Length || set == gun) return;
+            Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}");
+            SelectGun(set);
+            string name = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
+            PopOsd($"{name} · {(p.Set == 0 ? "ไม่มีสโคป" : p.ScopeLabel)} → {cfg.Names[set - 1]}");
+        }
+
+        void HeldSlotTo(int s, string why)
+        {
+            if (heldSlot == s) return;
+            heldSlot = s;
+            ApplyScope(why);
+        }
+
         void OnWheel(int delta)
         {
             if (Playing() && DateTime.Now - lastMagWheel > TimeSpan.FromMilliseconds(180))   // หมุนหลายแก๊กติดกัน = สลับครั้งเดียว
             {
                 lastMagWheel = DateTime.Now;
                 MagSlotTo(magSlot == 1 ? 2 : 1);                // ลูกกลิ้ง = สลับปืนหลัก/รอง (โดยประมาณ)
+            }
+            if (cfg.ScopeAuto)
+            {
+                if (Playing() && DateTime.Now - lastWheel > TimeSpan.FromMilliseconds(180))
+                {
+                    lastWheel = DateTime.Now;
+                    HeldSlotTo(heldSlot == 1 ? 2 : 1, "wheel");
+                }
+                return;                                          // ตรวจสโคปเลือกชุดให้แทน "สลับปืนตามช่อง"
             }
             if (cfg.SlotSwitch != 2 || !on || capturing) return;
             var now = DateTime.Now;
@@ -963,7 +1071,7 @@ namespace GunBeep
             if (capturing) { CaptureKey(vk); return; }
             if (eye != null && eye.Key(vk)) return;          // จูนด้วยตา: ลูกศรตอบคำถามบนป้าย
 
-            if (lootWin?.Capturing == true) return;            // กำลังตั้งปุ่มในหน้าเก็บของเร็ว
+            if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
@@ -972,7 +1080,8 @@ namespace GunBeep
             if (vk == 0x52) ResetMag("R");                                       // รีโหลด
             else if (vk >= 0x31 && vk <= 0x33) MagSlotTo(vk - 0x30);              // เปลี่ยนปืน: นับของช่องนั้นต่อ
             else if (vk == 0x34 || vk == 0x35 || vk == 0x58) MagSlotTo(0);        // ระเบิด / เก็บปืน (X)
-            if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
+            if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
+            if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 
             switch (vk)
             {

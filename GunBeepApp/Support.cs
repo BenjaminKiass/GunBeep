@@ -27,6 +27,14 @@ namespace GunBeep
         public int CycleKey { get; set; }           // หรือปุ่มคีย์บอร์ด (GunBeep จัดการเอง), 0 = ไม่ใช้
         public bool ResAlways { get; set; }
         public int MaxShots { get; set; } = 42;     // ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2), 0 = ไม่จำกัด
+        // ตรวจสโคปจากหน้ากระเป๋า: ตำแหน่งเป็นสัดส่วนของจอ (x, y = จุดกลาง) — กล่องเลขช่องปืนแผงบน/แผงล่าง, ช่องสโคปแผงบน
+        //   ช่องสโคปแผงล่าง = ช่องสโคปแผงบน + ระยะห่างระหว่างกล่องเลขทั้งสอง
+        public bool ScopeAuto { get; set; }
+        public double[] ScopeBadge1 { get; set; } = { 0.702, 0.101 };
+        public double[] ScopeBadge2 { get; set; } = { 0.702, 0.311 };
+        public double[] ScopeIcon1 { get; set; } = { 0.849, 0.128 };
+        public int ScopeNoneSet { get; set; } = 2;               // ไม่มีสโคป (ศูนย์เหล็ก) ใช้ชุดไหน, 0 = ไม่เปลี่ยน
+        public int[] SlotKeys { get; set; }                      // ปุ่มในเกมเลือกปืนช่อง 1 / ช่อง 2 (null = อ่านจาก PUBG)
         public int[] ShotMs { get; set; } = { 86, 86, 86 };      // ตารางรายนัด: เวลาต่อนัดของแต่ละชุดค่า (ms)
         public int[] ShotCount { get; set; } = { 42, 42, 42 };   // ตารางรายนัด: แสดง/แก้กี่นัด
         public int MagMode { get; set; } = 2;       // รู้ว่าแม็กหมดยังไง: 2 ฟังเสียงปืน (กดยิงแต่ไม่มีเสียง = หยุดดึง), 1 นับเวลากดยิง (MaxShots), 0 ไม่หยุด

@@ -177,6 +177,15 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   window (ShotMs per set, cfg); FromShots blends steps that straddle two shots and solves the inner steps so every
   shot total is exact (verified 0.004 error incl. Lua-style integration). Saved via WriteSegs + G Hub restart (the
   live graph frame would quantize to 100 ms bars). Opening the old graph editor and saving re-quantizes.
+- Scope auto (ScopeDetect.cs + ScopeWindow.cs): while PUBG is foreground with the cursor shown, every 0.4 s capture
+  only the weapon-panel area (CopyFromScreen). Per panel: slot digit 1/2 by ink shape (OCR can't read the single
+  digit), gun name by Windows OCR en-US (TFM is net10.0-windows10.0.19041.0 for this), scope by gradient-NCC vs
+  user-taught 40x40 templates (saved\scopes\scopes.json + png; accept score ≥ 0.55, margin ≥ 0.04, ±shift search).
+  Tested on the user's screenshots: slot digits/names correct, same scope across shots 0.66 vs others ≤ 0.42.
+  Badge digit = slot index (screens show "2" panel above "1" — order is not fixed). Held slot from SlotKeys
+  (read from GameUserSettings.ini Weapon_1/Weapon_2: on this PC Three/Two — unverified meaning) or wheel.
+  Local build: Malwarebytes/Defender deletes the freshly generated apphost.exe for the new TFM → local checks use
+  `-p:UseAppHost=false -p:SelfContained=false`; CI is unaffected.
 - Fast loot (Loot.cs + LootWindow.cs): LootKey pressed while PUBG is foreground AND the cursor is shown → background
   thread drags ground slots N..1 (bottom-up so rows don't shift) to LootDrop with SendInput absolute moves (dwExtraInfo
   MAGIC), then moves to LootCenter. Positions are fractions of the primary screen; the calibrator uses a user-supplied
