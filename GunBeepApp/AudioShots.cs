@@ -35,6 +35,22 @@ namespace GunBeep
         // เสียงดังสุดตั้งแต่ถามครั้งก่อน (ไว้ลง log ดูว่าได้ยินเกมอยู่ไหม)
         public double TakeLoudest() { double v = loudest; loudest = 0; return v; }
 
+        // เสียงกระแทกล่าสุด (เวลา, ความดัง) — ไว้แยกเสียงปืนเราเอง (ดังสุด) ออกจากเสียงพูด/ปืนคนอื่นที่เบากว่า
+        readonly (double t, double level)[] ring = new (double, double)[64];
+        int ringPos;
+
+        public System.Collections.Generic.List<(double t, double level)> OnsetsSince(double ms)
+        {
+            var list = new System.Collections.Generic.List<(double, double)>();
+            lock (ring)
+                for (int i = 0; i < ring.Length; i++)
+                {
+                    var e = ring[(ringPos + i) % ring.Length];      // เก่าไปใหม่
+                    if (e.level > 0 && e.t >= ms) list.Add(e);
+                }
+            return list;
+        }
+
         public long Onsets => Interlocked.Read(ref onsets);
         public double LastOnsetMs => Volatile.Read(ref lastOnsetAt);
         public int Pid => pid;
@@ -78,6 +94,7 @@ namespace GunBeep
                     lastOnset = t;
                     Volatile.Write(ref lastOnsetAt, t);
                     Interlocked.Increment(ref onsets);
+                    lock (ring) { ring[ringPos] = (t, level); ringPos = (ringPos + 1) % ring.Length; }
                 }
                 h2 = h1; h1 = h0; h0 = level;
                 slow += (level - slow) * 0.01;            // ~0.4 วินาที

@@ -1818,7 +1818,12 @@ namespace GunBeep
         {
             if (cfg.MagMode != 2 || audio == null) return;
             long n = audio.Onsets - burstOnsets0;
-            if (heldMs > 300) Log.Info($"burst {heldMs:0} ms: {n} gunshot(s) heard");
+            if (heldMs > 300)
+            {
+                var hits = audio.OnsetsSince(burstStartMs - 30);
+                Log.Info($"burst {heldMs:0} ms via {audio.Source}: {n} onset(s), levels " +
+                         string.Join(" ", hits.Take(40).Select(h => $"{h.t - burstStartMs:0}:{h.level:0.000}")));
+            }
             if (n > 0) { deafBursts = 0; deafTold = false; }
             else if (heldMs > 400 && ++deafBursts >= 3 && !deafTold)
             {
@@ -1833,10 +1838,21 @@ namespace GunBeep
         {
             if (!AudioActive || fireStart == null) return false;
             double now = AudioShots.NowMs;
-            long n = audio.Onsets - burstOnsets0;
-            if (n <= 0) return now - burstStartMs > 170;                 // กดแล้วปืนไม่ลั่นเลย
-            double last = audio.LastOnsetMs;
-            double gap = Math.Clamp((last - burstStartMs) / Math.Max(1, n - 1) * 2.2, 170, 320);   // ห่างกว่าจังหวะยิงปกติ 2 เท่า
+            var hits = audio.OnsetsSince(burstStartMs - 30);             // เสียงมาช้ากว่าคลิกนิดหน่อย
+            // ปืนเราเองดังสุดในหู: นับเฉพาะเสียงที่ดังอย่างน้อย 35% ของนัดที่ดังสุดในชุดนี้
+            //   เสียงพูดในเกม / ปืนคนอื่นไกลๆ เบากว่ามาก → ไม่ถูกนับเป็นนัดของเรา
+            double peak = 0;
+            foreach (var h in hits) if (h.level > peak) peak = h.level;
+            int n = 0;
+            double first = 0, last = 0;
+            foreach (var h in hits)
+            {
+                if (h.level < peak * 0.35) continue;
+                if (n++ == 0) first = h.t;
+                last = h.t;
+            }
+            if (n == 0) return now - burstStartMs > 170;                 // กดแล้วปืนไม่ลั่นเลย
+            double gap = Math.Clamp((last - first) / Math.Max(1, n - 1) * 2.2, 170, 320);   // ห่างกว่าจังหวะยิงปกติ 2 เท่า
             return now - last > gap;
         }
 
