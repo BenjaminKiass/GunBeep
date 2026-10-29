@@ -1746,9 +1746,9 @@ namespace GunBeep
             MagSoundRb.IsChecked = cfg.MagMode == 2;
             MagOnRb.IsChecked = cfg.MagMode == 1;
             MagOffRb.IsChecked = cfg.MagMode == 0;
-            bool time = cfg.MagMode == 1;
-            ShotsRow.Opacity = time ? 1 : 0.4;
-            ShotsRow.IsEnabled = time;
+            bool shots = cfg.MagMode != 0;                 // โหมดเสียงก็ใช้จำนวนนัดเป็นตัวกันพลาด (ยิงค้างชุดเดียวเกินนี้ = หยุด)
+            ShotsRow.Opacity = shots ? 1 : 0.4;
+            ShotsRow.IsEnabled = shots;
             EnsureAudio();
         }
 
@@ -1792,10 +1792,12 @@ namespace GunBeep
             Flash(mode == 2 ? "🔊 ฟังเสียงปืน: กดยิงแต่ไม่มีเสียงปืน = หยุดดึงทันที (ใช้ได้ทุกปืน รวมเทรนนิ่ง)"
                 : mode == 1 ? "นับเวลากดยิง: ครบจำนวนนัดแล้วหยุดดึง" : "ไม่หยุด: ดึงตลอด");
             Sfx.Play(Sfx.Pick, cfg.Sound);
-            _ = SendMaxShotsAsync();                    // สคริปต์หยุดดึงตอนยิงยาวเฉพาะโหมดนับเวลา
+            _ = SendMaxShotsAsync();                    // ไม่หยุด = สคริปต์เลิกหยุดดึงตอนยิงยาวด้วย
         }
 
-        int EffectiveMaxShots => cfg.MagMode == 1 ? cfg.MaxShots : 0;
+        // สคริปต์หยุดดึงเมื่อยิงค้างชุดเดียวเกินจำนวนนี้ — โหมดเสียงก็ส่งไปด้วย กันกรณีเพื่อนยิงข้างๆ จนไม่รู้ว่าแม็กเราหมด
+        //   (นับแค่ในชุดเดียว ไม่สะสม → เทรนนิ่งที่รีโหลดได้ไม่จำกัดก็ไม่โดน)
+        int EffectiveMaxShots => cfg.MagMode != 0 ? cfg.MaxShots : 0;
 
         // ---------------------------------------------------------------- ฟังเสียงปืน
         // กดยิงค้างอยู่ แต่ไม่มีเสียงปืนออกมา (แม็กหมด → เกมรีโหลด / ปืนยิงทีละนัด) = หยุดดึงจนกว่าจะปล่อย
@@ -1839,10 +1841,12 @@ namespace GunBeep
             if (!AudioActive || fireStart == null) return false;
             double now = AudioShots.NowMs;
             var hits = audio.OnsetsSince(burstStartMs - 30);             // เสียงมาช้ากว่าคลิกนิดหน่อย
-            // ปืนเราเองดังสุดในหู: นับเฉพาะเสียงที่ดังอย่างน้อย 35% ของนัดที่ดังสุดในชุดนี้
+            // ความดังปืนเราเอง = นัดแรกที่ลั่นตอนเพิ่งกด (ภายใน 130 ms) — นับเฉพาะเสียงที่ดังอย่างน้อย 35% ของนัดนั้น
             //   เสียงพูดในเกม / ปืนคนอื่นไกลๆ เบากว่ามาก → ไม่ถูกนับเป็นนัดของเรา
+            //   ไม่ใช้ "นัดที่ดังสุด": เพื่อนยิงปืนดังกว่า (เราใส่ท่อเก็บเสียง) จะทำให้นัดของเราเองดูเบาจนหยุดดึงผิด
             double peak = 0;
-            foreach (var h in hits) if (h.level > peak) peak = h.level;
+            foreach (var h in hits) if (h.t - burstStartMs <= 130 && h.level > peak) peak = h.level;
+            if (peak == 0 && hits.Count > 0) peak = hits[0].level;
             int n = 0;
             double first = 0, last = 0;
             foreach (var h in hits)
