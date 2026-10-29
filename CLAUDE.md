@@ -342,3 +342,8 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   drop). Ends on Tab/I/Esc + cursor gone, or cursor gone with LMB up > 0.6 s. Before 2.0.56 a drag ended the session,
   so new attachments were only read after pressing Tab again. Gun name is OCR'd every scan (same scope on another gun
   kept the old name). Hovered attachment slot (white, >40% bright pixels) = AttUnsure → keep the previous value.
+- Gun names (RecoilCalc.MatchGun): OCR text → whole-word Levenshtein vs GunNames (+aliases) after folding O/0 I/L/1
+  G/6 S/5 B/8 Z/2; ≥0.75 and 0.08 ahead of the next gun (≤3-char names exact) else unreadable → keep old name.
+  Panel.Name is the canonical name. (Old StartsWith made "Mk147 Mutant" → MK14 and showed raw OCR garbage.)
+- Scans run every 250 ms while in the inventory with no mouse button held; releasing a button (drop / right-click
+  equip) rescans after 80 ms even before the cursor comes back.

@@ -750,7 +750,8 @@ namespace GunBeep
         //   ระหว่างลากของ (ถือคลิกซ้าย) เกมซ่อนเคอร์เซอร์ — ยังนับว่าอยู่ในกระเป๋า: ไม่ดึง ไม่นับกระสุน วางของแล้วอ่านต่อเอง
         //   (เดิมเคอร์เซอร์หายตอนลาก = นับว่าปิดกระเป๋า เลยไม่อ่านของแต่งที่เพิ่งใส่จนกว่าจะกด Tab ใหม่)
         //   ปิด = เพิ่งกด Tab/I/Esc แล้วเคอร์เซอร์หาย หรือเคอร์เซอร์หายโดยไม่ได้ถือคลิกซ้ายเกิน 0.6 วิ
-        DateTime invKeyAt, invCloseKeyAt, hiddenIdleSince;
+        DateTime invKeyAt, invCloseKeyAt, hiddenIdleSince, sessionStartAt;
+        readonly string[] lastBadOcr = new string[2];
         bool invSession, sessionWas, cursorPrev;
 
         void TrackInventory(bool front, bool cursor)
@@ -759,7 +760,7 @@ namespace GunBeep
             if (!front) invSession = false;
             else if (cursor)
             {
-                if (!invSession && !cursorPrev && now - invKeyAt < TimeSpan.FromSeconds(1.5)) { invSession = true; invCloseKeyAt = DateTime.MinValue; }
+                if (!invSession && !cursorPrev && now - invKeyAt < TimeSpan.FromSeconds(1.5)) { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; }
                 hiddenIdleSince = now;
             }
             else if (invSession)
@@ -801,13 +802,17 @@ namespace GunBeep
         void WatchScope(bool front, bool cursor)
         {
             if (!cfg.ScopeAuto) return;
-            bool inv = front && cursor && invSession;
+            // อ่านได้ตอนอยู่ในกระเป๋าและไม่ได้กดเมาส์ค้าง (ลาก/คลิกขวาใส่ของ) — ปล่อยปุ่มปุ๊บอ่านใหม่ใน 0.08 วิ
+            //   แม้เคอร์เซอร์ยังไม่กลับมาหลังวางของ → ใส่ของแล้วกด Tab ปิดเร็วๆ ก็ยังทัน
+            bool btn = KeyHook.GetAsyncKeyState(0x01) < 0 || KeyHook.GetAsyncKeyState(0x02) < 0;
+            bool inv = front && invSession && !btn;
             var now = DateTime.Now;
-            if (inv && !invWas) invOpenedAt = now;                 // เปิดใหม่ / เพิ่งวางของ: รอภาพนิ่งก่อนอ่าน
+            if (inv && !invWas) invOpenedAt = now;
             if (!invSession && sessionWas) ApplyScope("inventory closed");
             invWas = inv;
             sessionWas = invSession;
-            if (!inv || scanBusy || locating || now - invOpenedAt < TimeSpan.FromMilliseconds(250) || now - lastScan < TimeSpan.FromMilliseconds(400)) return;
+            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(250) || now - invOpenedAt < TimeSpan.FromMilliseconds(80)
+                || now - lastScan < TimeSpan.FromMilliseconds(250)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
             if (cfg.ScopeCalib != $"{size.Width}x{size.Height}")
@@ -868,7 +873,9 @@ namespace GunBeep
                         var nb = boxes[i].name;
                         nb.Offset(-origin.X, -origin.Y);
                         using var crop = ScopeDetect.Crop(shot, nb);
-                        p.Name = await ScopeDetect.ReadName(crop);
+                        string raw = await ScopeDetect.ReadName(crop);
+                        p.Name = RecoilCalc.MatchGun(raw).name ?? "";                // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
+                        if (p.Name == "" && raw != "" && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
                     }
                     return res;
                 });

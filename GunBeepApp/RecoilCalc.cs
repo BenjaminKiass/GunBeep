@@ -161,14 +161,94 @@ namespace GunBeep
             return Of(gunKey) / Of(c.RefGun ?? "AUG") * user;
         }
 
-        public static string GunKey(string ocrName)
+        // ชื่อปืนในเกม (key ตรงกับที่ใช้เก็บค่าเรียนรู้ / ตารางปืน) + ชื่ออื่นที่ OCR อาจอ่านได้
+        public static readonly (string key, string name, string[] alias)[] GunNames =
         {
-            string n = new string((ocrName ?? "").ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
-            if (n.Length < 2) return null;
-            foreach (var g in ScopeDetect.GunWordList)
-                if (n.StartsWith(g) || n.Replace('O', '0').StartsWith(g.Replace('O', '0'))) return g;
-            return null;
+            ("AKM", "AKM", null), ("M416", "M416", null), ("BERYL", "Beryl M762", new[] { "Beryl" }), ("MK12", "Mk12", null),
+            ("SCAR", "SCAR-L", new[] { "SCAR" }), ("AUG", "AUG", null), ("ACE32", "ACE32", null), ("QBZ", "QBZ", new[] { "QBZ95" }),
+            ("G36C", "G36C", null), ("K2", "K2", null), ("FAMAS", "FAMAS", null), ("M16A4", "M16A4", null), ("GROZA", "Groza", null),
+            ("MK47", "Mk47 Mutant", new[] { "Mk47" }), ("SLR", "SLR", null), ("SKS", "SKS", null), ("MINI14", "Mini14", null),
+            ("MK14", "Mk14", new[] { "Mk14 EBR" }), ("QBU", "QBU", null), ("VSS", "VSS", null), ("UMP", "UMP45", new[] { "UMP" }),
+            ("VECTOR", "Vector", null), ("MICRO", "Micro UZI", new[] { "UZI", "Micro" }), ("TOMMY", "Tommy Gun", new[] { "Tommy" }),
+            ("MP5K", "MP5K", null), ("PP19", "PP-19 Bizon", new[] { "Bizon", "PP19" }), ("P90", "P90", null), ("JS9", "JS9", null),
+            ("MP9", "MP9", null), ("DP28", "DP-28", null), ("M249", "M249", null), ("MG3", "MG3", null), ("DRAGUNOV", "Dragunov", null),
+            ("KAR98K", "Kar98k", null), ("M24", "M24", null), ("AWM", "AWM", null), ("MOSIN", "Mosin Nagant", new[] { "Mosin" }),
+            ("LYNX", "Lynx AMR", new[] { "Lynx" }), ("WIN94", "Win94", null), ("S12K", "S12K", null), ("S1897", "S1897", null),
+            ("S686", "S686", null), ("DBS", "DBS", null), ("O12", "O12", null), ("SAWED", "Sawed-off", new[] { "Sawed" }),
+            ("P92", "P92", null), ("P1911", "P1911", null), ("P18C", "P18C", null), ("R1895", "R1895", null), ("R45", "R45", null),
+            ("DEAGLE", "Deagle", null), ("SKORPION", "Skorpion", null), ("CROSSBOW", "Crossbow", null),
+            ("PANZERFAUST", "Panzerfaust", null), ("M79", "M79", null), ("MGL", "MGL", null),
+        };
+
+        // ตัวที่ OCR ชอบสลับกัน → ทำให้เหมือนกันทั้งสองฝั่งก่อนเทียบ
+        static string Norm(string s)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (char ch in (s ?? "").ToUpperInvariant())
+            {
+                if (!char.IsLetterOrDigit(ch) || ch > 127) continue;
+                sb.Append(ch switch { 'O' => '0', 'I' or 'L' => '1', 'G' => '6', 'S' => '5', 'B' => '8', 'Z' => '2', _ => ch });
+            }
+            return sb.ToString();
         }
+
+        static string[] Words(string s) =>
+            (s ?? "").Split(new[] { ' ', '-', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Select(Norm).Where(w => w.Length > 0).ToArray();
+
+        static int Lev(string a, string b)
+        {
+            var d = new int[b.Length + 1];
+            for (int j = 0; j <= b.Length; j++) d[j] = j;
+            for (int i = 1; i <= a.Length; i++)
+            {
+                int prev = d[0];
+                d[0] = i;
+                for (int j = 1; j <= b.Length; j++)
+                {
+                    int t = d[j];
+                    d[j] = Math.Min(Math.Min(d[j] + 1, d[j - 1] + 1), prev + (a[i - 1] == b[j - 1] ? 0 : 1));
+                    prev = t;
+                }
+            }
+            return d[b.Length];
+        }
+
+        static double Sim(string a, string b) => a.Length == 0 || b.Length == 0 ? 0 : 1 - (double)Lev(a, b) / Math.Max(a.Length, b.Length);
+
+        static readonly Dictionary<string, (string key, string name)> gunCache = new();
+
+        // OCR ชื่อบนแผงปืน → ปืนจริง: เทียบทั้งคำ (คำแรก หรือสองคำแรก) กับทุกชื่อ เอาที่เหมือนสุด
+        //   ต้องเหมือน ≥ 75% (ชื่อ ≤ 3 ตัวต้องตรงเป๊ะ) และชนะอันดับสองชัด — ไม่งั้น = อ่านไม่ออก (ใช้ชื่อเดิม)
+        //   เดิมใช้ "ขึ้นต้นด้วย" → "Mk147 Mutant" กลายเป็น Mk14, ตัวหนังสือมั่วก็โชว์ตามที่อ่าน
+        public static (string key, string name) MatchGun(string ocr)
+        {
+            if (string.IsNullOrWhiteSpace(ocr)) return (null, null);
+            lock (gunCache) if (gunCache.TryGetValue(ocr, out var hit)) return hit;
+            var w = Words(ocr);
+            (string key, string name) best = (null, null);
+            double bs = 0, second = 0;
+            if (w.Length > 0)
+                foreach (var g in GunNames)
+                {
+                    double s = 0;
+                    foreach (var alias in new[] { g.name }.Concat(g.alias ?? Array.Empty<string>()))
+                    {
+                        var aw = Words(alias);
+                        string aj = string.Concat(aw);
+                        double v = Sim(w[0], aj);                                                   // คำเดียว (หรืออ่านติดกัน)
+                        if (w.Length >= 2) v = Math.Max(v, Sim(w[0] + w[1], aj));                   // สองคำแรก
+                        if (aj.Length <= 3 && v < 1) v = 0;                                         // ชื่อสั้นต้องตรงเป๊ะ
+                        s = Math.Max(s, v);
+                    }
+                    if (s > bs) { if (best.key != g.key) second = Math.Max(second, bs); best = (g.key, g.name); bs = s; }
+                    else second = Math.Max(second, s);
+                }
+            var res = bs >= 0.75 && bs - second >= 0.08 ? best : (null, null);
+            lock (gunCache) { if (gunCache.Count > 500) gunCache.Clear(); gunCache[ocr] = res; }
+            return res;
+        }
+
+        public static string GunKey(string name) => MatchGun(name).key;
 
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
