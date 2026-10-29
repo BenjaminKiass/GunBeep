@@ -439,6 +439,7 @@ namespace GunBeep
         void WatchGame()
         {
             bool now = GameRunning();
+            EnsureAudio();
             if (now == gameWas) { KeepRes(); return; }
             gameWas = now;
             Log.Info(now ? "PUBG started" : "PUBG closed");
@@ -1748,8 +1749,34 @@ namespace GunBeep
             bool time = cfg.MagMode == 1;
             ShotsRow.Opacity = time ? 1 : 0.4;
             ShotsRow.IsEnabled = time;
-            if (cfg.MagMode == 2 && audio == null) { audio = new AudioShots(); audio.Start(); deafBursts = 0; }
-            if (cfg.MagMode != 2 && audio != null) { audio.Dispose(); audio = null; }
+            EnsureAudio();
+        }
+
+        // ฟังเสียงเฉพาะตอนเกมเปิด และฟังเฉพาะโปรแกรม PUBG (เกมเปิดใหม่ = pid ใหม่ → เริ่มฟังใหม่)
+        void EnsureAudio()
+        {
+            int pid = cfg.MagMode == 2 ? GamePid() : 0;
+            if (audio != null && audio.Pid == pid) return;
+            audio?.Dispose();
+            audio = null;
+            if (pid == 0) return;
+            audio = new AudioShots(pid);
+            audio.Start();
+            deafBursts = 0;
+            deafTold = false;
+        }
+
+        // PUBG มี TslGame สองตัว — ตัวเกมจริง (ที่มีเสียง) ใช้หน่วยความจำมากสุด
+        static int GamePid()
+        {
+            int best = 0;
+            long mem = -1;
+            foreach (var p in System.Diagnostics.Process.GetProcessesByName("TslGame"))
+            {
+                try { if (p.WorkingSet64 > mem) { mem = p.WorkingSet64; best = p.Id; } } catch { }
+                p.Dispose();
+            }
+            return best;
         }
 
         void MagRb_Checked(object sender, RoutedEventArgs e)
