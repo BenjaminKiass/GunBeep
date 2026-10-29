@@ -518,7 +518,7 @@
                     <!-- กลาง: ชุดค่าปืน + ปรับค่า -->
                     <StackPanel Grid.Column="1" Margin="10,0,10,0">
                         <DockPanel Margin="6,6,6,8">
-                            <TextBlock Text="ชุดค่าปืน" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                            <TextBlock Text="ชุดค่าสโคป" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                             <Button x:Name="CycleBtn" Style="{StaticResource KeyBtn}" FontSize="11" Padding="9,2" MinWidth="0"
                                     HorizontalAlignment="Right" VerticalAlignment="Center" Click="Cycle_Click"
                                     ToolTip="ปุ่มในเกม (ตอนเปิดมาโคร): กดเปล่า = วนปืน · Ctrl/Alt = base ±0.5 · Shift+Ctrl/Alt = ซ้าย/ขวา ±0.5"/>
@@ -717,6 +717,20 @@
                                     <TextBlock Text="&#xE8C1;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
                                                VerticalAlignment="Center" Width="26"/>
                                     <TextBlock Text="ภาษาอังกฤษอัตโนมัติ" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="40" ToolTip="ตั้งปุ่มเลือกชุดค่า 1 / 2 / 3 ตรงๆ (เช่น ชุด 4x, Red/Holo, 6x) — กดในเกมตอนเปลี่ยนสโคปแล้วใช้ค่าชุดนั้นทันที · คลิกแล้วกดปุ่ม (Del = ไม่ใช้)">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="Scope1Btn" Style="{StaticResource KeyBtn}" MinWidth="0" Padding="8,3" FontSize="11.5"
+                                                Margin="0,0,0,0" Tag="1" Click="ScopeKey_Click"/>
+                                        <Button x:Name="Scope2Btn" Style="{StaticResource KeyBtn}" MinWidth="0" Padding="8,3" FontSize="11.5"
+                                                Margin="5,0,0,0" Tag="2" Click="ScopeKey_Click"/>
+                                        <Button x:Name="Scope3Btn" Style="{StaticResource KeyBtn}" MinWidth="0" Padding="8,3" FontSize="11.5"
+                                                Margin="5,0,0,0" Tag="3" Click="ScopeKey_Click"/>
+                                    </StackPanel>
+                                    <TextBlock Text="&#xE71E;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="ปุ่มเลือกสโคป" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="40" ToolTip="ในเกมกด 1 = ปืน 1, กด 2 = ปืน 2 (ช่องปืนหลัก/รอง) · ลูกกลิ้ง = สลับไปอีกช่อง — ทำงานตอนเปิดมาโคร">

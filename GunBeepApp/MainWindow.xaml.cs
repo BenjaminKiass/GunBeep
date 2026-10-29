@@ -913,6 +913,7 @@ namespace GunBeep
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
+            if (ScopeKeyPressed(vk)) return;
             if (vk == 0x52 || (vk >= 0x31 && vk <= 0x33)) ResetMag(vk == 0x52 ? "R" : "weapon key");   // รีโหลด / เปลี่ยนปืน
             if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 
@@ -1805,13 +1806,35 @@ namespace GunBeep
             PresetKeyBtn.Content = cfg.PresetKey == 0 ? "ไม่ใช้" : KeyName(cfg.PresetKey);
             PresetKeyBtn.ClearValue(BorderBrushProperty);
             PowerHint.Text = "คลิกปุ่ม หรือกด " + KeyName(cfg.HotKey);
+            for (int i = 0; i < 3; i++)
+            {
+                var b = ScopeBtn(i);
+                b.Content = ScopeKeys[i] == 0 ? $"{i + 1}: –" : $"{i + 1}: {KeyName(ScopeKeys[i])}";
+                b.ToolTip = $"ปุ่มเลือกชุด {i + 1} ({cfg.Names[i]}) — คลิกแล้วกดปุ่ม, Del = ไม่ใช้";
+                b.ClearValue(BorderBrushProperty);
+            }
             UpdateCycleText();
             CycleBtn.ClearValue(BorderBrushProperty);
         }
 
-        int captureFor;          // กำลังรอปุ่มให้: 0 เปิด/ปิด, 1 สลับโปรไฟล์, 2 วนปืนในเกม
+        int captureFor;          // กำลังรอปุ่มให้: 0 เปิด/ปิด, 1 สลับโปรไฟล์, 2 วนปืนในเกม, 3–5 ปุ่มเลือกสโคป 1–3
 
         void Hotkey_Click(object sender, RoutedEventArgs e) => BeginCapture(0);
+        void ScopeKey_Click(object sender, RoutedEventArgs e) => BeginCapture(2 + int.Parse((string)((Button)sender).Tag));
+
+        Button ScopeBtn(int i) => i == 0 ? Scope1Btn : i == 1 ? Scope2Btn : Scope3Btn;
+
+        int[] ScopeKeys => cfg.ScopeKeys != null && cfg.ScopeKeys.Length == 3 ? cfg.ScopeKeys : (cfg.ScopeKeys = new int[3]);
+
+        // กดปุ่มเลือกสโคป → ใช้ชุดค่านั้นทันที (บอกบนป้าย)
+        bool ScopeKeyPressed(int vk)
+        {
+            int i = Array.IndexOf(ScopeKeys, vk);
+            if (vk == 0 || i < 0 || vals == null || i >= vals.Length) return false;
+            if (i + 1 != gun) SelectGun(i + 1);
+            if (!on) PopOsd();
+            return true;
+        }
         void PresetKey_Click(object sender, RoutedEventArgs e) => BeginCapture(1);
 
         void BeginCapture(int target)
@@ -1822,8 +1845,8 @@ namespace GunBeep
             if (same) return;                            // กดซ้ำ = ยกเลิก
             capturing = true;
             captureFor = target;
-            var btn = target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
-            btn.Content = target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
+            var btn = target >= 3 ? ScopeBtn(target - 3) : target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
+            btn.Content = target >= 3 ? "กดปุ่ม..." : target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
             btn.BorderBrush = accent;
         }
 
@@ -1831,6 +1854,15 @@ namespace GunBeep
         {
             const int VK_DELETE = 0x2E, VK_BACK = 0x08;
             if (vk == VK_ESC) { capturing = false; UpdateHotkeyText(); return; }
+            if (captureFor >= 3 && (vk == VK_DELETE || vk == VK_BACK))
+            {
+                capturing = false;
+                ScopeKeys[captureFor - 3] = 0;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash($"ไม่ใช้ปุ่มเลือกชุด {captureFor - 2} แล้ว");
+                return;
+            }
             if (captureFor == 1 && (vk == VK_DELETE || vk == VK_BACK))
             {
                 capturing = false;
@@ -1841,7 +1873,7 @@ namespace GunBeep
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Where((k, i) => i != captureFor && k != 0);
+            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0);
             if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
@@ -1854,6 +1886,15 @@ namespace GunBeep
             }
             capturing = false;
             if (captureFor == 2) { SetCycle(0, vk); UpdateHotkeyText(); return; }
+            if (captureFor >= 3)
+            {
+                ScopeKeys[captureFor - 3] = vk;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash($"ปุ่ม {KeyName(vk)} = ชุด {captureFor - 2} ({cfg.Names[captureFor - 3]})");
+                Sfx.Play(Sfx.Pick, cfg.Sound);
+                return;
+            }
             if (captureFor == 1) cfg.PresetKey = vk; else cfg.HotKey = vk;
             cfg.Save();
             UpdateHotkeyText();
