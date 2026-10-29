@@ -750,22 +750,26 @@ namespace GunBeep
         //   ระหว่างลากของ (ถือคลิกซ้าย) เกมซ่อนเคอร์เซอร์ — ยังนับว่าอยู่ในกระเป๋า: ไม่ดึง ไม่นับกระสุน วางของแล้วอ่านต่อเอง
         //   (เดิมเคอร์เซอร์หายตอนลาก = นับว่าปิดกระเป๋า เลยไม่อ่านของแต่งที่เพิ่งใส่จนกว่าจะกด Tab ใหม่)
         //   ปิด = เพิ่งกด Tab/I/Esc แล้วเคอร์เซอร์หาย หรือเคอร์เซอร์หายโดยไม่ได้ถือคลิกซ้ายเกิน 0.6 วิ
-        DateTime invKeyAt, invCloseKeyAt, hiddenIdleSince, sessionStartAt;
+        DateTime invKeyAt, invCloseKeyAt, hiddenIdleSince, sessionStartAt, lastHiddenAt;
         readonly string[] lastBadOcr = new string[2];
         bool invSession, sessionWas, cursorPrev;
 
         void TrackInventory(bool front, bool cursor)
         {
             var now = DateTime.Now;
+            if (front && !cursor) lastHiddenAt = now;
             if (!front) invSession = false;
             else if (cursor)
             {
-                if (!invSession && !cursorPrev && now - invKeyAt < TimeSpan.FromSeconds(1.5)) { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; }
+                // กด Tab/I ภายใน 1.5 วิ และก่อนกดเพิ่งเห็นว่ากำลังเล่น (ไม่มีเคอร์เซอร์) — ล็อบบี้ไม่เคยซ่อนเคอร์เซอร์ = ไม่นับ
+                //   (ไม่ใช้ "เคอร์เซอร์เพิ่งโผล่" แล้ว: กด Tab ปิด-เปิดรัวๆ เคอร์เซอร์อาจหายแค่เฟรมเดียว ตัวจับเวลา 30 ms มองไม่ทัน)
+                if (!invSession && now - invKeyAt < TimeSpan.FromSeconds(1.5) && invKeyAt - lastHiddenAt < TimeSpan.FromSeconds(1.5))
+                { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; }
                 hiddenIdleSince = now;
             }
             else if (invSession)
             {
-                bool closeKey = now - invCloseKeyAt < TimeSpan.FromSeconds(1.5);
+                bool closeKey = now - invCloseKeyAt < TimeSpan.FromMilliseconds(400);    // กดปิดแล้วเปิดใหม่เร็วๆ: เกินนี้ถือว่ากระเป๋ายังเปิดอยู่
                 if (!closeKey && KeyHook.GetAsyncKeyState(0x01) < 0) hiddenIdleSince = now;     // กำลังลากของ
                 else if (closeKey || now - hiddenIdleSince > TimeSpan.FromMilliseconds(600)) invSession = false;
             }
@@ -811,7 +815,7 @@ namespace GunBeep
             if (!invSession && sessionWas) ApplyScope("inventory closed");
             invWas = inv;
             sessionWas = invSession;
-            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(250) || now - invOpenedAt < TimeSpan.FromMilliseconds(80)
+            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(150) || now - invOpenedAt < TimeSpan.FromMilliseconds(80)
                 || now - lastScan < TimeSpan.FromMilliseconds(250)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;

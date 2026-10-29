@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -852,7 +852,8 @@ namespace GunBeep
             var c = cfg.Calc;
             string gk = SlotGunKey(magSlot);
             if (c == null || !c.AutoLearn || gk == null || !RecoilCalc.SemiKick.ContainsKey(gk) || !ads || moved < 8) return;
-            double uy = kickId == id ? kickUserY : 0, ux = kickId == id ? kickUserX : 0;
+            if (kickId != id || engine.SprayId != id) return;     // มีนัดใหม่ตามมาในช่วงวัด (เคาะรัว) → แยกไม่ได้ว่ามือแก้นัดไหน
+            double uy = kickUserY, ux = kickUserX;
             if (ux > moved * 0.6) return;                       // ลากไล่เป้า ไม่นับ
             double r = Math.Clamp(uy / moved, -0.4, 0.4);
             double old = c.LearnKick.TryGetValue(gk, out double o) ? o : 1;

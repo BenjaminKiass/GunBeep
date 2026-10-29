@@ -101,10 +101,25 @@ namespace GunBeep
                 {
                     if (Ready && Down(VK_LBUTTON) && (!RequireAds || Down(VK_RBUTTON)))
                     {
-                        try { Spraying = true; if (Semi) Kick(); else Spray(); }
+                        try
+                        {
+                            Spraying = true;
+                            if (Semi)
+                            {
+                                // เคาะเร็วกว่า 70 ms ต่อนัด: คลิกใหม่ที่มาระหว่างดึงนัดเดิมนับไว้ แล้วดึงต่อทันทีทีละนัด (ไม่ยิงเอง)
+                                int pending = 1;
+                                bool wasDown = true;
+                                while (pending > 0 && !stop && Ready)
+                                {
+                                    pending--;
+                                    Kick(ref wasDown, ref pending);
+                                }
+                            }
+                            else Spray();
+                        }
                         catch (Exception ex) { Log.Error("native spray", ex); }
                         finally { Spraying = false; }
-                        while (!stop && Down(VK_LBUTTON)) Thread.Sleep(5);    // หยุดดึงแล้วแต่ยังกดค้าง = รอปล่อย
+                        while (!stop && Down(VK_LBUTTON)) Thread.Sleep(1);    // หยุดดึงแล้วแต่ยังกดค้าง = รอปล่อย
                     }
                     Thread.Sleep(1);
                 }
@@ -112,7 +127,7 @@ namespace GunBeep
             finally { timeEndPeriod(1); }
         }
 
-        void Kick()
+        void Kick(ref bool wasDown, ref int pending)
         {
             KickTs = Stopwatch.GetTimestamp();
             SprayId++;
@@ -126,6 +141,9 @@ namespace GunBeep
                 double t = sw.Elapsed.TotalMilliseconds;
                 int want = (int)Math.Round(total * Math.Min(1, t / SEMI_MS));
                 if (want > moved) { Move(0, want - moved); moved = want; }
+                bool d = Down(VK_LBUTTON);
+                if (d && !wasDown) pending++;
+                wasDown = d;
                 if (t >= SEMI_MS) break;
                 Thread.Sleep(1);
             }
