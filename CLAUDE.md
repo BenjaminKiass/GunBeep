@@ -312,3 +312,13 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   2026-10-30; c.Guns = user extra factor). Muzzle/grip −10% = in-game tooltip "+10% vertical recoil control".
   Settings.MigrateCalc (Calc.Ver 1) moves old −15% guesses / RefGun M416 to these.
 - UI: sidebar nav (มาโคร live slot panels built in MacroPage.cs, จูนแรงดีด, เก็บของเร็ว, ตั้งค่า), 1210×800.
+- GameSettings.cs: reads GameUserSettings.ini (read-only, re-read when mtime changes). The file holds a stale
+  copy inside TslPersistantData → use the block with SensitiveMap=((Mouse and the LAST occurrence of each key.
+  On the user's PC: Universal (bIsUsingPerScopeMouseSensitivity=False) with ADS 39; weapons 3/2/4/5/6.
+  RecoilCalc.Need = mag / conv(sens) / vertical; CalcSettings.RefNeed = snapshot at tuning (Ver 2 migration)
+  → SensFactor auto-compensates sensitivity changes.
+- AttachmentId.cs: identifies muzzle/grip/stock type by gradient-NCC of the slot icon (tight bbox, square)
+  vs features made from the user's in-game tooltip crops (attachments-builtin.json, numbers only, built with
+  a separate console tool compiling AttachmentId.cs + ImageFeature.cs — never launch GunBeep for tooling:
+  it auto-switches resolution and auto-powers on while PUBG runs). Vertical % from the tooltips.
+  Validated only on one AUG crop (brake / thumb correct).

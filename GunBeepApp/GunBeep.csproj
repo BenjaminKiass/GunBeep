@@ -34,6 +34,8 @@
     <EmbeddedResource Include="..\recoil.lua" LogicalName="recoil.lua" />
     <!-- ลักษณะภาพสโคปที่ติดบนปืน (ตัวเลข ไม่ใช่ภาพ) ไว้รู้จักสโคปได้เลยโดยไม่ต้องสอน -->
     <EmbeddedResource Include="scopes-builtin.json" LogicalName="scopes-builtin.json" />
+    <!-- ลักษณะของแต่งแต่ละชิ้น (ตัวเลข ไม่ใช่ภาพ) ไว้รู้ว่าช่องติดอะไร -->
+    <EmbeddedResource Include="attachments-builtin.json" LogicalName="attachments-builtin.json" Condition="Exists('attachments-builtin.json')" />
     <EmbeddedResource Include="..\logo.png" LogicalName="logo.png" Condition="Exists('..\logo.png')" />
   </ItemGroup>
 

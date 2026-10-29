@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -30,6 +30,8 @@ namespace GunBeep
         {
             (cfg.Page switch { 1 => NavTune, 2 => NavLoot, 3 => NavSettings, _ => NavMacro }).IsChecked = true;
             AutoOnSwitch.IsChecked = cfg.AutoOn;
+            GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
+            BuildGameCard();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
             BuildKeyCards();
@@ -163,7 +165,11 @@ namespace GunBeep
             if (p.Set == 0) set = cfg.ScopeNoneSet;
             else if (p.Set == -2) (set, scopeMult, via) = RecoilCalc.ForScope(p.ScopeLabel, cfg.Names.Take(n).ToArray());
             var calc = cfg.Calc ??= new CalcSettings();
-            var (mult, parts) = calc.On ? RecoilCalc.Gear(calc, RecoilCalc.GunKey(p.Name), scopeMult, p.Att) : (1.0, "");
+            var (mult, parts) = calc.On ? RecoilCalc.Gear(calc, RecoilCalc.GunKey(p.Name), scopeMult, p.Att, p.AttId) : (1.0, "");
+            // ความไวในเกมเปลี่ยนจากตอนจูนตารางของชุดนี้ → ชดเชยให้เอง
+            string cardScope = set >= 1 && set <= cfg.Names.Length ? RecoilCalc.SetScope(cfg.Names[set - 1]) : null;
+            double sf = calc.On ? RecoilCalc.SensFactor(calc, cardScope) : 1;
+            if (Math.Abs(sf - 1) > 0.005) { mult = Math.Clamp(mult * sf, 0.2, 3.9); parts += $" · ความไว ×{sf:0.00}"; }
             return (set, scopeMult, via, mult, parts);
         }
 
@@ -231,7 +237,7 @@ namespace GunBeep
             }
             var c = cfg.Calc ??= new CalcSettings();
             string Sig(ScopeDetect.Panel p) => p == null ? "-" :
-                $"{p.Name}|{p.Set}|{p.ScopeLabel}|{(p.Att == null ? "" : string.Join("", p.Att.Select(a => a ? 1 : 0)))}";
+                $"{p.Name}|{p.Set}|{p.ScopeLabel}|{(p.Att == null ? "" : string.Join("", p.Att.Select(a => a ? 1 : 0)))}|{string.Join(",", p.AttId ?? new string[0])}";
             string sig = $"{Sig(slotInfo[1])}#{Sig(slotInfo[2])}#{heldSlot}#{on}#{stance}#{c.On}#{c.MuzzlePct}#{c.GripPct}#{c.StockPct}#{c.CrouchPct}#{c.PronePct}#{c.RefGun}" +
                          $"#{string.Join(",", c.Guns.Select(kv => kv.Key + kv.Value))}#{string.Join(",", cfg.Names)}" +
                          $"#{(vals == null ? "" : string.Join(",", vals.Select(v => v.Base + "/" + (v.Steps?.Length ?? 0))))}";
@@ -365,10 +371,9 @@ namespace GunBeep
                 root.Children.Add(T("  อ่านของแต่งไม่ได้รอบนี้ — เปิดกระเป๋าอีกครั้ง", 11, PFaint));
             else
             {
-                double Rel(bool has, bool reff, double pct) => (has ? 1 + pct / 100 : 1) / (reff ? 1 + pct / 100 : 1);
-                root.Children.Add(AttRow("ปากกระบอก", p.Att[0], c.MuzzlePct, c.RefMuzzle, Rel(p.Att[0], c.RefMuzzle, c.MuzzlePct), d => { c.MuzzlePct = Math.Clamp(c.MuzzlePct + d, -60, 30); }));
-                root.Children.Add(AttRow("กริป", p.Att[1], c.GripPct, c.RefGrip, Rel(p.Att[1], c.RefGrip, c.GripPct), d => { c.GripPct = Math.Clamp(c.GripPct + d, -60, 30); }));
-                root.Children.Add(AttRow("พานท้าย", p.Att[3], c.StockPct, c.RefStock, Rel(p.Att[3], c.RefStock, c.StockPct), d => { c.StockPct = Math.Clamp(c.StockPct + d, -60, 30); }));
+                root.Children.Add(AttRow(0, "ปากกระบอก", p, c));
+                root.Children.Add(AttRow(1, "กริป", p, c));
+                root.Children.Add(AttRow(3, "พานท้าย", p, c));
             }
             if (!c.On) root.Children.Add(T("  คำนวณแรงดีดปิดอยู่ — ใช้ตารางในชุดค่าตรงๆ", 11, PAmber));
             return root;
@@ -429,11 +434,28 @@ namespace GunBeep
             };
         }
 
-        Border AttRow(string name, bool has, double pct, bool reff, double rel, Action<double> step)
+        Border AttRow(int slot, string name, ScopeDetect.Panel p, CalcSettings c)
         {
-            void Step(double d) { step(d); cfg.Save(); CalcChanged(); LiveDirty(); }
-            string sub = (has ? "ติดอยู่" : "ไม่ได้ติด") + $" · ของแต่งนี้ {(pct > 0 ? "+" : "")}{pct:0}%" + (reff ? " · ตารางจูนตอนติดไว้" : "");
-            var r = Row(has ? "" : "", name, has ? "ติดอยู่" : "ไม่ได้ติด", sub, rel, has ? PGreen : PFaint, () => Step(-1), () => Step(+1), !has);
+            bool has = p.Att[slot];
+            string id = p.AttId?[slot];
+            var it = AttachmentId.Get(id);
+            double def = RecoilCalc.DefPct(c, slot);
+            bool refHas = slot == 0 ? c.RefMuzzle : slot == 1 ? c.RefGrip : c.RefStock;
+            string refId = slot == 0 ? c.RefMuzzleId : slot == 1 ? c.RefGripId : c.RefStockId;
+            double rel = RecoilCalc.AttFactor(has, id, def) / RecoilCalc.AttFactor(refHas, refId, def);
+            string title = !has ? "ไม่ได้ติด" : it != null ? it.Name : "ติดอยู่ (ไม่แน่ใจชนิด)";
+            string sub = !has ? "ไม่มีผล" : it != null ? $"คุมแรงดีดแนวตั้ง +{it.Vertical:0}% (ตัวเลขจากเกม)" : $"ใช้ค่ากลาง {def:+0;-0}%";
+            if (refHas) sub += $" · ตารางจูนตอนติด{AttachmentId.Get(refId)?.Name ?? "ไว้"}";
+            void Step(double d)
+            {
+                if (slot == 0) c.MuzzlePct = Math.Clamp(c.MuzzlePct + d, -60, 30);
+                else if (slot == 1) c.GripPct = Math.Clamp(c.GripPct + d, -60, 30);
+                else c.StockPct = Math.Clamp(c.StockPct + d, -60, 30);
+                cfg.Save(); CalcChanged(); LiveDirty();
+            }
+            bool tune = has && it == null;          // รู้ชนิดแล้วใช้ตัวเลขเกม ไม่ต้องปรับ
+            var r = Row(has ? "\uE73E" : "\uE711", name, title, sub, rel, has ? PGreen : PFaint,
+                        tune ? () => Step(-1) : null, tune ? () => Step(+1) : null, !has);
             r.Margin = new Thickness(0, 0, 0, 8);
             return r;
         }
@@ -528,6 +550,7 @@ namespace GunBeep
         {
             stanceKeys ??= ReadStanceKeys();
             var sk = SlotKeys;
+            var gs = GameSettings.Current;
             KeyCards.Children.Clear();
             KeyCards.Children.Add(KeyCard("", "เริ่มดึง", "ใช้ชุดตามสโคปของปืนนั้น", PGreen, new[]
             {
@@ -537,15 +560,15 @@ namespace GunBeep
             }));
             KeyCards.Children.Add(KeyCard("", "หยุดดึง", "ไม่ดึงชั่วคราว", PRed, new[]
             {
-                ("ระเบิด / มีด", cfg.HolsterPause ? "ถืออยู่ = ไม่ดึง" : "ปิดอยู่ (ดึงตลอด)", "4 · 5"),
-                ("เก็บปืน", cfg.HolsterPause ? "ไม่ดึงจนกว่าจะหยิบปืน" : "ปิดอยู่", "X"),
+                ("ปืนพก / มีด / ระเบิด", cfg.HolsterPause ? "ถืออยู่ = ไม่ดึง" : "ปิดอยู่ (ดึงตลอด)", $"{KeyName(gs.Pistol)} · {KeyName(gs.Melee)} · {KeyName(gs.Throwable)}"),
+                ("เก็บปืน", cfg.HolsterPause ? "ไม่ดึงจนกว่าจะหยิบปืน" : "ปิดอยู่", KeyName(gs.Holster)),
                 ("กระเป๋า / แผนที่", "เคอร์เซอร์โผล่ = ไม่ดึง", "Tab · M"),
                 ("แม็กหมด", cfg.MagMode != 0 ? $"ยิงครบ {cfg.MaxShots} นัด → รอ R" : "ไม่หยุด (เทรนนิ่ง)", "R"),
             }));
             KeyCards.Children.Add(KeyCard("", "ใช้แรงดึง", "ตอนยิง", PBlue, new[]
             {
                 ("ยิง", "กดค้างเพื่อดึง", "คลิกซ้าย"),
-                ("เล็ง (ADS)", cfg.RequireAds ? "ต้องกดค้างถึงดึง" : "ไม่บังคับ", "คลิกขวา"),
+                ("เล็ง (ADS)", (cfg.RequireAds ? "ต้องกดค้างถึงดึง" : "ไม่บังคับ") + " · เกม: " + (gs.AdsMode == "Toggle" ? "กดสลับ" : "กดค้าง"), "คลิกขวา"),
                 ("ย่อ / หมอบ", "ลดแรงดึงตามท่า", KeyName(stanceKeys[0]) + " · " + KeyName(stanceKeys[1])),
             }));
         }
@@ -669,6 +692,111 @@ namespace GunBeep
             if (lootUi) return;
             cfg.LootSpeed = int.Parse((string)((FrameworkElement)sender).Tag);
             cfg.Save();
+        }
+    }
+
+    public partial class MainWindow
+    {
+        // ---------------------------------------------------------------- ตั้งค่าเกม PUBG (อ่านเองจากไฟล์ตั้งค่าเกม)
+        // ปุ่มอาวุธตามที่ตั้งในเกม: 1 / 2 = ช่องปืน, 0 = ปืนพก / มีด / ระเบิด / เก็บปืน, -1 = ไม่ใช่ปุ่มอาวุธ
+        static int WeaponSlotOf(int vk)
+        {
+            var g = GameSettings.Current;
+            if (vk == g.Slot1) return 1;
+            if (vk == g.Slot2) return 2;
+            if (vk == g.Pistol || vk == g.Melee || vk == g.Throwable || vk == g.Holster) return 0;
+            return -1;
+        }
+
+        void OnGameSettingsChanged()
+        {
+            pubgSlotKeys = null;
+            stanceKeys = null;
+            var g = GameSettings.Current;
+            Log.Info($"pubg settings: ads {g.Ads} mag {g.AdsMagnified} universal {g.Universal} vertical {g.Vertical} adsMode {g.AdsMode} " +
+                     $"keys {KeyName(g.Slot1)}/{KeyName(g.Slot2)}/{KeyName(g.Pistol)}/{KeyName(g.Melee)}/{KeyName(g.Throwable)}");
+            BuildKeyCards();
+            BuildGameCard();
+            if (cfg.Calc != null) CalcChanged();
+            LiveDirty();
+        }
+
+        void GameReload_Click(object sender, RoutedEventArgs e)
+        {
+            GameSettings.Reload();
+            OnGameSettingsChanged();
+            Flash(GameSettings.Current.Found ? "อ่านการตั้งค่า PUBG ใหม่แล้ว" : "ไม่พบไฟล์ตั้งค่า PUBG");
+        }
+
+        void GameRef_Click(object sender, RoutedEventArgs e)
+        {
+            if (!Ask("ใช้ความไวในเกมตอนนี้เป็น \"ค่าตอนจูนตาราง\"?\n\nกดใช่ ถ้าเพิ่งจูนตารางแรงดีดใหม่ด้วยความไวตอนนี้\n(ไม่งั้นไม่ต้องกด — โปรแกรมชดเชยเองเมื่อเปลี่ยนความไว)")) return;
+            var c = cfg.Calc ??= new CalcSettings();
+            RecoilCalc.SnapshotRef(c);
+            cfg.Save();
+            CalcChanged();
+            BuildGameCard();
+            Flash("จำความไวตอนนี้เป็นค่าตอนจูนแล้ว");
+        }
+
+        void BuildGameCard()
+        {
+            if (GameRows == null) return;
+            var g = GameSettings.Current;
+            var c = cfg.Calc ??= new CalcSettings();
+            GameRows.Children.Clear();
+            if (!g.Found)
+            {
+                GameRows.Children.Add(T("ไม่พบไฟล์ตั้งค่า PUBG — เปิดเกมหนึ่งครั้งแล้วกดอ่านใหม่", 12, PAmber));
+                return;
+            }
+            string S(double v) => v.ToString("0.##");
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            var left = new StackPanel();
+            var right = new StackPanel();
+            Grid.SetColumn(right, 2);
+            grid.Children.Add(left);
+            grid.Children.Add(right);
+            void Add(StackPanel col, string label, string note, string value, Brush vb = null)
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 0), Height = 30 };
+                var v = new Border
+                {
+                    CornerRadius = new CornerRadius(7), Background = B("#121B30"), BorderBrush = B("#24345A"), BorderThickness = new Thickness(1),
+                    Padding = new Thickness(8, 1, 8, 2), VerticalAlignment = VerticalAlignment.Center, Child = T(value, 11.5, vb ?? PText, FontWeights.Bold, Mono)
+                };
+                DockPanel.SetDock(v, Dock.Right);
+                row.Children.Add(v);
+                var l = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                l.Children.Add(T(label, 12, PText, FontWeights.SemiBold));
+                if (note != null) { var n = T("  " + note, 10, PFaint); l.Children.Add(n); }
+                row.Children.Add(l);
+                col.Children.Add(row);
+                col.Children.Add(new Border { Height = 1, Background = PLine });
+            }
+            Add(left, "ความไวทั่วไป", null, S(g.General));
+            Add(left, "ความไวตอนเล็ง (ADS)", "Red/Holo/ศูนย์เหล็ก", S(g.Ads));
+            Add(left, "ตัวคูณความไวแนวตั้ง", "มีผลกับแรงดึง", g.Vertical.ToString("0.00"));
+            Add(left, "ความไวเดียวทุกสโคป", g.Universal ? "ทุกสโคปขยายใช้ค่าเดียว" : "แยกตามสโคป", g.Universal ? "เปิด" : "ปิด", g.Universal ? PGreen : PAmber);
+            Add(left, "โหมดเล็ง", null, g.AdsMode == "Toggle" ? "กดสลับ" : "กดค้าง");
+            foreach (var (lab, key) in new[] { ("2x", "Scope2X"), ("3x", "Scope3X"), ("4x", "Scope4X"), ("6x", "Scope6X"), ("8x", "Scope8X"), ("15x", "Scope15X") })
+                Add(right, $"สโคป {lab}", g.Universal ? "(ใช้ค่าเดียว)" : null, S(g.SensFor(key)));
+
+            var comp = string.Join("  ·  ", cfg.Names.Select(n => (n, sc: RecoilCalc.SetScope(n))).Where(t => t.sc != null)
+                .Select(t => $"{t.n} ×{RecoilCalc.SensFactor(c, t.sc):0.00}"));
+            var keys = $"ปืน 1 {KeyName(g.Slot1)} · ปืน 2 {KeyName(g.Slot2)} · ปืนพก {KeyName(g.Pistol)} · มีด {KeyName(g.Melee)} · ระเบิด {KeyName(g.Throwable)} · " +
+                       $"เก็บปืน {KeyName(g.Holster)} · ย่อ {KeyName(g.Crouch)} · หมอบ {KeyName(g.Prone)}";
+            GameRows.Children.Add(grid);
+            var foot = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+            foot.Children.Add(T("ชดเชยความไวเทียบตอนจูนตาราง:  " + (comp.Length > 0 ? comp : "—") + (c.RefNeed.Count == 0 ? "  (ยังไม่ได้จำค่าตอนจูน)" : ""), 11.5, PCyan, FontWeights.SemiBold));
+            var k = T("ปุ่มในเกม:  " + keys, 11, PMuted);
+            k.TextWrapping = TextWrapping.Wrap;
+            k.Margin = new Thickness(0, 4, 0, 0);
+            foot.Children.Add(k);
+            GameRows.Children.Add(foot);
         }
     }
 

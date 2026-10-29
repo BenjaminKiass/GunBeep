@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -26,7 +26,12 @@ namespace GunBeep
         public double PronePct { get; set; } = -45;
         public Dictionary<string, double> Guns { get; set; } = new();   // ชื่อปืน → ปรับเพิ่มจากค่าในตัว (1 = ตามค่าในตัว)
         public string RefGun { get; set; } = "AUG";          // ตารางในการ์ดชุดค่าจูนไว้กับปืนนี้ (ผู้ใช้จูนกับ AUG + เบรกปากกระบอก + ด้ามจับ)
-        public int Ver { get; set; }                          // 1 = ย้ายค่าเริ่มต้นเป็นตัวเลขจากเกมแล้ว
+        public int Ver { get; set; }                          // 1 = ค่าของแต่งจากเกม, 2 = ชนิดของแต่ง + ความไวตอนจูน
+        // ของแต่งตอนจูนตาราง (ชิ้นที่รู้จัก) และแรงที่สโคปแต่ละตัวต้องใช้ตอนนั้น (จากความไวในเกมตอนจูน)
+        public string RefMuzzleId { get; set; } = "brake";
+        public string RefGripId { get; set; } = "thumb";
+        public string RefStockId { get; set; }
+        public Dictionary<string, double> RefNeed { get; set; } = new();
     }
 
     public static class RecoilCalc
@@ -38,38 +43,31 @@ namespace GunBeep
             ("4x", 4, "Scope4X"), ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
         };
 
-        static Dictionary<string, double> sens;
-        static DateTime sensRead;
-
-        // ความไวแต่ละสโคปจากไฟล์ตั้งค่า PUBG (ไฟล์บนดิสก์) — ไม่ได้เปิดใช้ความไวแยกสโคป = ทุกสโคปใช้ค่าเดียว
+        // ความไวที่แต่ละสโคปใช้จริง จากการตั้งค่าเกม (ความไวเดียวทุกสโคป = ทุกสโคปขยายใช้ค่าเล็งขยาย)
         public static Dictionary<string, double> Sens
         {
             get
             {
-                if (sens != null && DateTime.Now - sensRead < TimeSpan.FromMinutes(1)) return sens;
-                sensRead = DateTime.Now;
+                var g = GameSettings.Current;
                 var d = new Dictionary<string, double>();
-                try
-                {
-                    string f = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                                            "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
-                    string s;
-                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    using (var r = new StreamReader(fs)) s = r.ReadToEnd();
-                    // เอาเฉพาะชุดของเมาส์ (Mouse, (Array=(...)))
-                    int at = s.IndexOf("SensitiveMap=((Mouse", StringComparison.Ordinal);
-                    string part = at >= 0 ? s.Substring(at, Math.Min(4000, s.Length - at)) : s;
-                    foreach (Match m in Regex.Matches(part, @"SensitiveName=""(\w+)"",Sensitivity=([\d.]+)"))
-                        d.TryAdd(m.Groups[1].Value, double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture));
-                    var per = Regex.Match(s, @"bIsUsingPerScopeMouseSensitivity=(\w+)");
-                    if (per.Success && per.Groups[1].Value == "False" && d.TryGetValue("Scoping", out double one))
-                        foreach (var sc in Scopes) d[sc.sensName] = one;
-                }
-                catch (Exception ex) { Log.Error("read pubg sens", ex); }
-                return sens = d;
+                foreach (var sc in Scopes) d[sc.sensName] = g.SensFor(sc.sensName);
+                return d;
             }
         }
 
+        // ความไวเปลี่ยนจากตอนจูน → คูณเท่าไหร่ (เช่น ลดความไว 4x ในเกม = ต้องดึงแรงขึ้น)
+        public static double SensFactor(CalcSettings c, string label)
+        {
+            if (label == null || c.RefNeed == null || !c.RefNeed.TryGetValue(label, out double r) || r <= 0) return 1;
+            double n = Need(label);
+            return double.IsFinite(n) && n > 0 ? n / r : 1;
+        }
+
+        public static void SnapshotRef(CalcSettings c)
+        {
+            c.RefNeed = new();
+            foreach (var sc in Scopes) { double n = Need(sc.label); if (double.IsFinite(n) && n > 0) c.RefNeed[sc.label] = Math.Round(n, 4); }
+        }
         static double Conv(double s) => 0.02 * Math.Pow(10, (s - 50) / 50);
 
         public static (string label, double mag, string sensName)? Scope(string label) =>
@@ -81,7 +79,7 @@ namespace GunBeep
             var sc = Scope(label);
             if (sc == null) return double.NaN;
             double s = Sens.TryGetValue(sc.Value.sensName, out double v) ? v : 50;
-            return sc.Value.mag / Conv(s);
+            return sc.Value.mag / Conv(s) / Math.Max(0.1, GameSettings.Current.Vertical);
         }
 
         // สโคปของการ์ดชุดค่า (จากชื่อการ์ด เช่น "4x", "Red/Holo")
@@ -149,10 +147,11 @@ namespace GunBeep
         static readonly double[] SlotDx = { 0.009, 0.104, 0.206, 0.308 };
         const double SlotDy = 0.140, SlotSize = 0.044;
 
-        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel)
+        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids)
         {
             var b = panel == 0 ? cfg.ScopeBadge1 : cfg.ScopeBadge2;
             var has = new bool[4];
+            ids = new string[4];
             for (int i = 0; i < 4; i++)
             {
                 if (i == 2) continue;
@@ -160,6 +159,20 @@ namespace GunBeep
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
+                if (!has[i]) continue;
+                // ชิ้นไหน: ลองเลื่อนกรอบ ±2 px เผื่อตำแหน่งเพี้ยนนิดหน่อย เอาที่ตรงสุด
+                (AttachmentId.Item item, double score) best = (null, -1);
+                int d = Math.Max(1, r.Width / 20);
+                foreach (int ox in new[] { 0, -d, d })
+                    foreach (int oy in new[] { 0, -d, d })
+                    {
+                        var rr = r;
+                        rr.Offset(ox, oy);
+                        using var cc = (ox | oy) == 0 ? null : ScopeDetect.Crop(shot, rr);
+                        var m = AttachmentId.Identify(cc ?? c, i);
+                        if (m.item != null && m.score > best.score) best = (m.item, m.score);
+                    }
+                ids[i] = best.item?.Id;
             }
             return has;
         }
@@ -174,17 +187,25 @@ namespace GunBeep
         }
 
         // ---------------------------------------------------------------- รวม
-        public static (double mult, string why) Gear(CalcSettings c, string gunKey, double scopeMult, bool[] att)
+        // ของแต่งชิ้นนี้คูณแรงดึงเท่าไหร่: รู้ชนิด = ตัวเลขจากเกม, ติดแต่ไม่แน่ใจชนิด = ค่ากลาง (ตั้งได้)
+        public static double AttFactor(bool has, string id, double defPct) =>
+            !has ? 1 : AttachmentId.Get(id) is AttachmentId.Item it ? 1 - it.Vertical / 100 : 1 + defPct / 100;
+
+        public static double DefPct(CalcSettings c, int slot) => slot == 0 ? c.MuzzlePct : slot == 1 ? c.GripPct : c.StockPct;
+
+        public static (double mult, string why) Gear(CalcSettings c, string gunKey, double scopeMult, bool[] att, string[] ids = null)
         {
             double gun = GunFactor(c, gunKey);
-            double F(bool has, double pct) => has ? 1 + pct / 100 : 1;
-            double gear = F(att?[0] == true, c.MuzzlePct) * F(att?[1] == true, c.GripPct) * F(att?[3] == true, c.StockPct);
-            double refGear = F(c.RefMuzzle, c.MuzzlePct) * F(c.RefGrip, c.GripPct) * F(c.RefStock, c.StockPct);
+            double gear = AttFactor(att?[0] == true, ids?[0], c.MuzzlePct) * AttFactor(att?[1] == true, ids?[1], c.GripPct)
+                        * AttFactor(att?[3] == true, ids?[3], c.StockPct);
+            double refGear = AttFactor(c.RefMuzzle, c.RefMuzzleId, c.MuzzlePct) * AttFactor(c.RefGrip, c.RefGripId, c.GripPct)
+                           * AttFactor(c.RefStock, c.RefStockId, c.StockPct);
             double m = gun * scopeMult * gear / refGear;
             var parts = new List<string>();
             if (Math.Abs(gun - 1) > 1e-6) parts.Add($"ปืน ×{gun:0.00}");
             if (Math.Abs(scopeMult - 1) > 1e-6) parts.Add($"สโคป ×{scopeMult:0.00}");
-            if (att != null) parts.Add((att[0] ? "ปาก✓" : "ปาก✗") + (att[1] ? " กริป✓" : " กริป✗") + (att[3] ? " พาน✓" : ""));
+            string A(int i, string none) => att[i] ? AttachmentId.Get(ids?[i])?.Id ?? "?" : none;
+            if (att != null) parts.Add($"ปาก {A(0, "✗")} · กริป {A(1, "✗")}" + (att[3] ? $" · พาน {A(3, "")}" : ""));
             return (Math.Clamp(m, 0.2, 3.9), string.Join(" · ", parts));
         }
     }

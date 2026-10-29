@@ -453,11 +453,13 @@ namespace GunBeep
         void WatchGame()
         {
             bool now = GameRunning();
+            _ = GameSettings.Current;                 // ไฟล์ตั้งค่าเกมเปลี่ยน → อ่านใหม่ (Changed)
             if (now == gameWas) { KeepRes(); return; }
             gameWas = now;
             Log.Info(now ? "PUBG started" : "PUBG closed");
             AutoPower(now);
             pubgSlotKeys = null;                      // อาจแก้ปุ่มในเกมมา → อ่านใหม่
+            GameSettings.Reload();
             Array.Clear(slotInfo);                    // เกมใหม่ ปืนใหม่
             if (now && cfg.AutoRes && !cfg.ResAlways) SwitchRes();
             else if (!now && resSwitched && !cfg.ResAlways) RestoreRes();
@@ -763,7 +765,7 @@ namespace GunBeep
 
         // ปุ่มเลือกปืนช่อง 1/2: ตั้งเอง หรืออ่านจากไฟล์ตั้งค่า PUBG (อ่านใหม่ทุกครั้งที่เปิดเกม)
         int[] pubgSlotKeys;
-        int[] SlotKeys => cfg.SlotKeys ?? (pubgSlotKeys ??= ScopeDetect.ReadPubgSlotKeys() ?? new[] { 0x31, 0x32 });
+        int[] SlotKeys => cfg.SlotKeys ?? (pubgSlotKeys ??= new[] { GameSettings.Current.Slot1, GameSettings.Current.Slot2 });
 
         bool locating;
         DateTime lastLocate;
@@ -993,7 +995,7 @@ namespace GunBeep
                 }
                 catch { return def; }
             }
-            return new[] { Key("ToggleCrouch", 'C'), Key("ToggleProne", 'Z') };
+            return new[] { GameSettings.Current.Crouch, GameSettings.Current.Prone };
         }
 
         void HeldSlotTo(int s, string why)
@@ -1279,8 +1281,7 @@ namespace GunBeep
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
             if (vk == 0x52) ResetMag("R");                                       // รีโหลด
-            else if (vk >= 0x31 && vk <= 0x33) MagSlotTo(vk - 0x30);              // เปลี่ยนปืน: นับของช่องนั้นต่อ
-            else if (vk == 0x34 || vk == 0x35 || vk == 0x58) MagSlotTo(0);        // ระเบิด / เก็บปืน (X)
+            else if (WeaponSlotOf(vk) is int ws and >= 0) MagSlotTo(ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
             if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
             if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 

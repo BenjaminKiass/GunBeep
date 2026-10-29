@@ -116,14 +116,24 @@ namespace GunBeep
         static void MigrateCalc(Settings s)
         {
             var c = s.Calc ??= new CalcSettings();
-            if (c.Ver >= 1) return;
-            if (c.MuzzlePct == -15) c.MuzzlePct = -10;
-            if (c.GripPct == -15) c.GripPct = -10;
-            c.RefGun = "AUG";
-            c.RefMuzzle = true;
-            c.RefGrip = true;
-            c.RefStock = false;
-            c.Ver = 1;
+            if (c.Ver < 1)
+            {
+                if (c.MuzzlePct == -15) c.MuzzlePct = -10;
+                if (c.GripPct == -15) c.GripPct = -10;
+                c.RefGun = "AUG";
+                c.RefMuzzle = true;
+                c.RefGrip = true;
+                c.RefStock = false;
+                c.Ver = 1;
+            }
+            if (c.Ver < 2)
+            {
+                // ตารางจูนกับ AUG + เบรกปากกระบอก + ด้ามจับหัวแม่มือ ด้วยความไวในเกมตอนนี้
+                c.RefMuzzleId ??= "brake";
+                c.RefGripId ??= "thumb";
+                if (GameSettings.Current.Found) RecoilCalc.SnapshotRef(c);
+                c.Ver = 2;
+            }
         }
 
         public void Save()
