@@ -23,7 +23,8 @@ namespace GunBeep
         public bool RefStock { get; set; } = false;          // ... ติดพานท้าย
         public double CrouchPct { get; set; } = -28;
         public double PronePct { get; set; } = -45;
-        public Dictionary<string, double> Guns { get; set; } = new();   // ชื่อปืน → ตัวคูณ (1 = เท่าตาราง)
+        public Dictionary<string, double> Guns { get; set; } = new();   // ชื่อปืน → ปรับเพิ่มจากค่าในตัว (1 = ตามค่าในตัว)
+        public string RefGun { get; set; } = "M416";         // ตารางในการ์ดชุดค่าจูนไว้กับปืนนี้
     }
 
     public static class RecoilCalc
@@ -113,6 +114,25 @@ namespace GunBeep
         }
 
         // ---------------------------------------------------------------- ปืน
+        // แรงดีดแนวตั้งโดยประมาณของแต่ละปืน เทียบ M416 = 1 (ค่าประมาณจากประสบการณ์ผู้เล่น ไม่ใช่ตัวเลขทางการของเกม)
+        //   ตัวคูณปืน = ค่าของปืนที่ถือ / ค่าของปืนที่ใช้จูนตาราง (RefGun) × ที่ผู้ใช้ปรับเพิ่ม
+        public static readonly Dictionary<string, double> BuiltinGun = new()
+        {
+            ["M416"] = 1.00, ["SCAR"] = 0.95, ["QBZ"] = 0.95, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.15,
+            ["K2"] = 1.02, ["FAMAS"] = 1.10, ["M16A4"] = 0.90, ["BERYL"] = 1.35, ["AKM"] = 1.25, ["GROZA"] = 1.20,
+            ["MK47"] = 1.20, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
+            ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
+            ["DP28"] = 0.85, ["M249"] = 0.90, ["MG3"] = 1.30, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.20,
+            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.40, ["DRAGUNOV"] = 1.30,
+        };
+
+        public static double GunFactor(CalcSettings c, string gunKey)
+        {
+            double Of(string k) => k != null && BuiltinGun.TryGetValue(k, out double v) ? v : 1;
+            double user = gunKey != null && c.Guns.TryGetValue(gunKey, out double u) ? u : 1;
+            return Of(gunKey) / Of(c.RefGun ?? "M416") * user;
+        }
+
         public static string GunKey(string ocrName)
         {
             string n = new string((ocrName ?? "").ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
@@ -154,7 +174,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- รวม
         public static (double mult, string why) Gear(CalcSettings c, string gunKey, double scopeMult, bool[] att)
         {
-            double gun = gunKey != null && c.Guns.TryGetValue(gunKey, out double g) ? g : 1;
+            double gun = GunFactor(c, gunKey);
             double F(bool has, double pct) => has ? 1 + pct / 100 : 1;
             double gear = F(att?[0] == true, c.MuzzlePct) * F(att?[1] == true, c.GripPct) * F(att?[3] == true, c.StockPct);
             double refGear = F(c.RefMuzzle, c.MuzzlePct) * F(c.RefGrip, c.GripPct) * F(c.RefStock, c.StockPct);

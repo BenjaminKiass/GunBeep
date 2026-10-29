@@ -52,10 +52,14 @@ namespace GunBeep
         int agentPid;
         bool on, scroll, num, capturing, firstPower = true, hintShown, setupBusy;
         int gun = 1;
+        NativeRecoil engine;                      // ตัวขยับเมาส์ในตัว (รุ่นไม่ใช้ G Hub)
+        bool Native => cfg.Engine == 0;
 
         public MainWindow()
         {
             InitializeComponent();
+            GHub.Native = Native;
+            engine = new NativeRecoil();
 
             accent = Freeze(new LinearGradientBrush(Color.FromRgb(0x1D, 0x6B, 0xFF), Color.FromRgb(0x5C, 0xE1, 0xFF), 45));
             activeBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x10, 0x2C, 0x5C), Color.FromRgb(0x0A, 0x12, 0x24), 90));
@@ -193,10 +197,13 @@ namespace GunBeep
                 if (HasPending && !liveFailed) await ApplyLiveAsync();
             };
 
+            if (Native) liveTimer.Interval = TimeSpan.FromMilliseconds(60);     // ในตัว: ใช้ค่าใหม่แทบทันที
+
             // G Hub รีสตาร์ทเมื่อไหร่ สคริปต์โหลดค่าจากไฟล์ใหม่ → อ่านค่าตามไปด้วย
             agentWatch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             agentWatch.Tick += (s, e) =>
             {
+                if (Native) return;
                 int pid = GHub.AgentPid();
                 if (pid != 0 && pid != agentPid) { agentPid = pid; LoadGunValues(); GunAfterRestart(); }
             };
@@ -214,6 +221,7 @@ namespace GunBeep
             updateTimer.Tick += (s, e) => CheckUpdate();
             updateTimer.Start();
 
+            InitPages();
             Loaded += (s, e) => Started();
         }
 
@@ -227,6 +235,7 @@ namespace GunBeep
             LoadGunValues();
             CheckUpdate();
             osd.Configure(cfg.OsdMode, cfg.OsdCorner);
+            AutoPower(gameWas);
         }
 
         // ---------------------------------------------------------------- หยุดชั่วคราวตอนอยู่ในเมนู
@@ -372,6 +381,7 @@ namespace GunBeep
             if (s == magSlot) return;
             EndBurst();
             magSlot = s;
+            LiveDirty();
             if (s != 0) Log.Info($"mag slot {s}: {magFiredBy[s]:0} shots fired{(magEmptyBy[s] ? " (empty)" : "")}");
         }
 
@@ -379,6 +389,7 @@ namespace GunBeep
         {
             bool front = GameInFront();
             bool cursor = CursorShown();
+            engine?.SetFront(front);
             WatchLanguage(front, front && !cursor);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
@@ -391,6 +402,7 @@ namespace GunBeep
             bool want = false;
             string why = null;
             if (on && magEmpty) { want = true; why = "mag empty"; }
+            else if (on && cfg.HolsterPause && magSlot == 0) { want = true; why = "grenade / melee / holstered"; }
             else if (cfg.PauseInMenu && on && gameWas)
             {
                 if (!GameInFront()) { want = true; why = "game not in front"; }
@@ -399,10 +411,12 @@ namespace GunBeep
             if (want != paused)
             {
                 paused = want;
+                pauseWhy = why;
                 ApplyState();
                 Log.Info(paused ? "pause: " + why : "resume");
             }
             CheckScroll();
+            LiveTick();
         }
 
         // ไฟ Scroll Lock จริงต้องตรงกับปุ่มในแอปเสมอ — เคยเจอแอปขึ้น OFF แต่ไฟยังติด มาโครเลยยังดึงอยู่
@@ -416,7 +430,7 @@ namespace GunBeep
             if (now - lastScrollCheck < TimeSpan.FromMilliseconds(500) || now - lastScrollTap < TimeSpan.FromMilliseconds(400)) return;
             lastScrollCheck = now;
             bool real = KeyHook.ReadLockNow(VK_SCROLL);
-            bool want = on && !paused;
+            bool want = !Native && on && !paused;      // ในตัว: ไฟ Scroll ต้องดับ (สคริปต์ G Hub จะได้ไม่ดึงซ้ำ)
             if (real == want) { scroll = real; return; }
             KeyHook.Tap(VK_SCROLL, 0x46, false);
             scroll = want;
@@ -442,6 +456,7 @@ namespace GunBeep
             if (now == gameWas) { KeepRes(); return; }
             gameWas = now;
             Log.Info(now ? "PUBG started" : "PUBG closed");
+            AutoPower(now);
             pubgSlotKeys = null;                      // อาจแก้ปุ่มในเกมมา → อ่านใหม่
             Array.Clear(slotInfo);                    // เกมใหม่ ปืนใหม่
             if (now && cfg.AutoRes && !cfg.ResAlways) SwitchRes();
@@ -853,16 +868,11 @@ namespace GunBeep
             if (!cfg.ScopeAuto || vals == null) return;
             var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
             if (p == null || p.Set == -1) return;                // ไม่รู้จักสโคป = ไม่เปลี่ยน
-            int set = p.Set;
-            double scopeMult = 1;
-            string via = null;
-            if (p.Set == 0) set = cfg.ScopeNoneSet;
-            else if (p.Set == -2) (set, scopeMult, via) = RecoilCalc.ForScope(p.ScopeLabel, cfg.Names.Take(vals.Length).ToArray());
-            var calc = cfg.Calc ??= new CalcSettings();
-            var (mult, parts) = calc.On ? RecoilCalc.Gear(calc, RecoilCalc.GunKey(p.Name), scopeMult, p.Att) : (1.0, "");
+            var (set, scopeMult, via, mult, parts) = Plan(p);
             bool setChanged = set >= 1 && set <= vals.Length && set != gun;
             bool multChanged = LiveLink.MultCode(mult) != LiveLink.MultCode(multWant[0]);
             multWant[0] = mult;
+            LiveDirty();
             if (!setChanged && !multChanged) return;
             Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
             if (setChanged) SelectGun(set);
@@ -912,6 +922,7 @@ namespace GunBeep
 
         async void PushMults()
         {
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {
@@ -1136,6 +1147,14 @@ namespace GunBeep
 
         void ApplyState()
         {
+            if (Native)
+            {
+                if (scroll) { KeyHook.Tap(VK_SCROLL, 0x46, false); scroll = false; lastScrollTap = DateTime.Now; }
+                engine.SetGun(gun);
+                engine.SetActive(on && !paused);
+                LiveDirty();
+                return;
+            }
             if (NoNum)
             {
                 bool want = on && !paused;
@@ -1158,7 +1177,7 @@ namespace GunBeep
 
         async void SyncGun()
         {
-            if (gunSending || gun == gunSent) return;
+            if (Native || gunSending || gun == gunSent) return;
             gunSending = true;
             try
             {
@@ -1206,6 +1225,7 @@ namespace GunBeep
         // ไฟถูกเปลี่ยนจากข้างนอก (ผู้ใช้กด Scroll Lock / สคริปต์รุ่นเก่าวนปืนด้วยไฟ)
         void SyncFromLocks()
         {
+            if (Native) return;                   // ในตัว: ไฟ Lock ไม่เกี่ยว
             if (paused) return;                   // ไฟดับเพราะหยุดชั่วคราว ไม่ใช่ปิดมาโคร
             if (NoNum)
             {
@@ -1253,6 +1273,8 @@ namespace GunBeep
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
             if (vk == cfg.HotKey) { ToggleOn(); return; }
+            // ในตัว: ปุ่มเมาส์ในเกม (Back/Forward/กลาง) GunBeep จัดการเอง แทนสคริปต์ G Hub
+            if (Native && cfg.CycleKey == 0 && cfg.CycleMouse > 0 && vk == cfg.CycleMouse + 1) { CycleKeyPressed(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
@@ -1332,6 +1354,7 @@ namespace GunBeep
                 saveVals.Start();
                 liveTimer.Start();
             }
+            PushEngine();
             UpdateGuns();
         }
 
@@ -1423,6 +1446,12 @@ namespace GunBeep
             bool have = vals != null && gun <= vals.Length;
             bool pending = HasPending;
             ApplyBtn.IsEnabled = pending && !setupBusy && !liveBusy;
+            if (Native)
+            {
+                ApplyBtn.Content = pending ? "ใช้ค่านี้" : have ? "✓  ใช้ค่านี้อยู่" : "ยังไม่มีค่าปืน";
+                if (pending) ApplyBtn.BorderBrush = accent; else ApplyBtn.ClearValue(BorderBrushProperty);
+                return;
+            }
             ApplyBtn.Content = setupBusy ? "กำลังรีสตาร์ท G Hub..."
                              : liveBusy ? "กำลังส่งค่าเข้า G Hub..."
                              : pending && NeedRestart ? "ใช้ค่านี้  (รีสตาร์ท G Hub ~10 วิ)"
@@ -1636,13 +1665,13 @@ namespace GunBeep
         {
             if (vals == null) { Tell("ยังไม่พบสคริปต์ GunBeep ใน G Hub — กด \"ตั้งค่าอัตโนมัติ\" ก่อน"); return; }
             if (setupBusy || liveBusy) return;
-            bool live = scriptVersion >= LiveLink.SEGS_VERSION;
+            bool live = Native || scriptVersion >= LiveLink.SEGS_VERSION;
             var res = SegsEditor.Edit(this, cfg.Names.Take(vals.Length).ToArray(),
                                       vals.Select(v => v.Steps).ToArray(), vals.Select(v => v.Base).ToArray(), gun, live);
             if (res == null) return;
             // ปืนที่แก้ = ปัดเป็นแท่งละ 100 ms ค่าละเอียด 0.25 (แบบเดียวกับที่ส่งเข้า G Hub)
             for (int i = 0; i < vals.Length; i++)
-                if (!GHub.SameSteps(res[i], vals[i].Steps)) vals[i].Steps = LiveLink.Fit(res[i]);
+                if (!GHub.SameSteps(res[i], vals[i].Steps)) vals[i].Steps = Native ? res[i] : LiveLink.Fit(res[i]);
             UpdatePresetButton();
             RefreshApplyButton();
             if (live)
@@ -1754,6 +1783,22 @@ namespace GunBeep
         {
             if (liveBusy) { liveAgain = true; return true; }
             if (setupBusy || vals == null || applied == null) return false;
+            if (Native)
+            {
+                // ในตัว: ใช้ทันที ไม่ต้องส่งเฟรม — กราฟที่เปลี่ยนเขียนลงไฟล์ด้วย
+                bool segsChanged = appliedSteps == null || vals.Where((v, i) => i >= appliedSteps.Length || !GHub.SameSteps(v.Steps, appliedSteps[i])).Any();
+                applied = Clone(vals);
+                appliedSteps = vals.Select(v => v.Steps?.ToArray()).ToArray();
+                liveFailed = false;
+                if (segsChanged && vals.All(v => v.Steps != null))
+                {
+                    var all = vals.Select(v => v.Steps.ToArray()).ToArray();
+                    QueueFile("save segs", () => GHub.WriteSegs(all));
+                }
+                PushEngine();
+                RefreshApplyButton();
+                return true;
+            }
             liveBusy = true;
             RefreshApplyButton();
             bool ok = true, segsSent = false;
@@ -1859,6 +1904,7 @@ namespace GunBeep
             if (setupBusy || liveBusy || vals == null || (!HasPending && segs == null)) return;
             if (segs == null && SegsPending && vals.All(v => v.Steps != null))
                 segs = vals.Select(v => v.Steps.ToArray()).ToArray();
+            if (Native) { SaveNative(segs); return; }
             setupBusy = true;
             UpdateTunePanel();
             var copy = Clone(vals);
@@ -2016,6 +2062,7 @@ namespace GunBeep
         // บอกสคริปต์ใน G Hub ว่าใช้ปุ่มเมาส์ไหน (คีย์บอร์ด = 0 ปิดฝั่ง G Hub)
         async Task SendCycleAsync()
         {
+            if (Native) return;                       // ในตัว: GunBeep ดูปุ่มเมาส์เอง
             if (scriptVersion < LiveLink.CFG_VERSION)
             {
                 Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้ปุ่มใหม่");
@@ -2119,8 +2166,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- เก็บของเร็ว
         LootWindow lootWin;
 
-        void UpdateLootBtn() =>
-            LootBtn.Content = cfg.LootKey == 0 ? "ปิด" : $"ปุ่ม {KeyName(cfg.LootKey)} · {cfg.LootSlots} ช่อง";
+        void UpdateLootBtn() => UpdateLootPage();
 
         void Loot_Click(object sender, RoutedEventArgs e)
         {
@@ -2165,6 +2211,7 @@ namespace GunBeep
         {
             int max = EffectiveMaxShots;
             try { GHub.WriteMaxShots(max); } catch { }
+            if (Native) { engine.MaxShots = max; Flash($"หยุดดึงหลังยิง {(max > 0 ? max + " นัด" : "ไม่จำกัด")}"); return; }
             if (scriptVersion < LiveLink.SHOTS_VERSION)
             {
                 Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้จำนวนนัด");
@@ -2183,6 +2230,7 @@ namespace GunBeep
 
         async Task SendAdsModeAsync()
         {
+            if (Native) { engine.RequireAds = cfg.RequireAds; return; }
             if (scriptVersion < LiveLink.ADS_VERSION)
             {
                 Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อเปลี่ยนโหมดทันที");
@@ -2238,6 +2286,7 @@ namespace GunBeep
             }
             UpdateCycleText();
             CycleBtn.ClearValue(BorderBrushProperty);
+            UpdateLootPage();
         }
 
         int captureFor;          // กำลังรอปุ่มให้: 0 เปิด/ปิด, 1 สลับโปรไฟล์, 2 วนปืนในเกม, 3–5 ปุ่มเลือกสโคป 1–3
@@ -2269,6 +2318,7 @@ namespace GunBeep
             if (same) return;                            // กดซ้ำ = ยกเลิก
             capturing = true;
             captureFor = target;
+            if (target == 6) { UpdateLootPage(); return; }
             var btn = target >= 3 ? ScopeBtn(target - 3) : target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
             btn.Content = target >= 3 ? "กดปุ่ม..." : target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
             btn.BorderBrush = accent;
@@ -2297,7 +2347,7 @@ namespace GunBeep
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(cfg.LootKey).Where(k => k != 0);
+            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(captureFor == 6 ? 0 : cfg.LootKey).Where(k => k != 0);
             if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
@@ -2309,6 +2359,15 @@ namespace GunBeep
                 return;
             }
             capturing = false;
+            if (captureFor == 6)
+            {
+                cfg.LootKey = vk;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash("เก็บของเร็ว: เปิดกระเป๋าแล้วกด " + KeyName(vk));
+                Sfx.Play(Sfx.Pick, cfg.Sound);
+                return;
+            }
             if (captureFor == 2) { SetCycle(0, vk); UpdateHotkeyText(); return; }
             if (captureFor >= 3)
             {
@@ -2374,7 +2433,10 @@ namespace GunBeep
 
         async void RefreshGHub()
         {
+            GHubCard.Visibility = Native ? Visibility.Collapsed : Visibility.Visible;
+            if (Native) { scriptVersion = 999; RefreshApplyButton(); return; }     // ในตัว: มีทุกความสามารถ
             var st = await Task.Run(GHub.GetStatus);
+            if (Native) return;
             scriptVersion = st.Script?.IsGunBeep == true ? st.Script.Version : 0;
             RefreshApplyButton();
             GHubRows.Children.Clear();
@@ -2798,6 +2860,7 @@ namespace GunBeep
             Log.Info("exit");
             on = false;
             ApplyState();
+            engine?.Dispose();
             if (!double.IsNaN(Left) && !double.IsNaN(Top) && Left >= 0 && Top >= 0)
             {
                 cfg.Left = Left;

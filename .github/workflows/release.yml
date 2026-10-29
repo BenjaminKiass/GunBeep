@@ -1,10 +1,10 @@
-# ทุกครั้งที่ push ขึ้น main → build GunBeep แล้วออก Release ใหม่ (v1.0.<ลำดับการรัน>)
-# GunBeep ในเครื่องผู้ใช้เช็ก Release ล่าสุดแล้วอัปเดตตัวเอง
+# รุ่นไม่ใช้ G Hub (branch native): push → build แล้วออก prerelease แท็ก native-v2.0.<ลำดับการรัน>
+# ตัว G Hub (main) ดูแค่ releases/latest จึงไม่เห็นรุ่นนี้ — ติดตั้งแยกโฟลเดอร์ อัปเดตแยกกัน
 name: release
 
 on:
   push:
-    branches: [main]
+    branches: [native]
     paths:
       - 'GunBeepApp/**'
       - 'recoil.lua'
@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      VERSION: 1.0.${{ github.run_number }}
+      VERSION: 2.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item recoil.lua, README.md, CLAUDE.md publish/
-          Compress-Archive -Path publish/* -DestinationPath GunBeep-win-x64.zip
+          Compress-Archive -Path publish/* -DestinationPath GunBeepNative-win-x64.zip
 
       - name: Release
         shell: pwsh
@@ -42,4 +42,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $notes = git log -1 --pretty=%B
-          gh release create "v$env:VERSION" GunBeep-win-x64.zip --title "GunBeep v$env:VERSION" --notes "$notes"
+          gh release create "native-v$env:VERSION" GunBeepNative-win-x64.zip --prerelease --target native --title "GunBeep ไม่ใช้ G Hub v$env:VERSION" --notes "$notes"

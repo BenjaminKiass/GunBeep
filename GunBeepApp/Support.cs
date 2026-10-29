@@ -62,11 +62,20 @@ namespace GunBeep
         public string VisionRes { get; set; } = "1728x1080"; // ความละเอียด ("1728x1080" หรือ "1920x1080")
         public int VisionOffsetX { get; set; } = 0;          // เลื่อนตำแหน่งแนวนอน ±px
         public int VisionOffsetY { get; set; } = 0;          // เลื่อนตำแหน่งแนวตั้ง ±px
+        // ---- รุ่นไม่ใช้ G Hub ----
+        public int Engine { get; set; } = 0;           // ตัวขยับเมาส์: 0 GunBeep ในตัว (SendInput), 1 G Hub (สำรอง)
+        public bool AutoOn { get; set; } = true;       // เปิดมาโครเองตอน PUBG เปิด / ปิดเองตอนเกมปิด (ไม่ต้องกด F8)
+        public bool HolsterPause { get; set; } = true; // ถือระเบิด/มีด/เก็บปืน (4 · 5 · X) = ไม่ดึง
+        public int Page { get; set; }                  // หน้าที่เปิดค้างไว้ในเมนูซ้าย
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };
 
         public static readonly string FilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GunBeepNative", "settings.json");
+
+        // ตัว G Hub (โปรแกรมแยกอีกตัว) — เปิดรุ่นนี้ครั้งแรกเอาค่าจากตัวนั้นมาใช้ก่อน แต่ไม่เขียนกลับไป
+        static readonly string GHubAppPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GunBeep", "settings.json");
 
         // สำเนาเก็บไว้ข้าง GunBeep.exe (โฟลเดอร์ saved) ลง Windows ใหม่แล้วค่าไม่หาย
@@ -75,11 +84,22 @@ namespace GunBeep
 
         public static Settings Load()
         {
-            foreach (var p in new[] { FilePath, KitPath })
+            foreach (var p in new[] { FilePath, KitPath, GHubAppPath })
             {
                 try
                 {
                     if (!File.Exists(p)) continue;
+                    if (p == GHubAppPath)
+                    {
+                        // ค่าที่ตัว G Hub ไม่มี (หรือมีแต่ความหมายต่าง) ใช้ค่าเริ่มต้นของรุ่นนี้
+                        var g = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
+                        var d = new Settings();
+                        g.Engine = d.Engine; g.AutoOn = d.AutoOn; g.HolsterPause = d.HolsterPause; g.Page = 0;
+                        if (g.Names == null || g.Names.Length < 3) g.Names = d.Names;
+                        if (g.MagMode == 2) g.MagMode = 1;
+                        Log.Info("settings imported from the G Hub app");
+                        return g;
+                    }
                     var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
                     if (s.Names == null || s.Names.Length < 3) s.Names = new Settings().Names;
                     if (s.MagMode == 2) s.MagMode = 1;          // ฟังเสียงปืนเอาออกแล้ว (ไม่เสถียร) → นับกระสุนแทน
@@ -154,7 +174,7 @@ namespace GunBeep
     public static class AutoStart
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string Name = "GunBeep";
+        const string Name = "GunBeepNative";      // ตัว G Hub ใช้ชื่อ "GunBeep" — แยกกัน ไม่ทับกัน
         static string Command => "\"" + Environment.ProcessPath + "\" --tray";
 
         static string Current()

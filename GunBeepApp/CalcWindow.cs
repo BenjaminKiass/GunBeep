@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,7 +40,7 @@ namespace GunBeep
             root.Children.Add(new TextBlock { Text = "คำนวณแรงดีดอัตโนมัติ", FontSize = 16, FontWeight = FontWeights.Bold });
             root.Children.Add(new TextBlock
             {
-                Text = "แรงดึง = ตารางของการ์ดชุดค่า × ปืน × สโคป × ของแต่ง × ท่าทาง — G Hub เป็นคนขยับเมาส์เหมือนเดิม GunBeep คำนวณแล้วส่งตัวคูณให้\n" +
+                Text = "แรงดึง = ตารางของการ์ดชุดค่า × ปืน × สโคป × ของแต่ง × ท่าทาง — GunBeep คำนวณตัวคูณให้เองทุกครั้งที่เปิดกระเป๋า\n" +
                        "ตัวเลข % เป็นค่าเริ่มต้นโดยประมาณ (ไม่ใช่ค่าทางการของเกม) ลองยิงแล้วปรับได้",
                 Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10)
             });
@@ -64,7 +64,7 @@ namespace GunBeep
             root.Children.Add(Header("สโคป (คำนวณจากความไวในเกม — ไม่ต้องตั้ง)"));
             root.Children.Add(ScopeTable());
 
-            root.Children.Add(Header("ปืน (×1 = เท่าตารางในการ์ด) — ปืนที่เคยเจอในกระเป๋าจะขึ้นเอง"));
+            root.Children.Add(Header("ปืน: มีค่าแรงดีดในตัวทุกปืนแล้ว (เทียบปืนที่ใช้จูนตาราง: " + (C.RefGun ?? "M416") + ") — ตรงนี้คือปรับเพิ่ม ×1 = ตามค่าในตัว"));
             root.Children.Add(guns);
             root.Children.Add(example);
 

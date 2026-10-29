@@ -18,6 +18,7 @@ namespace GunBeep
     public static class Updater
     {
         public const string Repo = "BenjaminKiass/GunBeep";
+        const string Channel = "native-v";
 
         public class Release
         {
@@ -44,10 +45,14 @@ namespace GunBeep
         {
             try
             {
-                string json = await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest");
-                var j = JsonNode.Parse(json);
+                // รุ่นไม่ใช้ G Hub ออกเป็น prerelease แท็ก "native-v2.0.N" — ไม่ปนกับตัว G Hub (releases/latest = v1.0.N)
+                string json = await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30");
+                var j = JsonNode.Parse(json)?.AsArray()
+                    .Where(r => r?["tag_name"]?.GetValue<string>()?.StartsWith(Channel) == true)
+                    .OrderByDescending(r => Version.TryParse(r["tag_name"].GetValue<string>().Substring(Channel.Length), out var x) ? x : new Version(0, 0))
+                    .FirstOrDefault();
                 string tag = j?["tag_name"]?.GetValue<string>();
-                if (tag == null || !Version.TryParse(tag.TrimStart('v', 'V'), out var v)) return null;
+                if (tag == null || !Version.TryParse(tag.Substring(Channel.Length), out var v)) return null;
                 string zip = j["assets"]?.AsArray()
                     .Select(a => a?["browser_download_url"]?.GetValue<string>())
                     .FirstOrDefault(u => u != null && u.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));

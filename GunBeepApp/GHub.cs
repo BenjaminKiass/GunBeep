@@ -69,7 +69,7 @@ namespace GunBeep
                 st.Installed = File.Exists(ExePath) || st.Version != null;
                 if (!st.Installed) return st;
 
-                st.Script = PickScript(ListScripts());
+                st.Script = GHubPick(ListScripts());
                 if (st.Script != null) SaveGunSection(st.Script);
 
                 var json = ReadSettingsJson(DbPath, copyFirst: true, out _, out _);
@@ -228,7 +228,38 @@ namespace GunBeep
         static string pubgScriptId;
         static DateTime pubgScriptRead;
 
-        static ScriptSlot PickScript(List<ScriptSlot> list)
+        // ตัวขยับเมาส์ในตัว GunBeep (ไม่ใช้ G Hub): ค่าปืนเก็บใน saved\engine\script.lua รูปแบบเดียวกับสคริปต์ G Hub
+        //   → โค้ดอ่าน/เขียน base, x, กราฟ, ตารางรายนัด ใช้ของเดิมได้ทั้งหมด
+        //   ครั้งแรกสร้างจากตารางปืนในสคริปต์ G Hub (ถ้ามี) หรือ saved\guns.lua — ค่าที่จูนไว้ไม่หาย
+        public static bool Native;
+        static readonly string NativeDir = Path.Combine(Settings.KitDir, "engine");
+
+        static ScriptSlot PickScript(List<ScriptSlot> list) => Native ? NativeSlot() : GHubPick(list);
+
+        static ScriptSlot NativeSlot()
+        {
+            string lua = Path.Combine(NativeDir, "script.lua");
+            if (!File.Exists(lua))
+            {
+                Directory.CreateDirectory(NativeDir);
+                string text = Template();
+                var gh = GHubPick(ListScripts());
+                string guns = gh != null && gh.IsGunBeep ? GunSection.Match(gh.Text).Value : "";
+                if (guns == "" && File.Exists(SavedGuns)) guns = File.ReadAllText(SavedGuns, Encoding.UTF8);
+                var t = GunSection.Match(text);
+                if (guns != "" && t.Success) text = text.Substring(0, t.Index) + guns + text.Substring(t.Index + t.Length);
+                SafeFile.Write(lua, text);
+                Log.Info("engine: created saved\\engine\\script.lua from " + (gh?.IsGunBeep == true ? "G Hub script" : guns != "" ? "saved\\guns.lua" : "template"));
+            }
+            string s = File.ReadAllText(lua, Encoding.UTF8);
+            return new ScriptSlot
+            {
+                Folder = NativeDir, Name = "GunBeep (ในตัว)", Text = s, Version = ParseVersion(s), IsGunBeep = true,
+                Modified = File.GetLastWriteTime(lua)
+            };
+        }
+
+        static ScriptSlot GHubPick(List<ScriptSlot> list)
         {
             if (list == null || list.Count == 0) return null;
             try

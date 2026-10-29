@@ -294,3 +294,19 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - `cfg.SlotSwitch` (0 off, 1 keys 1/2, 2 keys + wheel; default 2): while ON, key 1 → gun 1, key 2 → gun 2,
   a wheel notch (≥180 ms apart) toggles slot 1↔2. No game reading: the user asked for automatic gun/attachment
   detection — refused (screen/memory reading = cheat); this is the safe substitute.
+
+## Branch `native` = รุ่นไม่ใช้ G Hub (โปรแกรมแยก, 2026-10-30)
+- User wants the G Hub app (main, v1.0.N, `%APPDATA%\GunBeep`, Run key "GunBeep") kept untouched as a fallback.
+  The native build lives on branch `native`, installs to a separate folder (`...\มาโครพับจี\GunBeep-NoGHub`),
+  uses `%APPDATA%\GunBeepNative` (first run imports the G Hub app's settings, never writes back), Run key
+  "GunBeepNative", and releases as prerelease tags `native-v2.0.<run>` (Updater filters by that prefix;
+  main's Updater reads releases/latest so it never sees them). Same mutex name → only one of the two runs at a time.
+- `NativeRecoil.cs`: port of recoil.lua spray() — GetAsyncKeyState LMB/RMB, Stopwatch time integration of
+  segs×(base)×GEAR×STANCE, SendInput relative MOVE tagged 0x47424545, timeBeginPeriod(1). Active only when
+  on && !paused && PUBG foreground. Gun values stored in `saved\engine\script.lua` (same format as the G Hub
+  script; GHub.Native routes PickScript there, created from the G Hub script / saved\guns.lua on first run).
+  Ban-risk note shown to user: SendInput is flagged LLMHF_INJECTED, easier to see than G Hub's driver input.
+- cfg.Engine 0 native / 1 G Hub (switch in Settings page); cfg.AutoOn (macro on while TslGame runs);
+  cfg.HolsterPause (4/5/X = pause until a gun key); RecoilCalc.BuiltinGun = estimated vertical recoil per gun
+  vs M416 (CalcSettings.RefGun = gun the tables were tuned with; c.Guns = user extra factor).
+- UI: sidebar nav (มาโคร live slot panels built in MacroPage.cs, จูนแรงดีด, เก็บของเร็ว, ตั้งค่า), 1210×800.
