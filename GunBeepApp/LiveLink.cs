@@ -41,6 +41,19 @@ namespace GunBeep
             return bits.ToArray();
         }
 
+        public const int GEAR_VERSION = 19;     // สคริปต์ตั้งแต่ v19 รับตัวคูณ (ชนิด 3): ปืน×สโคป×ของแต่ง, ท่าทาง
+
+        // ตัวคูณ: 01 | 11 | ค่า×64 (8) | ช่อง (8: 0 = ของแต่ง, 1 = ท่าทาง) | (3+ค่า+ช่อง)%16
+        public static int MultCode(double mult) => Math.Clamp((int)Math.Round(mult * 64), 0, 255);
+
+        public static int[] MultFrame(int sub, double mult)
+        {
+            int v = MultCode(mult);
+            var bits = new List<int> { 0, 1 };
+            Put(bits, 3, 2); Put(bits, v, 8); Put(bits, sub, 8); Put(bits, (3 + v + sub) % 16, 4);
+            return bits.ToArray();
+        }
+
         public static int[] CfgFrame(int kind, int value)
         {
             var bits = new List<int> { 0, 1 };

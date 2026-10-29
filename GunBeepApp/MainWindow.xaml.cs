@@ -165,6 +165,7 @@ namespace GunBeep
             UpdateSocdBtn();
             UpdateLootBtn();
             UpdateScopeAutoBtn();
+            UpdateCalcBtn();
             UpdateLangBtn();
             ApplyState();
             UpdatePower();
@@ -836,6 +837,8 @@ namespace GunBeep
                 foreach (var p in panels)
                 {
                     if (p.Slot is not (1 or 2)) continue;
+                    // ปืนที่เจอครั้งแรก → เพิ่มในหน้าคำนวณแรงดีด (×1) ให้ปรับทีหลังได้
+                    if (RecoilCalc.GunKey(p.Name) is string gk && (cfg.Calc ??= new CalcSettings()).Guns.TryAdd(gk, 1)) cfg.Save();
                     var old = slotInfo[p.Slot];
                     if (p.Set == -1 && old != null && old.Set != -1 && old.Name == p.Name) { p.Icon?.Dispose(); continue; }   // อ่านสโคปไม่ชัดรอบนี้ → ใช้ของเดิม
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p);
@@ -849,18 +852,142 @@ namespace GunBeep
             finally { scanBusy = false; }
         }
 
-        // ใช้ชุดค่าตามสโคปของปืนที่ถืออยู่
+        // ใช้ชุดค่าตามสโคปของปืนที่ถืออยู่ + คำนวณตัวคูณ ปืน × สโคป × ของแต่ง
         void ApplyScope(string why)
         {
             if (!cfg.ScopeAuto || vals == null) return;
             var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
-            if (p == null || p.Set < 0) return;                  // ไม่รู้จัก / รู้จักแต่ไม่มีการ์ดชุดนี้ = ไม่เปลี่ยน
-            int set = p.Set == 0 ? cfg.ScopeNoneSet : p.Set;
-            if (set < 1 || set > vals.Length || set == gun) return;
-            Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}");
-            SelectGun(set);
+            if (p == null || p.Set == -1) return;                // ไม่รู้จักสโคป = ไม่เปลี่ยน
+            int set = p.Set;
+            double scopeMult = 1;
+            string via = null;
+            if (p.Set == 0) set = cfg.ScopeNoneSet;
+            else if (p.Set == -2) (set, scopeMult, via) = RecoilCalc.ForScope(p.ScopeLabel, cfg.Names.Take(vals.Length).ToArray());
+            var calc = cfg.Calc ??= new CalcSettings();
+            var (mult, parts) = calc.On ? RecoilCalc.Gear(calc, RecoilCalc.GunKey(p.Name), scopeMult, p.Att) : (1.0, "");
+            bool setChanged = set >= 1 && set <= vals.Length && set != gun;
+            bool multChanged = LiveLink.MultCode(mult) != LiveLink.MultCode(multWant[0]);
+            multWant[0] = mult;
+            if (!setChanged && !multChanged) return;
+            Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
+            if (setChanged) SelectGun(set);
+            PushMults();
             string name = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
-            PopOsd($"{name} · {(p.Set == 0 ? "ไม่มีสโคป" : p.ScopeLabel)} → {cfg.Names[set - 1]}");
+            string target = set >= 1 && set <= vals.Length ? cfg.Names[set - 1] : "ชุดเดิม";
+            PopOsd($"{name} · {(p.Set == 0 ? "ไม่มีสโคป" : p.ScopeLabel)} → {target}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+        }
+
+        CalcWindow calcWin;
+
+        void UpdateCalcBtn() => CalcBtn.Content = (cfg.Calc ??= new CalcSettings()).On ? "เปิด" : "ปิด";
+
+        void Calc_Click(object sender, RoutedEventArgs e)
+        {
+            cfg.Calc ??= new CalcSettings();
+            cfg.Calc.On = !cfg.Calc.On;
+            cfg.Save();
+            CalcChanged();
+            Flash(cfg.Calc.On ? "คำนวณแรงดีด: ปืน × สโคป × ของแต่ง × ย่อ/หมอบ (ส่งให้ G Hub เอง)" : "ปิดคำนวณแรงดีด — ใช้ตารางในการ์ดตรงๆ");
+        }
+
+        void CalcSetup_Click(object sender, RoutedEventArgs e)
+        {
+            if (calcWin != null) { calcWin.Activate(); return; }
+            calcWin = new CalcWindow(cfg, CalcChanged) { Owner = this };
+            calcWin.Closed += (s, a) => calcWin = null;
+            calcWin.Show();
+        }
+
+        // ตั้งค่าเปลี่ยน → คำนวณใหม่แล้วส่ง
+        void CalcChanged()
+        {
+            UpdateCalcBtn();
+            var c = cfg.Calc;
+            multWant[1] = !c.On ? 1 : stance == 1 ? 1 + c.CrouchPct / 100 : stance == 2 ? 1 + c.PronePct / 100 : 1;
+            if (!c.On) multWant[0] = 1;
+            ApplyScope("settings");
+            PushMults();
+        }
+
+        // ---------------------------------------------------------------- ตัวคูณส่งให้สคริปต์ (v19+)
+        // [0] = ปืน×สโคป×ของแต่ง, [1] = ท่าทาง — ส่งเฉพาะค่าที่เปลี่ยน ส่งทีละเฟรม (~0.7 วิ)
+        readonly double[] multWant = { 1, 1 };
+        readonly int[] multSent = { LiveLink.MultCode(1), LiveLink.MultCode(1) };
+        bool multPushing, multOldTold;
+
+        async void PushMults()
+        {
+            if (multPushing) return;
+            if (scriptVersion < LiveLink.GEAR_VERSION)
+            {
+                if (!multOldTold && (Math.Abs(multWant[0] - 1) > 0.01 || Math.Abs(multWant[1] - 1) > 0.01))
+                {
+                    multOldTold = true;
+                    Flash("สคริปต์ใน G Hub ยังเป็นรุ่นเก่า — กด \"ตั้งค่าอัตโนมัติ\" เพื่อใช้ตัวคูณแรงดีด");
+                }
+                return;
+            }
+            multPushing = true;
+            try
+            {
+                for (int round = 0; round < 6; round++)
+                {
+                    int sub = LiveLink.MultCode(multWant[0]) != multSent[0] ? 0 : LiveLink.MultCode(multWant[1]) != multSent[1] ? 1 : -1;
+                    if (sub < 0) break;
+                    for (int i = 0; i < 50 && (liveBusy || setupBusy); i++) await Task.Delay(100);
+                    if (liveBusy || setupBusy) break;
+                    int code = LiveLink.MultCode(multWant[sub]);
+                    liveBusy = true;
+                    bool ok;
+                    try { ok = await SendFrameAsync(LiveLink.MultFrame(sub, code / 64.0)); }
+                    finally { liveAck = null; liveBusy = false; }
+                    Log.Info($"live {(sub == 0 ? "gear" : "stance")} ×{code / 64.0:0.000}: {(ok ? "ok" : "no ack")}");
+                    if (!ok) break;
+                    multSent[sub] = code;
+                    await Task.Delay(LiveLink.FRAME_GAP_MS);
+                }
+            }
+            finally { multPushing = false; }
+        }
+
+        // ---------------------------------------------------------------- ท่าทาง (ยืน / ย่อ / หมอบ)
+        // ดูปุ่มในเกม (อ่านจากไฟล์ตั้งค่า PUBG ถ้าได้ ไม่งั้น C / Z) — กดสลับแบบ toggle ของ PUBG, Space = ลุกยืน
+        int stance;                                   // 0 ยืน, 1 ย่อ, 2 หมอบ
+        int[] stanceKeys;
+
+        void StanceKey(int vk)
+        {
+            var c = cfg.Calc;
+            if (c == null || !c.On || !Playing()) return;
+            stanceKeys ??= ReadStanceKeys();
+            int was = stance;
+            if (vk == stanceKeys[0]) stance = stance == 1 ? 0 : 1;
+            else if (vk == stanceKeys[1]) stance = stance == 2 ? 0 : 2;
+            else if (vk == 0x20) stance = stance == 2 ? 1 : 0;        // Space: หมอบ → ย่อ, ย่อ → ยืน
+            else return;
+            if (stance == was) return;
+            multWant[1] = stance == 1 ? 1 + c.CrouchPct / 100 : stance == 2 ? 1 + c.PronePct / 100 : 1;
+            Log.Info($"stance {(stance == 0 ? "stand" : stance == 1 ? "crouch" : "prone")} ×{multWant[1]:0.00}");
+            if (on) PushMults();
+        }
+
+        static int[] ReadStanceKeys()
+        {
+            int Key(string action, int def)
+            {
+                try
+                {
+                    string f = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                                      "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
+                    string s;
+                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var r = new StreamReader(fs)) s = r.ReadToEnd();
+                    var m = System.Text.RegularExpressions.Regex.Match(s, $@"ActionName=""{action}"",Keys=\(\(Key=([A-Z])\)");
+                    return m.Success ? m.Groups[1].Value[0] : def;
+                }
+                catch { return def; }
+            }
+            return new[] { Key("ToggleCrouch", 'C'), Key("ToggleProne", 'Z') };
         }
 
         void HeldSlotTo(int s, string why)
@@ -1062,6 +1189,8 @@ namespace GunBeep
         async void GunAfterRestart()
         {
             gunSent = 0;
+            multSent[0] = multSent[1] = LiveLink.MultCode(1);     // สคริปต์โหลดใหม่ = ตัวคูณกลับเป็น 1
+            PushMults();
             await Task.Delay(10000);
             if (on && NoNum) SyncGun();
         }
@@ -1127,6 +1256,7 @@ namespace GunBeep
 
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
+            StanceKey(vk);                                       // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
@@ -1788,7 +1918,7 @@ namespace GunBeep
         void ToggleOn()
         {
             on = !on;
-            if (on) gunSent = 0;                  // เปิดใหม่ = ส่งเลขปืนให้สคริปต์ทุกครั้ง (G Hub อาจเพิ่งเปิดใหม่)
+            if (on) { gunSent = 0; PushMults(); }   // เปิดใหม่ = ส่งเลขปืนให้สคริปต์ทุกครั้ง (G Hub อาจเพิ่งเปิดใหม่) + ตัวคูณ
             ApplyState();
             UpdatePower();
             UpdateGuns();

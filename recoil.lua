@@ -1,6 +1,6 @@
 -- ============================================================
 --  Recoil macro สำหรับ Logitech G Hub  (ใช้คู่กับโปรแกรม GunBeep.exe)
---  GunBeep-Script-Version: 18
+--  GunBeep-Script-Version: 19
 --  ความไวเดียวทุกสโคป + ตารางแรงดีดอิงเวลาจริง (ไม่เพี้ยนตาม Sleep)
 --
 --  เปิด/ปิดมาโคร : ปุ่มลัดที่ตั้งใน GunBeep (ค่าเริ่มต้น F8) หรือคลิกปุ่มใหญ่ในโปรแกรม
@@ -77,6 +77,12 @@ local RELEASE_GRACE_MS = 30
 local MAX_SHOTS = 42             -- ยิงครบกี่นัดแล้วหยุดดึง (แม็ก 40 + เผื่อ 2) กดยิงค้างตอนกระสุนหมดจอไม่กดลงต่อ — GunBeep ตั้งให้, 0 = ไม่จำกัด
 local SHOT_MS = 86               -- เวลาต่อนัดของปืนไรเฟิลส่วนใหญ่ (~700 นัด/นาที)
 
+-- ===== ตัวคูณจาก GunBeep (v19+) =====
+-- GEAR_MULT   = ปืน × สโคป × ของแต่ง (GunBeep ตรวจจากหน้ากระเป๋าแล้วคำนวณ ส่งมาตอนปิดกระเป๋า/เปลี่ยนปืน)
+-- STANCE_MULT = ยืน / ย่อ / หมอบ (GunBeep ดูปุ่ม C / Z / Space)
+local GEAR_MULT = 1
+local STANCE_MULT = 1
+
 EnablePrimaryMouseButtonEvents(true)
 
 -- ============================================================
@@ -102,6 +108,7 @@ end
 -- เฟรมกราฟ: 11 | ปืน(2) | จำนวนก้อน(5) | ก้อนละ: แรงดึง*4 (7) + จำนวนแท่ง 100 ms (5) | checksum(8)
 -- เฟรมตั้งค่า (24 บิต): 01 | ชนิด(2) | ค่า(8) | 0(8) | (ชนิด+ค่า)%16 (4)
 --   ชนิด 0 = ปุ่มวนปืน (CYCLE_BTN), ชนิด 1 = REQUIRE_ADS (0/1), ชนิด 2 = MAX_SHOTS (0-255)
+--   ชนิด 3 = ตัวคูณ: ค่า/64, ช่องที่ 2 = 0 GEAR_MULT, 1 STANCE_MULT — checksum (ชนิด+ค่า+ช่องที่2)%16
 -- รับครบแล้วตอบกลับด้วย F18
 local rx_clk, rx_t, rx_caps, rx_bits, rx_need = false, 0, false, {}, 24
 
@@ -112,7 +119,17 @@ local function rx_take(i, n)
 end
 
 local function rx_apply_cfg()
-  local k, v, chk = rx_take(3, 2), rx_take(5, 8), rx_take(21, 4)
+  local k, v, sub, chk = rx_take(3, 2), rx_take(5, 8), rx_take(13, 8), rx_take(21, 4)
+  if k == 3 then
+    if chk ~= (k + v + sub) % 16 or sub > 1 then
+      OutputLogMessage("LIVE: ตัวคูณเสีย ไม่รับ\n")
+      return
+    end
+    if sub == 0 then GEAR_MULT = v / 64 else STANCE_MULT = v / 64 end
+    OutputLogMessage("LIVE: GEAR=%.3f STANCE=%.3f\n", GEAR_MULT, STANCE_MULT)
+    PressAndReleaseKey("f18")
+    return
+  end
   if chk ~= (k + v) % 16 then
     OutputLogMessage("LIVE: ตั้งค่าเสีย ไม่รับ\n")
     return
@@ -307,9 +324,9 @@ local function spray()
     if MAX_SHOTS > 0 and now >= MAX_SHOTS * SHOT_MS then reason = "max shots" break end
     if REQUIRE_ADS and not is_ads() then reason = "ads released" break end
 
-    local factor = 1
+    local factor = GEAR_MULT * STANCE_MULT
     if (not UNIFIED_SENS) and is_ads() then
-      factor = scope_factor
+      factor = factor * scope_factor
     end
 
     local dt = now - last

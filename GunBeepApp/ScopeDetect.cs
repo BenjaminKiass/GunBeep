@@ -33,6 +33,7 @@ namespace GunBeep
             public int Slot;                          // 1 / 2, 0 = ไม่มีปืน / อ่านไม่ออก
             public int Set = -1;                      // 1–3, 0 = ไม่มีสโคป, -1 = ไม่รู้จัก, -2 = รู้จักแต่ไม่มีการ์ดชุดนี้
             public Bitmap Icon;                       // ภาพช่องสโคปล่าสุด
+            public bool[] Att;                        // ของแต่ง: [0] ปากกระบอก, [1] กริป, [3] พานท้าย
             public double Score;
             public string ScopeLabel = "?";
             public string Name = "";
@@ -233,6 +234,7 @@ namespace GunBeep
         }
 
         // ---------------------------------------------------------------- หาตำแหน่งแผงปืนเอง (OCR ชื่อปืน)
+        public static string[] GunWordList => GunWords;
         static readonly string[] GunWords =
         {
             "AKM", "M416", "BERYL", "MK12", "SCAR", "AUG", "ACE32", "QBZ", "G36C", "K2", "FAMAS", "M16A4", "GROZA", "MK47",
@@ -422,7 +424,7 @@ namespace GunBeep
         {
             int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
             var boxes = Boxes(cfg, w, h);
-            var all = boxes.SelectMany(b => new[] { b.badge, b.name, b.icon }).Aggregate(Rectangle.Union);
+            var all = boxes.SelectMany(b => new[] { b.badge, b.name, b.icon }).Append(RecoilCalc.AttachmentArea(cfg, w, h)).Aggregate(Rectangle.Union);
             all.Intersect(new Rectangle(0, 0, w, h));
             origin = all.Location;
             if (all.Width < 4 || all.Height < 4) return null;
@@ -490,6 +492,7 @@ namespace GunBeep
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
+                if (p.Slot != 0) p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i);
                 res[i] = p;
             }
             return res;

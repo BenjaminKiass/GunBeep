@@ -767,6 +767,18 @@
                                     <TextBlock Text="ปุ่มเลือกสโคป" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="40" ToolTip="คำนวณแรงดีด: ตารางในการ์ด × ปืน × สโคป × ของแต่ง × ย่อ/หมอบ — G Hub ขยับเมาส์เหมือนเดิม GunBeep ส่งตัวคูณให้ · ⚙ = ปรับ %">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="5,0,0,0" Padding="7,3"
+                                            VerticalAlignment="Center" Click="CalcSetup_Click" ToolTip="ปรับ % ของแต่ง ท่าทาง และตัวคูณแต่ละปืน">
+                                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                                    </Button>
+                                    <Button x:Name="CalcBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="Calc_Click"/>
+                                    <TextBlock Text="&#xE8EF;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="คำนวณแรงดีด" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                 <DockPanel Height="40" ToolTip="ตรวจสโคปอัตโนมัติ: เปิดกระเป๋าแล้ว GunBeep ดูว่าปืนแต่ละช่องติดสโคปอะไร → เปลี่ยนปืนแล้วใช้ชุดค่าตามสโคปเอง — คลิกเพื่อตั้งค่าและสอนสโคป">
                                     <Button DockPanel.Dock="Right" Style="{StaticResource KeyBtn}" Margin="5,0,0,0" Padding="7,3"
                                             VerticalAlignment="Center" Click="ScopeSetup_Click" ToolTip="ดู/แก้ตำแหน่งและสโคปที่จำไว้ (ปกติไม่ต้องใช้)">
