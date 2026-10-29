@@ -164,6 +164,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Pause: GunBeep turns Scroll Lock off while the cursor is visible (GetCursorInfo) or PUBG is not foreground; app stays ON.
 - SOCD (Socd.cs) runs inside KeyHook, which has its own thread + message loop (a slow UI thread made Windows skip
   the hook → missed key events → stuck keys). Key-ups are never blocked. Sim of the state machine: 0 stuck cases.
+- Fast loot (Loot.cs + LootWindow.cs): LootKey pressed while PUBG is foreground AND the cursor is shown → background
+  thread drags ground slots N..1 (bottom-up so rows don't shift) to LootDrop with SendInput absolute moves (dwExtraInfo
+  MAGIC), then moves to LootCenter. Positions are fractions of the primary screen; the calibrator uses a user-supplied
+  screenshot (saved\loot-ref.png) only for placing markers. Not yet verified that PUBG accepts SendInput drags.
 - v12 (written in another session) had dropped rx_poll entirely → every live send "no ack". v13+ restored it.
 - Vision (screen capture of the inventory) exists but the Tab-triggered auto scan was removed: it guessed wrong and
   overwrote base (0 ↔ 13), and reading the game screen risks a BattlEye ban.

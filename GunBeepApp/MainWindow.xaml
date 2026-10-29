@@ -748,6 +748,14 @@
                                                VerticalAlignment="Center" Width="26"/>
                                     <TextBlock Text="SOCD (ปุ่มทิศชนกัน)" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
+                                <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                <DockPanel Height="40" ToolTip="เก็บของเร็ว: เปิดกระเป๋าแล้วกดปุ่มเดียว ลากของบนพื้นเข้ากระเป๋าให้ทีละช่อง — คลิกเพื่อตั้งปุ่มและตำแหน่ง">
+                                    <Button x:Name="LootBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                            VerticalAlignment="Center" Click="Loot_Click"/>
+                                    <TextBlock Text="&#xE7BF;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" Width="26"/>
+                                    <TextBlock Text="เก็บของเร็ว" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
                             </StackPanel>
                         </Border>
 

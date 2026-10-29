@@ -162,6 +162,7 @@ namespace GunBeep
             ShotsBox.LostKeyboardFocus += (s, e) => ShotsTyped();
             ApplySocd();
             UpdateSocdBtn();
+            UpdateLootBtn();
             UpdateLangBtn();
             ApplyState();
             UpdatePower();
@@ -910,6 +911,8 @@ namespace GunBeep
             if (capturing) { CaptureKey(vk); return; }
             if (eye != null && eye.Key(vk)) return;          // จูนด้วยตา: ลูกศรตอบคำถามบนป้าย
 
+            if (lootWin?.Capturing == true) return;            // กำลังตั้งปุ่มในหน้าเก็บของเร็ว
+            if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             if (cfg.PresetKey != 0 && vk == cfg.PresetKey) { CyclePreset(); return; }
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
@@ -1723,6 +1726,35 @@ namespace GunBeep
             socdWin.Show();
         }
 
+        // ---------------------------------------------------------------- เก็บของเร็ว
+        LootWindow lootWin;
+
+        void UpdateLootBtn() =>
+            LootBtn.Content = cfg.LootKey == 0 ? "ปิด" : $"ปุ่ม {KeyName(cfg.LootKey)} · {cfg.LootSlots} ช่อง";
+
+        void Loot_Click(object sender, RoutedEventArgs e)
+        {
+            if (lootWin != null) { lootWin.Activate(); return; }
+            lootWin = new LootWindow(cfg, KeyName, vk => vk != cfg.LootKey && KeyInUse(vk), UpdateLootBtn) { Owner = this };
+            lootWin.Closed += (s, a) => lootWin = null;
+            lootWin.Show();
+        }
+
+        // ปุ่มนี้ GunBeep ใช้ทำอย่างอื่นอยู่แล้วหรือยัง
+        bool KeyInUse(int vk) =>
+            new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, cfg.LootKey }.Concat(ScopeKeys).Contains(vk)
+            || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1);
+
+        // ในเกมเปิดกระเป๋าอยู่ (เคอร์เซอร์โผล่) → ลากของให้; นอกนั้นไม่ทำอะไร
+        void LootKeyPressed()
+        {
+            if (!GameInFront() || !CursorShown()) return;
+            var hwnd = GetForegroundWindow();
+            bool started = Loot.Run(cfg, () => GetForegroundWindow() == hwnd && CursorShown(),
+                moved => Log.Info($"loot: {moved} slot(s)"));
+            if (!started) Log.Info("loot: stopped by key");
+        }
+
         void ShotsMoved(int n)
         {
             if (n == cfg.MaxShots) return;
@@ -1873,7 +1905,7 @@ namespace GunBeep
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0);
+            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(cfg.LootKey).Where(k => k != 0);
             if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");

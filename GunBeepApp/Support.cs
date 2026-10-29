@@ -32,6 +32,14 @@ namespace GunBeep
         public bool SocdGameOnly { get; set; } = true;
         public List<int[]> SocdPairs { get; set; } = new() { new[] { 0x41, 0x44 } };   // A ⇄ D
         public int[] ScopeKeys { get; set; } = { 0, 0, 0 };   // ปุ่มเลือกชุดค่า 1/2/3 ตรงๆ (ชุดค่าตามสโคป), 0 = ไม่ใช้
+        // เก็บของเร็ว: ตำแหน่งเป็นสัดส่วนของจอ (0–1) — ช่องของบนพื้นช่องแรก/ช่องถัดไป, จุดปล่อย (กระเป๋า), จุดกลับ
+        public int LootKey { get; set; }                       // ปุ่มสั่งเก็บ (ตอนเปิดกระเป๋า), 0 = ไม่ใช้
+        public int LootSlots { get; set; } = 8;                // เก็บกี่ช่องต่อครั้ง
+        public int LootSpeed { get; set; } = 1;                // 0 ช้า, 1 กลาง, 2 เร็ว
+        public double[] LootStart { get; set; } = { 0.110, 0.147 };
+        public double[] LootStep { get; set; } = { 0.110, 0.204 };
+        public double[] LootDrop { get; set; } = { 0.750, 0.233 };
+        public double[] LootCenter { get; set; } = { 0.480, 0.500 };
         public bool AutoEnglish { get; set; } = true;   // เข้าเกม = สลับคีย์บอร์ดเป็นภาษาอังกฤษ (ภาษาไทยแล้วปุ่ม 1/2/3 ฯลฯ ในเกมไม่ทำงาน), ออกเกม = คืนภาษาเดิม
         public bool PauseInMenu { get; set; } = true; // หยุดดึงชั่วคราวตอนเปิดกระเป๋า/แผนที่/เมนู (มีเคอร์เซอร์) หรือสลับออกจากเกม
         public int SlotSwitch { get; set; } = 2;    // สลับปืนตามช่องในเกม: 0 ปิด, 1 ปุ่ม 1/2, 2 ปุ่ม 1/2 + ลูกกลิ้ง         // ยืดตลอดตั้งแต่เปิด GunBeep (ไม่ใช่แค่ตอนเปิดเกม)
