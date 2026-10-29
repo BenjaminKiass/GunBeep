@@ -118,7 +118,7 @@ namespace GunBeep
             {
                 RawMouse.Shared.Button += vk => OnKey(vk);
                 RawMouse.Shared.Wheel += OnWheel;
-            RawMouse.Shared.Input += (dev, dx, dy, left) => { if (left != 0) MagFire(left > 0); };
+            RawMouse.Shared.Input += (dev, dx, dy, left) => { if (left != 0) { MagFire(left > 0); if (left < 0) ThrowReleased(); } };
             }
             catch (Exception ex) { Log.Error("raw mouse", ex); }
 
@@ -1281,7 +1281,7 @@ namespace GunBeep
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (ScopeKeyPressed(vk)) return;
             if (vk == 0x52) ResetMag("R");                                       // รีโหลด
-            else if (WeaponSlotOf(vk) is int ws and >= 0) MagSlotTo(ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+            else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
             if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
             if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
 

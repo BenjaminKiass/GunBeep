@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -28,7 +28,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- เริ่มต้น
         void InitPages()
         {
-            (cfg.Page switch { 1 => NavTune, 2 => NavLoot, 3 => NavSettings, _ => NavMacro }).IsChecked = true;
+            NavMacro.IsChecked = true;                    // เปิดมาที่หน้ามาโครเสมอ (ไม่ต้องจูนอะไร)
             AutoOnSwitch.IsChecked = cfg.AutoOn;
             GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
             BuildGameCard();
@@ -698,6 +698,42 @@ namespace GunBeep
     public partial class MainWindow
     {
         // ---------------------------------------------------------------- ตั้งค่าเกม PUBG (อ่านเองจากไฟล์ตั้งค่าเกม)
+        // ---------------------------------------------------------------- ถืออะไรอยู่ (ตามปุ่มในเกม)
+        //   ปืน 1/2 = ดึง, ปืนพก/มีด/ระเบิด = ไม่ดึง
+        //   เก็บปืน (X) ในเกมเป็นปุ่มสลับ: กดอีกครั้ง = หยิบปืนเดิมกลับ
+        //   ปาระเบิดเสร็จ เกมสลับกลับไปปืนเดิมเอง → ปล่อยคลิกซ้ายตอนถือระเบิด = กลับเป็นปืนเดิมหลัง ~1 วิ
+        int lastGunSlot = 1;
+        bool holdingThrowable;
+        System.Windows.Threading.DispatcherTimer throwBack;
+
+        void WeaponKey(int vk, int slot)
+        {
+            var g = GameSettings.Current;
+            if (slot > 0) lastGunSlot = slot;
+            if (vk == g.Holster && magSlot == 0 && !holdingThrowable) { MagSlotTo(lastGunSlot); return; }
+            holdingThrowable = vk == g.Throwable;
+            MagSlotTo(slot);
+        }
+
+        void ThrowReleased()
+        {
+            if (!holdingThrowable || magSlot != 0 || !Playing()) return;
+            if (throwBack == null)
+            {
+                throwBack = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1100) };
+                throwBack.Tick += (s, e) =>
+                {
+                    throwBack.Stop();
+                    if (!holdingThrowable || magSlot != 0) return;
+                    holdingThrowable = false;
+                    Log.Info($"threw grenade → back to gun slot {lastGunSlot}");
+                    MagSlotTo(lastGunSlot);
+                };
+            }
+            throwBack.Stop();
+            throwBack.Start();
+        }
+
         // ปุ่มอาวุธตามที่ตั้งในเกม: 1 / 2 = ช่องปืน, 0 = ปืนพก / มีด / ระเบิด / เก็บปืน, -1 = ไม่ใช่ปุ่มอาวุธ
         static int WeaponSlotOf(int vk)
         {
