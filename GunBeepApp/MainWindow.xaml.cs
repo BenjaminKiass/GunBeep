@@ -1021,12 +1021,16 @@ namespace GunBeep
         void StanceKey(int vk)
         {
             var c = cfg.Calc;
-            if (c == null || !c.On || !Playing()) return;
+            // นับตอนเกมอยู่หน้าและไม่มีเคอร์เซอร์ (ไม่ใช้ Playing(): หลังปิดกระเป๋า 0.6 วิแรกยังนับว่าอยู่ในกระเป๋า → ปุ่ม C/Z ตอนนั้นหาย ท่าไม่ตรงเกม)
+            if (c == null || !c.On || !GameInFront() || CursorShown()) return;
             stanceKeys ??= ReadStanceKeys();
             int was = stance;
+            bool Held(int k) => KeyHook.GetAsyncKeyState(k) < 0;
             if (vk == stanceKeys[0]) stance = stance == 1 ? 0 : 1;
             else if (vk == stanceKeys[1]) stance = stance == 2 ? 0 : 2;
             else if (vk == 0x20) stance = stance == 2 ? 1 : 0;        // Space: หมอบ → ย่อ, ย่อ → ยืน
+            // ย่ออยู่แล้ววิ่ง (Shift ซ้าย + W ไม่ได้เล็ง) = เกมให้ลุกยืน (Shift ตอนเล็ง = กลั้นหายใจ ไม่ลุก)
+            else if (stance == 1 && !Held(0x02) && ((vk == 0xA0 && Held(0x57)) || (vk == 0x57 && Held(0xA0)))) stance = 0;
             else return;
             if (stance == was) return;
             multWant[1] = stance == 1 ? 1 + c.CrouchPct / 100 : stance == 2 ? 1 + c.PronePct / 100 : 1;

@@ -385,3 +385,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Hold breath (Left Shift): engine multiplies pull by c.LearnScope[scope + "+shift"] while Shift is held (default ×1,
   learned only from sprays with Shift held ≥ 80% — then the whole level error goes to that key; 20–80% = no level
   learning). ViewTracker keeps a separate k for "+shift" (1x sights zoom in) and drops windows where Shift toggled.
+- Stance: counted while PUBG is in front with no cursor (not Playing(), which stays false 0.6 s after closing the inventory and lost C/Z presses). Crouch + sprint (LShift with W, not ADS) = stand.
