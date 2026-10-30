@@ -22,7 +22,12 @@ namespace GunBeep
         double shotMs = 86;                              // เวลาต่อนัดของปืนที่ถือ (ใช้กับ MaxShots)
         public void SetShotMs(double ms) => Volatile.Write(ref shotMs, ms > 20 ? ms : 86);
 
-        const int VK_LBUTTON = 0x01, VK_RBUTTON = 0x02, VK_LCONTROL = 0xA2, VK_LMENU = 0xA4;
+        const int VK_LBUTTON = 0x01, VK_RBUTTON = 0x02, VK_LSHIFT = 0xA0, VK_LCONTROL = 0xA2, VK_LMENU = 0xA4;
+
+        // Shift ค้าง (กลั้นหายใจ; ศูนย์ 1x = ซูมเข้า) → คูณแรงดึงด้วยค่าของ Shift ของสโคปที่ถือ (เรียนรู้แยก ตั้งต้น ×1)
+        double breath = 1;
+        public void SetBreath(double m) => Volatile.Write(ref breath, m > 0 ? m : 1);
+        public double LastShiftFrac;                     // ชุดล่าสุด: สัดส่วนเวลาที่กด Shift ค้าง
 
         volatile Gun[] guns = Array.Empty<Gun>();
         volatile int gunIdx = 1;
@@ -164,7 +169,7 @@ namespace GunBeep
             var sw = Stopwatch.StartNew();
             var cv = curve;
             var movedY = new double[BINS];
-            int loops = 0, adsLoops = 0;
+            int loops = 0, adsLoops = 0, shiftLoops = 0;
             double last = 0, carryY = 0, carryX = 0;
             double releaseAt = -1;
             string reason;
@@ -188,7 +193,9 @@ namespace GunBeep
 
                 loops++;
                 if (Down(VK_RBUTTON)) adsLoops++;
-                double factor = Volatile.Read(ref gear) * Volatile.Read(ref stance) * CurveAt(cv, now);
+                bool sh = Down(VK_LSHIFT);
+                if (sh) shiftLoops++;
+                double factor = Volatile.Read(ref gear) * Volatile.Read(ref stance) * CurveAt(cv, now) * (sh ? Volatile.Read(ref breath) : 1);
 
                 double dt = now - last;
                 if (dt > 0 && !pending)
@@ -227,6 +234,7 @@ namespace GunBeep
             }
 
             if (reason != null) Log.Info($"native: stopped ({reason}) t={last:0}ms");
+            LastShiftFrac = loops == 0 ? 0 : shiftLoops / (double)loops;
             try { SprayEnded?.Invoke(movedY, last, loops == 0 ? 0 : adsLoops / (double)loops, SprayId); }
             catch (Exception ex) { Log.Error("spray ended", ex); }
         }

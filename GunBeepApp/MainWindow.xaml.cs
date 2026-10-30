@@ -979,7 +979,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); PushSemi(); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetBreath(HeldBreath()); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); PushSemi(); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {

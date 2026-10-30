@@ -382,3 +382,6 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   while ADS and not firing (≥ 6 samples). LearnSpray uses need = hand − view/k per bin (objective; any sens), falls
   back to hand-only with lower gain; learned curves are smoothed across neighbouring bins. Calc Ver 3 cleared the
   old hand-only Learn/LearnX/LearnScope (they oscillated). Scope match now needs ≥ 0.62 & margin ≥ 0.06.
+- Hold breath (Left Shift): engine multiplies pull by c.LearnScope[scope + "+shift"] while Shift is held (default ×1,
+  learned only from sprays with Shift held ≥ 80% — then the whole level error goes to that key; 20–80% = no level
+  learning). ViewTracker keeps a separate k for "+shift" (1x sights zoom in) and drops windows where Shift toggled.

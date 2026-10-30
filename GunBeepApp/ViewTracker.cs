@@ -206,10 +206,15 @@ namespace GunBeep
 
         // ---------------------------------------------------------------- k = มุมกล้อง (px) ต่อ count ของเมาส์ แยกสโคป
         //   ทุก 150 ms ที่เล็งอยู่ ไม่ได้ยิง (และพ้นช่วงยิง 0.6 วิ): มือขยับแนวนอน ≥ 12 count → k = ภาพเลื่อน ÷ count
+        bool shiftWas;
+
         void Calibrate(long now, bool fire)
         {
-            string sc = ScopeKey;
-            if (fire || sc == null) { calibFrom = now; return; }
+            bool shift = Down(0xA0);
+            string sc = ScopeKey == null ? null : ScopeKey + (shift ? "+shift" : "");
+            bool shiftChanged = shift != shiftWas;
+            shiftWas = shift;
+            if (fire || sc == null || shiftChanged) { calibFrom = now; return; }      // สลับ Shift กลางช่วง = ภาพซูม ไม่ใช่เลื่อน
             if (Ms(now - lastFireTs) < 600) { calibFrom = now; return; }
             if (calibFrom == 0) { calibFrom = now; return; }
             if (Ms(now - calibFrom) < 150) return;

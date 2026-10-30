@@ -185,6 +185,16 @@ namespace GunBeep
         static string ScopeKey(ScopeDetect.Panel p) =>
             p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? "reddot" : p.ScopeLabel;
 
+        // กด Shift (กลั้นหายใจ / ซูมศูนย์ 1x) ของสโคปนี้ คูณแรงดึงเพิ่มเท่าไหร่ (เรียนรู้จากชุดที่กด Shift ตลอด)
+        double BreathOf(ScopeDetect.Panel p)
+        {
+            var c = cfg.Calc;
+            string sk = ScopeKey(p);
+            return c != null && c.On && c.AutoLearn && sk != null && c.LearnScope.TryGetValue(sk + "+shift", out double v) ? v : 1;
+        }
+
+        double HeldBreath() => cfg.ScopeAuto ? BreathOf(slotInfo[Math.Clamp(heldSlot, 1, 2)]) : 1;
+
         double ScopeLearned(ScopeDetect.Panel p)
         {
             var c = cfg.Calc;
@@ -449,7 +459,8 @@ namespace GunBeep
             double scopeAll = scopeMult * ScopeLearned(p);
             string scopeNm = p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel);
             string scopeSub = p.Set == -1 ? "ยังใช้ค่าเดิมไปก่อน" : !setOk ? "ใช้ค่าที่เลือกอยู่"
-                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {scopeNm} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "");
+                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {scopeNm} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "")
+                  + (Math.Abs(BreathOf(p) - 1) > 0.005 ? $" · กด Shift ×{BreathOf(p):0.00}" : "");
             root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeAll, PBlue, null, null, p.Set == -1, p.Set > 0 || p.Set == -2 ? ArtOf("att", ScopeKey(p) == "reddot" && p.ScopeLabel == "hybrid" ? "hybrid" : p.ScopeLabel) : null));
             root.Children.Add(ScopeTeachRow(s, p));
 
@@ -926,7 +937,10 @@ namespace GunBeep
             // วัดจากภาพ: มุมกล้องที่ขยับจริงแต่ละช่วง → แรงที่ยังขาด(+)/เกิน(−) = มือ − ภาพ ÷ k (count)
             //   ไม่ต้องพึ่งว่าผู้ใช้แก้มือพอดีไหม และใช้ได้ทุกค่า sens (k วัดจากเกมจริงแยกสโคป)
             var vt = ViewTracker.Shared;
-            double ky = vt.KY(sk), kxv = vt.KX(sk);
+            double shf = engine.LastShiftFrac;
+            bool breathSpray = shf >= 0.8, mixed = shf > 0.2 && shf < 0.8;
+            string kKey = sk == null ? null : sk + (breathSpray ? "+shift" : "");
+            double ky = mixed ? 0 : vt.KY(kKey), kxv = mixed ? 0 : vt.KX(kKey);
             double[] need = user;
             double visX = double.NaN;
             bool vision = ky > 0 && engine.SprayId == id;
@@ -953,7 +967,10 @@ namespace GunBeep
             // แรงที่แก้ทั้งชุด: ครึ่งหนึ่งเป็นของสโคปนี้ (ค่าแยกแต่ละสโคป) อีกครึ่งเป็นของปืน (เส้นแรงดึงของปืน)
             double su = 0, sm = 0;
             for (int b = 0; b < NativeRecoil.BINS; b++) if (macroY[b] >= 15) { su += need[b]; sm += macroY[b]; }
-            double toScope = sk != null && sm > 0 ? 0.5 * Math.Clamp(su / sm, -0.35, 0.35) : 0;
+            double mAll = sm > 0 ? Math.Clamp(su / sm, -0.35, 0.35) : 0;
+            // ปกติ: ครึ่งหนึ่งของระดับแรงเป็นของสโคป; กด Shift ตลอดชุด: ระดับทั้งหมดเป็นของ "Shift ของสโคปนี้" (ปืนได้แค่รูปเส้น)
+            double toScope = sk == null || mixed ? 0 : breathSpray ? mAll : 0.5 * mAll;
+            string scopeSlot = breathSpray ? sk + "+shift" : sk;
             // วัดจากภาพแม่นกว่า → ปรับเร็วกว่า; จากมืออย่างเดียวมีเล็งตามเป้าปน → ปรับช้า
             int seen = c.LearnN.TryGetValue(gk, out int sn) ? sn : 0;
             double gain0 = vision ? (seen < 5 ? 0.5 : 0.3) : (seen < 5 ? 0.35 : 0.2);
@@ -978,11 +995,12 @@ namespace GunBeep
             c.Learn[gk] = cv;
             if (sk != null && Math.Abs(toScope) > 1e-4)
             {
-                double os = c.LearnScope.TryGetValue(sk, out double ov) ? ov : 1;
+                double os = c.LearnScope.TryGetValue(scopeSlot, out double ov) ? ov : 1;
                 double ns = Math.Round(Math.Clamp(os * (1 + gain0 * toScope), 0.6, 1.6), 4);
-                c.LearnScope[sk] = ns;
-                parts.Add($"สโคป {sk} ×{os:0.00}→×{ns:0.00}");
+                c.LearnScope[scopeSlot] = ns;
+                parts.Add($"สโคป {scopeSlot} ×{os:0.00}→×{ns:0.00}");
             }
+            else if (mixed) parts.Add("กด Shift บางช่วง: ไม่ปรับระดับสโคป");
             // ซ้ายขวา: ปืนไหลไปทางเดียวเป็นประจำ → มือดึงกลับ → จำเป็นค่า x ของปืนนั้น (หน่วยเดียวกับ x ต่อ 10 ms)
             if ((vision && !double.IsNaN(visX) || id == learnId) && ms > 0)
             {
