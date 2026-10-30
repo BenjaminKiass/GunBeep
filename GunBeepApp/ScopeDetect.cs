@@ -39,6 +39,7 @@ namespace GunBeep
             public Bitmap[] AttIcons;                 // ภาพช่องของแต่งล่าสุด (ไว้ให้ผู้ใช้สอนชนิด)
             public bool ExtMag => Att != null && Att[2] && AttId?[2] != "quickdraw";   // แม็ก QuickDraw อย่างเดียวไม่เพิ่มนัด
             public Bitmap Pic;                        // ภาพปืนจากหน้ากระเป๋าของผู้ใช้ (ไว้โชว์ในหน้ามาโคร)
+            public double PicSharp;                   // ความคมของบริเวณรูปปืน (มีปืน = คม, แผงว่าง = พื้นหลังเบลอ)
             public object PicUi;                      // ภาพเดียวกันแบบ WPF (แปลงครั้งเดียว)
             public double Score;
             public string ScopeLabel = "?";
@@ -396,6 +397,55 @@ namespace GunBeep
             catch (Exception ex) { Log.Error("ocr read", ex); return ""; }
         }
 
+        // ---------------------------------------------------------------- จำรูปปืนบนแผง (ชื่อโดนบังก็ยังรู้ว่าปืนอะไร)
+        //   อ่านชื่อด้วย OCR ได้เมื่อไหร่ จำลักษณะรูปปืนบริเวณกลางแผงไว้ (ตัวเลข, saved\gunpics.json, ≤ 8 แบบต่อปืน รวมสกิน)
+        public const double GunArtSharp = 8;
+        sealed class GunPic { public string Key { get; set; } public float[] F { get; set; } }
+        static List<GunPic> gunPics;
+        static readonly string GunPicsPath = Path.Combine(Settings.KitDir, "gunpics.json");
+
+        static List<GunPic> GunPics()
+        {
+            if (gunPics != null) return gunPics;
+            try { gunPics = File.Exists(GunPicsPath) ? JsonSerializer.Deserialize<List<GunPic>>(File.ReadAllText(GunPicsPath)) : new(); }
+            catch (Exception ex) { Log.Error("gunpics", ex); gunPics = new(); }
+            return gunPics ??= new();
+        }
+
+        public static void LearnGunPic(Bitmap pic, string key)
+        {
+            if (pic == null || key == null || RecoilCalc.Sharpness(pic) < GunArtSharp) return;
+            var f = Feature(pic);
+            lock (gate)
+            {
+                var list = GunPics();
+                var mine = list.Where(g => g.Key == key).ToList();
+                if (mine.Any(g => Dot(g.F, f) > 0.93)) return;
+                if (mine.Count >= 8) list.Remove(mine[0]);
+                list.Add(new GunPic { Key = key, F = f.Select(v => (float)Math.Round(v, 4)).ToArray() });
+                try { Directory.CreateDirectory(Settings.KitDir); File.WriteAllText(GunPicsPath, JsonSerializer.Serialize(list)); }
+                catch (Exception ex) { Log.Error("gunpics save", ex); }
+            }
+        }
+
+        // ต้องเหมือน ≥ 0.80 และชนะปืนอื่น ≥ 0.06
+        public static string MatchGunPic(Bitmap pic)
+        {
+            if (pic == null) return null;
+            var f = Feature(pic);
+            string best = null;
+            double bs = 0, other = 0;
+            lock (gate)
+                foreach (var g in GunPics())
+                {
+                    double d = Dot(g.F, f);
+                    if (g.Key == best) bs = Math.Max(bs, d);
+                    else if (d > bs) { other = Math.Max(other, bs); best = g.Key; bs = d; }
+                    else other = Math.Max(other, d);
+                }
+            return bs >= 0.80 && bs - other >= 0.06 ? best : null;
+        }
+
         // ตัวหนังสือขาว (ทุกสี > 200): ตัดกรอบแน่น + ขอบ 4 px, null = ไม่มีตัวหนังสือ
         static Bitmap TightText(Bitmap c)
         {
@@ -650,7 +700,14 @@ namespace GunBeep
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
-                if (p.Slot != 0)
+                {
+                    var pb0 = PicBox(cfg, screenW, screenH, i);
+                    pb0.Offset(-origin.X, -origin.Y);
+                    using var pc = Crop(shot, pb0);
+                    p.PicSharp = RecoilCalc.Sharpness(pc);
+                }
+                // ป้ายเลขโดนบัง (ชื่อคนฆ่ากันลอยทับ) แต่ยังเห็นรูปปืน → อ่านของแต่งไว้ด้วย ให้ตัวสแกนเทียบรูปปืนที่จำไว้
+                if (p.Slot != 0 || p.PicSharp >= GunArtSharp)
                 {
                     p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
                     p.AttIcons = new Bitmap[4];

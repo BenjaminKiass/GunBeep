@@ -415,3 +415,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - 2026-10-31 user: Beryl/AKM/Groza at 1.10/1.06/1.03 underpulled (gun floats up) → back to 1.20/1.15/1.10. LMGs (lots of rounds) overpull → M249/MG3/RPD/DP28 = 0.75.
 - 2026-10-31: AKM 'pulls too hard' was really an undetected flash hider (no slot template → read as not fitted → +11% pull). attachments-builtin.json now has Real templates for flash_ar (+brake/thumb variants) from 2053 panels; AKM set to 1.05.
 - Loot page option Settings.LootAutoTab (default on): on = loot key while playing taps Tab open/close; off = only works with the inventory already open.
+- Gun picture memory (ScopeDetect.LearnGunPic/MatchGunPic, saved\gunpics.json): every OCR-read name stores the
+  panel's gun-picture feature (≤ 8 per gun, skins included). Kill-feed text covering the name/badge → the gun is
+  recognised from its picture (≥ 0.80, margin 0.06); a panel whose picture area is still sharp (PicSharp ≥ 8) is
+  never marked empty.

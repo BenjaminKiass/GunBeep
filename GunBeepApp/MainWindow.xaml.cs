@@ -880,12 +880,27 @@ namespace GunBeep
                     for (int i = 0; i < 2; i++)
                     {
                         var p = res[i];
-                        if (p.Slot == 0) continue;
+                        if (p.Slot == 0)
+                        {
+                            // ป้ายเลขโดนบัง แต่รูปปืนตรงกับปืนที่จำไว้ → ยังเป็นช่องนี้ ปืนนี้
+                            if (p.Pic != null && p.PicSharp >= ScopeDetect.GunArtSharp && ScopeDetect.MatchGunPic(p.Pic) is string pk)
+                            {
+                                p.Slot = i + 1;
+                                p.Name = RecoilCalc.GunNames.First(g => g.key == pk).name;
+                            }
+                            continue;
+                        }
                         var nb = boxes[i].name;
                         nb.Offset(-origin.X, -origin.Y);
                         using var crop = ScopeDetect.Crop(shot, nb);
-                        var (_, gunName, raw) = await ScopeDetect.ReadGun(crop);
+                        var (gunKey, gunName, raw) = await ScopeDetect.ReadGun(crop);
                         p.Name = gunName ?? "";                                          // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
+                        if (gunKey != null && !(raw ?? "").EndsWith("(shape)")) ScopeDetect.LearnGunPic(p.Pic, gunKey);   // อ่านชื่อออกจริง → จำรูปปืน
+                        else if (gunKey == null && ScopeDetect.MatchGunPic(p.Pic) is string pk2)
+                        {
+                            p.Name = RecoilCalc.GunNames.First(g => g.key == pk2).name;   // ชื่อโดนบัง (ชื่อคนฆ่ากัน ฯลฯ) → รู้จากรูปปืน
+                            raw += " (picture)";
+                        }
                         if (p.Name == "" && !string.IsNullOrEmpty(raw) && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
                     }
                     return res;
@@ -942,6 +957,7 @@ namespace GunBeep
                 {
                     int s = i + 1;
                     if (hadBadge[i]) { slotEmpty[s] = false; continue; }
+                    if (panels[i].PicSharp >= ScopeDetect.GunArtSharp) continue;   // ป้ายเลขโดนบังแต่ยังเห็นรูปปืน → ไม่ใช่ช่องว่าง
                     if (slotInfo[s] != null)
                     {
                         if (!Confirmed(s, "empty", "gun", "empty")) continue;
