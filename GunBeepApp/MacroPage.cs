@@ -371,6 +371,48 @@ namespace GunBeep
             return b;
         }
 
+        // ---------------------------------------------------------------- สอนของแต่ง (อ่านไม่ได้/อ่านผิด → กดเลือกครั้งเดียว จำภาพช่องจริงไว้)
+        readonly bool[,] attTeachOpen = new bool[3, 4];
+
+        UIElement AttTeachRow(int s, int slot, ScopeDetect.Panel p)
+        {
+            var wrap = new WrapPanel { Margin = new Thickness(2, -6, 0, 8) };
+            if (!attTeachOpen[s, slot])
+            {
+                wrap.Children.Add(Pill("ผิด? แก้", PFaint, () => { attTeachOpen[s, slot] = true; liveSig = null; LiveDirty(); }));
+                return wrap;
+            }
+            string cat = slot == 0 ? "muzzle" : slot == 1 ? "grip" : "stock";
+            wrap.Children.Add(new TextBlock { Text = "ติดอยู่คือ:", FontSize = 11.5, Foreground = PMuted, Margin = new Thickness(0, 4, 8, 6) });
+            foreach (var it in AttachmentId.Items.Where(i => i.Slot == cat))
+                wrap.Children.Add(Pill(it.Name, it.Id == p.AttId?[slot] ? PCyan : PText, () => TeachAtt(s, slot, it.Id)));
+            wrap.Children.Add(Pill("ไม่ได้ติด", PText, () => TeachAtt(s, slot, null)));
+            wrap.Children.Add(Pill("ยกเลิก", PFaint, () => { attTeachOpen[s, slot] = false; liveSig = null; LiveDirty(); }));
+            return wrap;
+        }
+
+        void TeachAtt(int s, int slot, string id)
+        {
+            var p = slotInfo[s];
+            if (p?.Att == null) return;
+            var icon = p.AttIcons?[slot];
+            if (id != null)
+            {
+                if (icon == null || ScopeDetect.Obscured(icon) || RecoilCalc.Sharpness(icon) < 12 || !AttachmentId.Teach(icon, id))
+                {
+                    PopOsd("ภาพช่องของแต่งไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องนั้น แล้วกดเลือกอีกครั้ง");
+                    return;
+                }
+            }
+            p.Att[slot] = id != null;
+            if (p.AttId != null) p.AttId[slot] = id;
+            attTeachOpen[s, slot] = false;
+            liveSig = null;
+            ApplyScope("taught attachment");
+            LiveDirty();
+            PopOsd(id == null ? "ตั้งเป็น: ไม่ได้ติด" : $"จำแล้ว: {AttachmentId.Get(id)?.Name}");
+        }
+
         UIElement ScopeTeachRow(int s, ScopeDetect.Panel p)
         {
             var wrap = new WrapPanel { Margin = new Thickness(2, -4, 0, 8) };
@@ -506,9 +548,11 @@ namespace GunBeep
                 root.Children.Add(T("  อ่านของแต่งไม่ได้รอบนี้ — เปิดกระเป๋าอีกครั้ง", 11, PFaint));
             else
             {
-                root.Children.Add(AttRow(0, "ปากกระบอก", p, c));
-                root.Children.Add(AttRow(1, "กริป", p, c));
-                root.Children.Add(AttRow(3, "พานท้าย", p, c));
+                foreach (var (k, nm) in new[] { (0, "ปากกระบอก"), (1, "กริป"), (3, "พานท้าย") })
+                {
+                    root.Children.Add(AttRow(k, nm, p, c));
+                    root.Children.Add(AttTeachRow(s, k, p));
+                }
             }
             if (!c.On) root.Children.Add(T("  คำนวณแรงดีดปิดอยู่ — ใช้ตารางในชุดค่าตรงๆ", 11, PAmber));
             return root;

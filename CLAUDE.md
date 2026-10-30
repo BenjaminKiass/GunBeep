@@ -390,3 +390,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - 2026-10-31 user: "don't learn from my hand, it isn't steady". Learning is camera-only now: sprays without a camera
   measurement are skipped; sprays where ≥ half the bins are ±35% off are rejected; x learns at gain 0.25; semi-auto
   kick learning (hand-based) removed. Calc Ver 4 cleared all learned values incl. LearnKick.
+- Attachments (2026-10-31): most "fitted, type unsure" were EMPTY slots with textured background. Now a muzzle/grip
+  counts only if sharp (mean neighbour luminance diff ≥ 12; real icons 19–33, blurred background 1–7) AND identified;
+  sharp-but-unidentified = unsure (keep previous). attachments-builtin.json gained slot-domain templates (Real=true:
+  brake, comp_dmr, thumb, vertical from the user's samples, gbtest "attcl"); tooltip templates get −0.15 and
+  MinScore 0.62 / MinMargin 0.05 (was 0.30 / 0.02 → background read as light grip, thumb as half grip).
+- Macro page: each attachment row has "ผิด? แก้" → pick the real item (or "ไม่ได้ติด") → AttachmentId.Teach stores the
+  slot crop's feature in saved\attachments.json (user templates, checked before built-ins).

@@ -36,6 +36,7 @@ namespace GunBeep
             public bool[] Att;                        // ของแต่ง: [0] ปากกระบอก, [1] กริป, [3] พานท้าย
             public string[] AttId;                    // ชนิดของแต่งที่รู้จัก (AttachmentId), null = ไม่แน่ใจ
             public bool[] AttUnsure;                  // ช่องที่เมาส์ชี้อยู่ (พื้นขาว) → อ่านรอบนี้ไม่ได้ ใช้ค่าเดิม
+            public Bitmap[] AttIcons;                 // ภาพช่องของแต่งล่าสุด (ไว้ให้ผู้ใช้สอนชนิด)
             public bool ExtMag => Att != null && Att[2] && AttId?[2] != "quickdraw";   // แม็ก QuickDraw อย่างเดียวไม่เพิ่มนัด
             public Bitmap Pic;                        // ภาพปืนจากหน้ากระเป๋าของผู้ใช้ (ไว้โชว์ในหน้ามาโคร)
             public object PicUi;                      // ภาพเดียวกันแบบ WPF (แปลงครั้งเดียว)
@@ -652,6 +653,13 @@ namespace GunBeep
                 if (p.Slot != 0)
                 {
                     p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
+                    p.AttIcons = new Bitmap[4];
+                    foreach (int k in new[] { 0, 1, 3 })
+                    {
+                        var ar = RecoilCalc.SlotRect(cfg, screenW, screenH, i, k);
+                        ar.Offset(-origin.X, -origin.Y);
+                        p.AttIcons[k] = Crop(shot, ar);
+                    }
                     var pb = PicBox(cfg, screenW, screenH, i);
                     pb.Offset(-origin.X, -origin.Y);
                     p.Pic = Crop(shot, pb);

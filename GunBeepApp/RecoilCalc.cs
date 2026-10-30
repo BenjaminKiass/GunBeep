@@ -265,12 +265,14 @@ namespace GunBeep
             unsure = new bool[4];
             for (int i = 0; i < 4; i++)
             {
-                var r = ScopeDetect.Box(b[0] + SlotDx[i] * h / w, b[1] + SlotDy, SlotSize, w, h);
+                var r = SlotRect(cfg, w, h, panel, i);
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
                 // เมาส์ชี้ช่องนี้อยู่ (พื้นขาว) หรือป้ายรายละเอียดของบังอยู่ (เทาอ่อน) → อ่านไม่ได้ ใช้ค่าเดิม
                 if (c.Width > 4 && (BrightShare(c) > 0.4 || ScopeDetect.Obscured(c))) { unsure[i] = true; continue; }
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
+                // ช่องว่างที่เห็นพื้นหลังเป็นลาย (ดิน/ฟ้า) เบลอ → ความคม 1–7; ไอคอนจริงคม 19–33 (วัดจากภาพจริง 639 ช่อง)
+                if (has[i] && i != 2 && Sharpness(c) < 12) has[i] = false;
                 if (i == 2 && has[i])
                 {
                     // รูปแม็กของตัวปืน (AKM, Beryl, Mk47 …) ยื่นลงมาทับครึ่งบนของช่อง → เดิมอ่านว่าใส่แม็กขยาย (นับ 40 แทน 30)
@@ -295,8 +297,26 @@ namespace GunBeep
                 ids[i] = best.item?.Id;
                 // ปืนที่ไม่มีช่องพานท้าย (AUG, Beryl …) ตำแหน่งนี้ทับรูปแม็กของปืน → นับว่ามีพานท้ายเฉพาะตอนรู้จักว่าเป็นพานท้ายจริง
                 if (i == 3 && ids[i] == null) has[i] = false;
+                // ปาก/กริป: คมแต่จำไม่ได้ (ต้นไม้/รั้วข้างหลัง, รูปปืนทับ, ของที่ยังไม่มีต้นแบบ) → ไม่แน่ใจ ใช้ค่าเดิม แทนการเดาว่า "ติด"
+                if (i != 3 && ids[i] == null) { has[i] = false; unsure[i] = true; }
             }
             return has;
+        }
+
+        // ความคม: ค่าเฉลี่ย |ความสว่างต่างกับพิกเซลขวา/ล่าง| เว้นขอบ 10% (พื้นหลังในหน้ากระเป๋าเบลอ ไอคอนคม)
+        public static double Sharpness(Bitmap c)
+        {
+            double s = 0; int n = 0;
+            int m = Math.Max(2, c.Width / 10);
+            for (int y = m; y < c.Height - m; y++)
+                for (int x = m; x < c.Width - m - 1; x++)
+                {
+                    Color a = c.GetPixel(x, y), b = c.GetPixel(x + 1, y), d = c.GetPixel(x, y + 1);
+                    double la = 0.3 * a.R + 0.59 * a.G + 0.11 * a.B;
+                    s += Math.Abs(la - (0.3 * b.R + 0.59 * b.G + 0.11 * b.B)) + Math.Abs(la - (0.3 * d.R + 0.59 * d.G + 0.11 * d.B));
+                    n++;
+                }
+            return n == 0 ? 0 : s / n;
         }
 
         static double BrightShare(Bitmap c)
@@ -310,6 +330,12 @@ namespace GunBeep
                     if (0.3 * px.R + 0.59 * px.G + 0.11 * px.B > 200) hi++;
                 }
             return n == 0 ? 0 : (double)hi / n;
+        }
+
+        public static Rectangle SlotRect(Settings cfg, int w, int h, int panel, int i)
+        {
+            var b = panel == 0 ? cfg.ScopeBadge1 : cfg.ScopeBadge2;
+            return ScopeDetect.Box(b[0] + SlotDx[i] * h / w, b[1] + SlotDy, SlotSize, w, h);
         }
 
         public static Rectangle AttachmentArea(Settings cfg, int w, int h)

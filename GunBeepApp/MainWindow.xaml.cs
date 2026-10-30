@@ -911,6 +911,7 @@ namespace GunBeep
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p + " att " + attSig(p));
                     else if (attSig(old) != attSig(p)) Log.Info($"scope scan: slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
                     old?.Icon?.Dispose();
+                    if (old?.AttIcons != null) foreach (var ai in old.AttIcons) ai?.Dispose();
                     slotInfo[p.Slot] = p;
                 }
                 foreach (var p in panels) if (p.Slot is not (1 or 2)) p.Icon?.Dispose();

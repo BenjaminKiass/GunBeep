@@ -38,7 +38,38 @@ namespace GunBeep
 
         public static Item Get(string id) => Items.FirstOrDefault(i => i.Id == id);
 
-        sealed class Tpl { public string Id { get; set; } public float[] Feature { get; set; } }
+        // ---------------------------------------------------------------- ผู้ใช้สอน: กดเลือกชนิดในหน้ามาโคร → จำลักษณะของภาพช่องจริงนี้
+        static readonly string UserPath = Path.Combine(Settings.KitDir, "attachments.json");
+        static readonly object userGate = new();
+        static List<Tpl> user;
+
+        static List<Tpl> User
+        {
+            get
+            {
+                if (user != null) return user;
+                try { user = File.Exists(UserPath) ? JsonSerializer.Deserialize<List<Tpl>>(File.ReadAllText(UserPath)) : new(); }
+                catch (Exception ex) { Log.Error("user attachments", ex); user = new(); }
+                return user ??= new();
+            }
+        }
+
+        public static bool Teach(Bitmap slotCrop, string id)
+        {
+            var f = SlotFeature(slotCrop);
+            if (f == null || Get(id) == null) return false;
+            lock (userGate)
+            {
+                User.Add(new Tpl { Id = id, Feature = f, Real = true });
+                try { Directory.CreateDirectory(Settings.KitDir); File.WriteAllText(UserPath, JsonSerializer.Serialize(User)); }
+                catch (Exception ex) { Log.Error("save user attachments", ex); }
+            }
+            Log.Info($"attachment taught: {id} ({User.Count(t => t.Id == id)} examples)");
+            return true;
+        }
+
+        // Real = จากช่องของแต่งบนแผงปืนจริง (แม่น); ไม่ใช่ = จากภาพป้ายรายละเอียด (หน้าตาต่าง ต้องเหมือนมากกว่า)
+        sealed class Tpl { public string Id { get; set; } public float[] Feature { get; set; } public bool Real { get; set; } }
         static List<Tpl> builtins;
 
         static List<Tpl> Builtins
@@ -65,11 +96,13 @@ namespace GunBeep
             if (f == null) return (null, 0, 0);
             Item best = null;
             double bs = -1, other = -1;
-            foreach (var t in Builtins)
+            List<Tpl> userList;
+            lock (userGate) userList = User.ToList();
+            foreach (var t in userList.Concat(Builtins))
             {
                 var it = Get(t.Id);
                 if (it == null || it.Slot != cat) continue;
-                double s = Dot(f, t.Feature);
+                double s = Dot(f, t.Feature) - (t.Real ? 0 : TipPenalty);
                 if (s > bs) { if (best != null && best.Id != it.Id) other = Math.Max(other, bs); best = it; bs = s; }
                 else if (best != null && it.Id != best.Id) other = Math.Max(other, s);
             }
@@ -77,7 +110,8 @@ namespace GunBeep
             return bs >= MinScore && margin >= MinMargin ? (best, bs, margin) : (null, bs, margin);
         }
 
-        public const double MinScore = 0.30, MinMargin = 0.02;
+        // เดิม 0.30 / 0.02 (ต้นแบบจากภาพป้ายอย่างเดียว) → อ่านพื้นหลังเป็น "กริปเบา", กริปหัวแม่มือเป็น "ครึ่ง"
+        public const double MinScore = 0.62, MinMargin = 0.05, TipPenalty = 0.15;
 
         static double Dot(float[] a, float[] b)
         {
