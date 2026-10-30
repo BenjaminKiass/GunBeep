@@ -522,6 +522,21 @@ namespace GunBeep
             return f;
         }
 
+        // ต้นแบบหน้าตาชื่อปืนในตัว (จากภาพหน้ากระเป๋าจริง 2026-10-31) — ชื่อที่ OCR อ่านไม่ได้เลย เช่น "K2" ก็ยังรู้จัก
+        static List<NameShape> builtinShapes;
+
+        static List<NameShape> BuiltinShapes()
+        {
+            if (builtinShapes != null) return builtinShapes;
+            try
+            {
+                using var s = typeof(ScopeDetect).Assembly.GetManifestResourceStream("names-builtin.json");
+                builtinShapes = s == null ? new() : JsonSerializer.Deserialize<List<NameShape>>(s);
+            }
+            catch (Exception ex) { Log.Error("builtin names", ex); builtinShapes = new(); }
+            return builtinShapes ??= new();
+        }
+
         static List<NameShape> Shapes()
         {
             if (nameShapes != null) return nameShapes;
@@ -554,7 +569,7 @@ namespace GunBeep
             string best = null;
             double bs = 0, other = 0;
             lock (gate)
-                foreach (var s in Shapes())
+                foreach (var s in Shapes().Concat(BuiltinShapes()))
                 {
                     if (Math.Abs(s.Aspect - a) / a > 0.12) continue;
                     double d = Dot(s.F, f);
