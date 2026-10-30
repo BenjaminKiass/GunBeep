@@ -397,3 +397,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   MinScore 0.62 / MinMargin 0.05 (was 0.30 / 0.02 → background read as light grip, thumb as half grip).
 - Macro page: each attachment row has "ผิด? แก้" → pick the real item (or "ไม่ได้ติด") → AttachmentId.Teach stores the
   slot crop's feature in saved\attachments.json (user templates, checked before built-ins).
+- Learning only from standing-still sprays: skipped if W/A/S/D/Space held > 5% of the spray (running downhill etc.
+  moves the view) or the hand dragged > 30% of the macro pull. ViewTracker k is only sampled while not moving and is
+  saved in Calc.ViewK (restored at start). Settings page lock button = Calc.LearnLocked (learned values still
+  applied, no further updates).

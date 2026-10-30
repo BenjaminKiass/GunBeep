@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Linq;
 using System.Threading;
 
 namespace GunBeep
@@ -56,6 +57,15 @@ namespace GunBeep
         }
 
         public int Samples(string scope) { lock (gate) return scope != null && kx.TryGetValue(scope, out var v) ? v.n : 0; }
+
+        // จำ/โหลดค่า px ต่อ count ไว้ข้ามการเปิดโปรแกรม (ไม่ต้องวัดใหม่ทุกครั้ง)
+        public Dictionary<string, double> Export() { lock (gate) return kx.Where(kv => kv.Value.n >= 6).ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value.k, 4)); }
+
+        public void Import(Dictionary<string, double> saved)
+        {
+            if (saved == null) return;
+            lock (gate) foreach (var (s, k) in saved) if (k > 0 && !kx.ContainsKey(s)) kx[s] = (k, 10);
+        }
 
         // มุมกล้องที่ขยับรวมในช่วงเวลา + จำนวนเฟรมที่วัดได้
         public (double vx, double vy, int frames) Sum(long from, long to)
@@ -214,7 +224,9 @@ namespace GunBeep
             string sc = ScopeKey == null ? null : ScopeKey + (shift ? "+shift" : "");
             bool shiftChanged = shift != shiftWas;
             shiftWas = shift;
-            if (fire || sc == null || shiftChanged) { calibFrom = now; return; }      // สลับ Shift กลางช่วง = ภาพซูม ไม่ใช่เลื่อน
+            bool moving = Down(0x57) || Down(0x41) || Down(0x53) || Down(0x44) || Down(0x20);
+            // สลับ Shift กลางช่วง = ภาพซูม; เดิน/วิ่ง/กระโดด = ภาพเลื่อนเพราะตัวขยับ ไม่ใช่เพราะเมาส์ → ไม่นับ
+            if (fire || sc == null || shiftChanged || moving) { calibFrom = now; return; }
             if (Ms(now - lastFireTs) < 600) { calibFrom = now; return; }
             if (calibFrom == 0) { calibFrom = now; return; }
             if (Ms(now - calibFrom) < 150) return;

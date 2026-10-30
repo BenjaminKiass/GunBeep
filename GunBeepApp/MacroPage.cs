@@ -32,6 +32,7 @@ namespace GunBeep
             AutoOnSwitch.IsChecked = cfg.AutoOn;
             GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
+            ViewTracker.Shared.Import((cfg.Calc ??= new CalcSettings()).ViewK);
             ViewTracker.Shared.Start();
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
             // (ปืนเคาะไม่เรียนจากมือแล้ว: ใช้แรงต่อนัดที่คำนวณ)
@@ -1005,6 +1006,12 @@ namespace GunBeep
                 }
                 if (!vision) need = user;
             }
+            // เดิน/วิ่ง/กระโดดระหว่างยิง → ภาพเลื่อนเพราะตัวขยับ (เช่น วิ่งลงเนิน) ไม่ใช่แรงดีด → ไม่เอาชุดนี้
+            if (c.LearnLocked) return;                          // ผู้ใช้ล็อกค่าไว้
+            if (engine.LastMoveFrac > 0.05) { Log.Info($"learn {gk}: skipped (moving while firing {engine.LastMoveFrac:P0})"); return; }
+            // ลากเมาส์เยอะระหว่างยิง (ไล่เป้า) → ภาพปนการหัน ค่าที่วัดคลาดง่าย → ไม่เอา
+            double handAbs = user.Sum(Math.Abs);
+            if (handAbs > total * 0.3) { Log.Info($"learn {gk}: skipped (dragging the mouse {handAbs:0} vs pull {total:0})"); return; }
             if (!vision)
             {
                 // ไม่เรียนจากมือผู้ใช้แล้ว (มือไม่นิ่ง ค่าเพี้ยน) — ใช้ค่าที่คำนวณไปก่อนจนกว่าจะวัดจากภาพได้
@@ -1089,7 +1096,12 @@ namespace GunBeep
             learnSave.Start();
         }
 
-        void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
+        void LearnSaveTick(object s, EventArgs e)
+        {
+            learnSave.Stop();
+            (cfg.Calc ??= new CalcSettings()).ViewK = ViewTracker.Shared.Export();
+            cfg.Save();
+        }
 
         DateTime noVisionLogAt;
 
@@ -1300,6 +1312,19 @@ namespace GunBeep
             k.Margin = new Thickness(0, 4, 0, 0);
             foot.Children.Add(k);
             GameRows.Children.Add(foot);
+            var lk = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+            lk.Children.Add(T(!c.LearnLocked ? "ปรับค่าปืนเองจากภาพในเกม (เฉพาะตอนยืนนิ่งยิง):  เปิด" : "ปรับค่าปืนเองจากภาพในเกม:  ล็อกไว้ (ใช้ค่าเดิม ไม่ปรับเพิ่ม)", 11.5, !c.LearnLocked ? PGreen : PAmber, FontWeights.SemiBold));
+            lk.Children.Add(Pill(!c.LearnLocked ? "ล็อกค่า (หยุดปรับ)" : "เปิดปรับเอง", PText, () =>
+            {
+                c.LearnLocked = !c.LearnLocked;
+                cfg.Save();
+                Log.Info("learning " + (c.LearnLocked ? "locked" : "on"));
+                BuildGameCard();
+                CalcChanged();
+                LiveDirty();
+            }));
+            ((FrameworkElement)lk.Children[1]).Margin = new Thickness(10, 0, 0, 0);
+            GameRows.Children.Add(lk);
         }
     }
 

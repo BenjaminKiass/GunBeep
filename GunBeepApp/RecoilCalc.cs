@@ -39,6 +39,8 @@ namespace GunBeep
         public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)
         public Dictionary<string, double> LearnKick { get; set; } = new();  // ปืนเคาะ → แรงต่อนัดที่เรียนรู้ (คูณ)
         public Dictionary<string, double> LearnScope { get; set; } = new(); // สโคป → แรงดึงที่เรียนรู้ของสโคปนั้น (คูณ) แยกทุกสโคป
+        public Dictionary<string, double> ViewK { get; set; } = new();      // สโคป → px ต่อ count ที่วัดได้ (ตัววัดภาพ)
+        public bool LearnLocked { get; set; }                               // ล็อกค่า: ใช้ค่าที่เรียนแล้วต่อ แต่ไม่ปรับเพิ่ม
     }
 
     public static class RecoilCalc

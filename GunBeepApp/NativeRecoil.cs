@@ -28,6 +28,8 @@ namespace GunBeep
         double breath = 1;
         public void SetBreath(double m) => Volatile.Write(ref breath, m > 0 ? m : 1);
         public double LastShiftFrac;                     // ชุดล่าสุด: สัดส่วนเวลาที่กด Shift ค้าง
+        public double LastMoveFrac;                      // ชุดล่าสุด: สัดส่วนเวลาที่กด W/A/S/D/Space (เดิน/กระโดด = ภาพเลื่อนเพราะตัวขยับ)
+        static bool Moving() => Down(0x57) || Down(0x41) || Down(0x53) || Down(0x44) || Down(0x20);
 
         volatile Gun[] guns = Array.Empty<Gun>();
         volatile int gunIdx = 1;
@@ -169,7 +171,7 @@ namespace GunBeep
             var sw = Stopwatch.StartNew();
             var cv = curve;
             var movedY = new double[BINS];
-            int loops = 0, adsLoops = 0, shiftLoops = 0;
+            int loops = 0, adsLoops = 0, shiftLoops = 0, moveLoops = 0;
             double last = 0, carryY = 0, carryX = 0;
             double releaseAt = -1;
             string reason;
@@ -194,6 +196,7 @@ namespace GunBeep
                 loops++;
                 if (Down(VK_RBUTTON)) adsLoops++;
                 bool sh = Down(VK_LSHIFT);
+                if (Moving()) moveLoops++;
                 if (sh) shiftLoops++;
                 double factor = Volatile.Read(ref gear) * Volatile.Read(ref stance) * CurveAt(cv, now) * (sh ? Volatile.Read(ref breath) : 1);
 
@@ -235,6 +238,7 @@ namespace GunBeep
 
             if (reason != null) Log.Info($"native: stopped ({reason}) t={last:0}ms");
             LastShiftFrac = loops == 0 ? 0 : shiftLoops / (double)loops;
+            LastMoveFrac = loops == 0 ? 0 : moveLoops / (double)loops;
             try { SprayEnded?.Invoke(movedY, last, loops == 0 ? 0 : adsLoops / (double)loops, SprayId); }
             catch (Exception ex) { Log.Error("spray ended", ex); }
         }
