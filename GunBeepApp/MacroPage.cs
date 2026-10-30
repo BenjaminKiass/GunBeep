@@ -90,7 +90,7 @@ namespace GunBeep
             engine.SetGun(gun);
             engine.RequireAds = cfg.RequireAds;
             engine.MaxShots = EffectiveMaxShots;
-            engine.SetGear(multWant[0]);
+            engine.SetGear(multWant[0] * FastGear());
             engine.SetStance(multWant[1]);
             engine.SetActive(Native && on && !paused);
             PushSemi();
@@ -530,7 +530,8 @@ namespace GunBeep
             double gf = RecoilCalc.GunFactor(c, gk);
             string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
                 ? $" · แม็ก {(p.ExtMag ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
-            if (gk != null && RecoilCalc.SemiKick.ContainsKey(gk)) magTxt += " · ปืนเคาะ: ดึงทีละนัด";
+            if (gk != null && RecoilCalc.FireModes.TryGetValue(gk, out var fm))
+                magTxt += $" · โหมด{ModeName(FireMode(s))}" + (fm.Length > 1 ? " (กด B ในเกม)" : "") + (IsSemi(s) ? ": ดึงทีละคลิก" : "");
             else if (magTxt != "") magTxt += $" → ดึงสูงสุด {MagCap(s) + 2} นัด/ชุด";
             if (p.Att != null && p.Att[2] && !p.ExtMag) magTxt += " · แม็ก QuickDraw";
             string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
@@ -1149,7 +1150,45 @@ namespace GunBeep
 
         string SlotGunKey(int slot) => SlotPanelOf(slot) is ScopeDetect.Panel p ? RecoilCalc.GunKey(p.Name) : null;
 
-        bool IsSemi(int slot) => SlotGunKey(slot) is string gk && RecoilCalc.SemiKick.ContainsKey(gk);
+        // โหมดยิงของปืนแต่ละช่อง (ตามปุ่ม B ในเกม) — ปืนเปลี่ยน = เริ่มที่ออโต้ (ถ้ามี) ไม่งั้นโหมดแรก
+        readonly char[] modeBy = new char[3];
+        readonly string[] modeGun = new string[3];
+
+        char FireMode(int slot)
+        {
+            if (slot is not (1 or 2)) return 'A';
+            string gk = SlotGunKey(slot);
+            if (gk == null) return 'A';
+            string modes = RecoilCalc.FireModes.TryGetValue(gk, out var m) ? m : "A";
+            if (modeGun[slot] != gk || modes.IndexOf(modeBy[slot]) < 0)
+            {
+                modeGun[slot] = gk;
+                modeBy[slot] = modes.Contains('A') ? 'A' : modes[0];
+            }
+            return modeBy[slot];
+        }
+
+        double FastGear() => FireMode(magSlot) == 'F' ? 1.5 : 1;
+
+        static string ModeName(char m) => m switch { 'S' => "ทีละนัด", 'B' => "ยิงชุด", 'F' => "ออโต้เร็ว", _ => "ออโต้" };
+
+        // กด B ในเกม = เปลี่ยนโหมดยิงของปืนที่ถือ (วนตามโหมดที่ปืนมี)
+        void FireModeKey()
+        {
+            int slot = magSlot;
+            string gk = SlotGunKey(slot);
+            if (gk == null || !RecoilCalc.FireModes.TryGetValue(gk, out var modes) || modes.Length < 2) return;
+            char cur = FireMode(slot);
+            modeBy[slot] = modes[(modes.IndexOf(cur) + 1) % modes.Length];
+            Log.Info($"fire mode {gk}: {ModeName(cur)} → {ModeName(modeBy[slot])}");
+            PopOsd($"{SlotPanelOf(slot)?.Name ?? gk} · {ModeName(modeBy[slot])}");
+            PushMults();
+            liveSig = null;
+            LiveDirty();
+        }
+
+        // ยิงทีละคลิก (ทีละนัด / ยิงชุด) → ตัวยิงดึงทีละจังหวะต่อคลิก
+        bool IsSemi(int slot) => FireMode(slot) is 'S' or 'B';
 
         // แรงต่อนัดของปืนเคาะ (ก่อนคูณสโคป/ของแต่ง/ท่า ซึ่งตัวยิงคูณเอง):
         //   แรงที่ตารางชุดค่านี้ดึงใน 1 นัดของปืนออโต้ (เวลาต่อนัดของ AUG) × ความแรงปืนเคาะ / ตัวคูณปืน (อยู่ในตัวคูณรวมแล้ว) × ที่เรียนรู้
@@ -1157,7 +1196,8 @@ namespace GunBeep
         {
             if (engine == null) return;
             string gk = SlotGunKey(magSlot);
-            bool semi = gk != null && RecoilCalc.SemiKick.ContainsKey(gk);
+            char mode = FireMode(magSlot);
+            bool semi = gk != null && mode is 'S' or 'B';
             engine.Semi = semi;
             if (!semi || vals == null || gun < 1 || gun > vals.Length) return;
             var v = vals[gun - 1];
@@ -1167,14 +1207,18 @@ namespace GunBeep
             for (int k = 0; k < steps; k++) perShot += st[Math.Min(k, st.Length - 1)] + v.Base;
             var c = cfg.Calc ??= new CalcSettings();
             double learned = c.AutoLearn && c.LearnKick.TryGetValue(gk, out double lk) ? lk : 1;
-            double kick = perShot * RecoilCalc.SemiKick[gk] / Math.Max(0.2, RecoilCalc.GunFactor(c, gk)) * learned;
-            engine.SetSemiKick(kick);
+            double kick = perShot * RecoilCalc.KickOf(gk) / Math.Max(0.2, RecoilCalc.GunFactor(c, gk)) * learned;
+            // ยิงชุด: แรงทั้งชุด (n นัด) กระจายตามเวลาที่ปืนยิงครบชุด
+            int n = mode == 'B' && RecoilCalc.BurstN.TryGetValue(gk, out int bn) ? bn : 1;
+            engine.SetSemiKick(kick * n);
+            engine.SetSemiMs(n > 1 ? n * GunShotMs(magSlot) : NativeRecoil.SEMI_MS);
         }
 
         double GunShotMs(int slot)
         {
             var p = SlotPanelOf(slot);
-            return p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi) ? gi.ms : SHOT_MS;
+            double ms = p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi) ? gi.ms : SHOT_MS;
+            return FireMode(slot) == 'F' ? ms * 660 / 990 : ms;              // MG3 โหมดเร็ว 990 นัด/นาที (ปกติ 660)
         }
 
         // ---------------------------------------------------------------- ถืออะไรอยู่ (ตามปุ่มในเกม)

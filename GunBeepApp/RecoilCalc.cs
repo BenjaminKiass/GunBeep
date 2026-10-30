@@ -129,10 +129,10 @@ namespace GunBeep
         public static readonly Dictionary<string, double> BuiltinGun = new()
         {
             ["M416"] = 1.00, ["SCAR"] = 0.95, ["QBZ"] = 0.95, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.08,
-            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.15, ["GROZA"] = 1.10,
+            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.10, ["AKM"] = 1.06, ["GROZA"] = 1.03,
             ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
-            ["DP28"] = 0.85, ["RPD"] = 0.85, ["M249"] = 0.90, ["MG3"] = 1.20, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
+            ["DP28"] = 0.85, ["RPD"] = 0.85, ["M249"] = 0.90, ["MG3"] = 0.85, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
             ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
@@ -146,7 +146,7 @@ namespace GunBeep
             ["MK47"] = (20, 30, 100), ["UMP"] = (25, 35, 90), ["VECTOR"] = (19, 33, 55), ["MICRO"] = (25, 35, 48),
             ["UZI"] = (25, 35, 48), ["TOMMY"] = (30, 50, 80), ["MP5K"] = (30, 40, 67), ["PP19"] = (53, 53, 86),
             ["BIZON"] = (53, 53, 86), ["P90"] = (50, 50, 60), ["JS9"] = (30, 40, 67), ["MP9"] = (30, 40, 60),
-            ["DP28"] = (47, 47, 109), ["RPD"] = (50, 50, 80), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 61), ["MINI14"] = (20, 30, 100),
+            ["DP28"] = (47, 47, 109), ["RPD"] = (50, 50, 80), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 91), ["MINI14"] = (20, 30, 100),
             ["SKS"] = (10, 20, 100), ["SLR"] = (10, 20, 100), ["MK12"] = (20, 30, 100), ["QBU"] = (10, 20, 100),
             ["VSS"] = (10, 20, 86), ["MK14"] = (10, 20, 90), ["DRAGUNOV"] = (10, 20, 100),
         };
@@ -154,9 +154,29 @@ namespace GunBeep
         // ปืนเคาะ (ยิงทีละนัด): ดึงลงหนึ่งจังหวะต่อคลิก แรงต่อนัด = แรงต่อนัดของตาราง AUG × ค่านี้ (ประมาณ, เรียนรู้ต่อเอง)
         public static readonly Dictionary<string, double> SemiKick = new()
         {
-            ["MINI14"] = 1.6, ["MK12"] = 1.8, ["QBU"] = 1.8, ["SKS"] = 2.4, ["SLR"] = 2.8, ["DRAGUNOV"] = 2.8,
-            ["M16A4"] = 1.2, ["MK47"] = 1.6,
+            ["MINI14"] = 0.95, ["MK12"] = 1.05, ["QBU"] = 1.05, ["SKS"] = 1.45, ["SLR"] = 1.7, ["DRAGUNOV"] = 1.7,
+            ["M16A4"] = 0.75, ["MK47"] = 0.95,
         };
+
+        // โหมดยิงของแต่ละปืน (จากป้ายปืนในเกม): S ทีละนัด, B ยิงชุด, A ออโต้, F ออโต้เร็ว (MG3) — ปุ่ม B ในเกมวนตามลำดับนี้
+        public static readonly Dictionary<string, string> FireModes = new()
+        {
+            ["AKM"] = "SA", ["BERYL"] = "SBA", ["G36C"] = "SA", ["M416"] = "SA", ["M16A4"] = "SB", ["SCAR"] = "SA", ["MK47"] = "SB",
+            ["QBZ"] = "SA", ["AUG"] = "SA", ["GROZA"] = "SA", ["K2"] = "SBA", ["ACE32"] = "SA", ["FAMAS"] = "SBA",
+            ["TOMMY"] = "SA", ["UMP"] = "SBA", ["MICRO"] = "SA", ["VECTOR"] = "SBA", ["MP5K"] = "SBA", ["P90"] = "SA", ["MP9"] = "SA", ["JS9"] = "SA",
+            ["VSS"] = "SA", ["MK14"] = "SA", ["M249"] = "A", ["MG3"] = "AF", ["RPD"] = "A", ["DP28"] = "A",
+            ["MINI14"] = "S", ["SKS"] = "S", ["SLR"] = "S", ["MK12"] = "S", ["QBU"] = "S", ["DRAGUNOV"] = "S",
+        };
+
+        // ยิงชุดออกกี่นัดต่อคลิก (ค่าที่ผู้เล่นรู้กัน ไม่ใช่ข้อมูลทางการ)
+        public static readonly Dictionary<string, int> BurstN = new()
+        {
+            ["M16A4"] = 3, ["BERYL"] = 3, ["K2"] = 3, ["FAMAS"] = 3, ["MK47"] = 2, ["UMP"] = 2, ["VECTOR"] = 2, ["MP5K"] = 3,
+        };
+
+        // ปืนออโต้ที่สลับเป็นทีละนัด/ยิงชุด: แรงต่อนัดเทียบนัดหนึ่งของตาราง (ไม่มีแรงสะสมเหมือนยิงค้าง)
+        public const double SingleKick = 0.65;
+        public static double KickOf(string gk) => gk != null && SemiKick.TryGetValue(gk, out double v) ? v : SingleKick;
 
         public static double GunFactor(CalcSettings c, string gunKey)
         {

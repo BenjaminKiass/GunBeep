@@ -404,3 +404,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - 2026-10-31 user: "don't measure, just compute". Calc Ver 5: AutoLearn=false by default (pure computed values,
   ViewTracker idle, learned data cleared). Settings page button switches back to camera learning.
 - Scan voting (MainWindow.Confirmed): a changed gun name / scope / each attachment slot must be read twice in a row (150 ms apart) before it replaces the old value. 720 saved frames had 11–14% one-scan blips (A→B→A), e.g. both scopes read empty for one frame while the game redraws the panels.
+- Fire modes (2026-10-31): RecoilCalc.FireModes per gun from the in-game tooltips; B key cycles the held slot's
+  mode (default = auto if the gun has it). S/B → engine.Semi kick per click (KickOf: SemiKick or 0.65 for auto
+  guns); B = kick × BurstN spread over n shots. MG3 F = 990 rpm (×1.5 gear, ms 61). User: tap guns kicked too hard
+  → SemiKick ×0.6; MG3 overpulled → 0.85 (normal mode 660 rpm, ms 91); Beryl/AKM/Groza −6–8%.

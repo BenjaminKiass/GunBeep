@@ -1015,7 +1015,7 @@ namespace GunBeep
 
         async void PushMults()
         {
-            if (Native) { engine.SetGear(multWant[0]); engine.SetStance(multWant[1]); engine.SetBreath(HeldBreath()); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); PushSemi(); LiveDirty(); return; }
+            if (Native) { engine.SetGear(multWant[0] * FastGear()); engine.SetStance(multWant[1]); engine.SetBreath(HeldBreath()); engine.SetCurve(HeldCurve()); engine.SetXBias(HeldXBias()); engine.MaxShots = EffectiveMaxShots; engine.SetShotMs(GunShotMs(magSlot)); PushSemi(); LiveDirty(); return; }
             if (multPushing) return;
             if (scriptVersion < LiveLink.GEAR_VERSION)
             {
@@ -1383,6 +1383,7 @@ namespace GunBeep
             if (game)
             {
                 if (ScopeKeyPressed(vk)) return;
+                if (vk == 0x42 && !CursorShown()) FireModeKey();                         // B = เปลี่ยนโหมดยิง
                 if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
                 if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
                 if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }

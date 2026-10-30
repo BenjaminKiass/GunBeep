@@ -80,6 +80,8 @@ namespace GunBeep
         public volatile bool Semi;
         double semiKick;
         public const int SEMI_MS = 70;
+        double semiMs = SEMI_MS;                         // ยิงชุด: กระจายแรงทั้งชุดตามเวลาที่ปืนยิงครบชุด
+        public void SetSemiMs(double ms) => Volatile.Write(ref semiMs, ms >= 20 ? ms : SEMI_MS);
         public long KickTs;                              // Stopwatch.GetTimestamp() ตอนเตะล่าสุด
         public event Action<double, int, bool> Kicked;   // แรงที่ดึงจริง (count), เลขนัด, กดคลิกขวา (เล็ง) อยู่ไหม
         public void SetSemiKick(double k) => Volatile.Write(ref semiKick, k);
@@ -146,12 +148,13 @@ namespace GunBeep
             while (!stop && active && front)
             {
                 double t = sw.Elapsed.TotalMilliseconds;
-                int want = (int)Math.Round(total * Math.Min(1, t / SEMI_MS));
+                double dur = Volatile.Read(ref semiMs);
+                int want = (int)Math.Round(total * Math.Min(1, t / dur));
                 if (want > moved) { Move(0, want - moved); moved = want; }
                 bool d = Down(VK_LBUTTON);
                 if (d && !wasDown) pending++;
                 wasDown = d;
-                if (t >= SEMI_MS) break;
+                if (t >= dur) break;
                 Thread.Sleep(1);
             }
             try { Kicked?.Invoke(moved, SprayId, ads); }
