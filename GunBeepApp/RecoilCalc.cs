@@ -129,7 +129,7 @@ namespace GunBeep
         public static readonly Dictionary<string, double> BuiltinGun = new()
         {
             ["M416"] = 1.00, ["SCAR"] = 0.95, ["QBZ"] = 0.95, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.08,
-            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.00, ["GROZA"] = 1.10,
+            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.05, ["GROZA"] = 1.10,
             ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
             ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.75, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
