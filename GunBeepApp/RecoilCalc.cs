@@ -33,7 +33,7 @@ namespace GunBeep
         public string RefStockId { get; set; }
         public Dictionary<string, double> RefNeed { get; set; } = new();
         // เรียนรู้จากมือผู้ใช้ตอนยิงค้าง: ปืน → แรงคูณแต่ละช่วงเวลา (8 ช่วง × 0.5 วิ) และจำนวนชุดที่เรียนแล้ว
-        public bool AutoLearn { get; set; } = true;
+        public bool AutoLearn { get; set; }                     // ปิด = ค่าคำนวณล้วน (ค่าเริ่มต้น); เปิด = ปรับเองจากภาพในเกม
         public Dictionary<string, double[]> Learn { get; set; } = new();
         public Dictionary<string, int> LearnN { get; set; } = new();
         public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)

@@ -156,6 +156,16 @@ namespace GunBeep
                 c.LearnN.Clear();
                 c.Ver = 4;
             }
+            if (c.Ver < 5)
+            {
+                // ผู้ใช้: "ไม่วัดได้ไหม อยากให้คำนวณมาให้เลย" → ค่าคำนวณล้วน: ไม่ใช้/ไม่เรียนค่าที่วัด, ไม่จับภาพระหว่างเล็ง
+                c.AutoLearn = false;
+                c.Learn.Clear();
+                c.LearnX.Clear();
+                c.LearnScope.Clear();
+                c.LearnN.Clear();
+                c.Ver = 5;
+            }
         }
 
         public void Save()

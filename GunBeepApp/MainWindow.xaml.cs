@@ -393,7 +393,7 @@ namespace GunBeep
             engine?.SetFront(front);
             TrackInventory(front, cursor);
             var vt = ViewTracker.Shared;
-            vt.Wanted = Native && on && front && !cursor && !invSession;
+            vt.Wanted = Native && on && front && !cursor && !invSession && cfg.Calc?.AutoLearn == true && !cfg.Calc.LearnLocked;   // ค่าคำนวณล้วน = ไม่จับภาพ
             vt.ScopeKey = ScopeKey(slotInfo[Math.Clamp(heldSlot, 1, 2)]);
             vt.Vertical = GameSettings.Current.Vertical;
             WatchLanguage(front, front && !cursor && !invSession);

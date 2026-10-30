@@ -1313,12 +1313,13 @@ namespace GunBeep
             foot.Children.Add(k);
             GameRows.Children.Add(foot);
             var lk = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-            lk.Children.Add(T(!c.LearnLocked ? "ปรับค่าปืนเองจากภาพในเกม (เฉพาะตอนยืนนิ่งยิง):  เปิด" : "ปรับค่าปืนเองจากภาพในเกม:  ล็อกไว้ (ใช้ค่าเดิม ไม่ปรับเพิ่ม)", 11.5, !c.LearnLocked ? PGreen : PAmber, FontWeights.SemiBold));
-            lk.Children.Add(Pill(!c.LearnLocked ? "ล็อกค่า (หยุดปรับ)" : "เปิดปรับเอง", PText, () =>
+            lk.Children.Add(T(!c.AutoLearn ? "ค่าปืน:  คำนวณล้วน (คงที่ ไม่วัด ไม่ปรับเอง)" : "ค่าปืน:  คำนวณ + ปรับเองจากภาพในเกม (เฉพาะตอนยืนนิ่งยิง)", 11.5, !c.AutoLearn ? PGreen : PAmber, FontWeights.SemiBold));
+            lk.Children.Add(Pill(!c.AutoLearn ? "เปิดปรับเองจากภาพ" : "กลับไปคำนวณล้วน", PText, () =>
             {
-                c.LearnLocked = !c.LearnLocked;
+                c.AutoLearn = !c.AutoLearn;
+                c.LearnLocked = false;
                 cfg.Save();
-                Log.Info("learning " + (c.LearnLocked ? "locked" : "on"));
+                Log.Info("auto learn " + (c.AutoLearn ? "on" : "off (computed values only)"));
                 BuildGameCard();
                 CalcChanged();
                 LiveDirty();

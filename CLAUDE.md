@@ -401,3 +401,5 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   moves the view) or the hand dragged > 30% of the macro pull. ViewTracker k is only sampled while not moving and is
   saved in Calc.ViewK (restored at start). Settings page lock button = Calc.LearnLocked (learned values still
   applied, no further updates).
+- 2026-10-31 user: "don't measure, just compute". Calc Ver 5: AutoLearn=false by default (pure computed values,
+  ViewTracker idle, learned data cleared). Settings page button switches back to camera learning.
