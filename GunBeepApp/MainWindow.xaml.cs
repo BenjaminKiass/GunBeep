@@ -921,6 +921,8 @@ namespace GunBeep
             finally { scanBusy = false; }
         }
 
+        string lastScopeSeen;
+
         // ใช้ชุดค่าตามสโคปของปืนที่ถืออยู่ + คำนวณตัวคูณ ปืน × สโคป × ของแต่ง
         void ApplyScope(string why)
         {
@@ -932,7 +934,16 @@ namespace GunBeep
             bool multChanged = LiveLink.MultCode(mult) != LiveLink.MultCode(multWant[0]);
             multWant[0] = mult;
             LiveDirty();
-            if (!setChanged && !multChanged) return;
+            // สโคปเปลี่ยนแต่ค่าเท่าเดิม (เช่น Holo ↔ Red Dot = 1x ความไวเดียวกัน) → ยังบอกบนป้ายว่าตรวจเจอแล้ว
+            string seen = $"{heldSlot}|{p.Name}|{p.Set}|{p.ScopeLabel}";
+            bool scopeChanged = seen != lastScopeSeen;
+            lastScopeSeen = seen;
+            if (!setChanged && !multChanged)
+            {
+                if (scopeChanged && why == "scan")
+                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))} (ค่าเท่าเดิม)");
+                return;
+            }
             Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
             if (setChanged) SelectGun(set);
             PushMults();
