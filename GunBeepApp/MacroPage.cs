@@ -174,7 +174,56 @@ namespace GunBeep
             string cardScope = set >= 1 && set <= cfg.Names.Length ? RecoilCalc.SetScope(cfg.Names[set - 1]) : null;
             double sf = calc.On ? RecoilCalc.SensFactor(calc, cardScope) : 1;
             if (Math.Abs(sf - 1) > 0.005) { mult = Math.Clamp(mult * sf, 0.2, 3.9); parts += $" · ความไว ×{sf:0.00}"; }
+            // แรงดึงที่เรียนรู้ของสโคปนี้เอง (แยกทุกสโคป)
+            double ls = ScopeLearned(p);
+            if (Math.Abs(ls - 1) > 0.005) { mult = Math.Clamp(mult * ls, 0.2, 3.9); parts += $" · เรียนรู้สโคป ×{ls:0.00}"; }
             return (set, scopeMult, via, mult, parts);
+        }
+
+        // สโคปที่ใช้คำนวณ/เรียนรู้: ศูนย์เหล็ก = "iron", ไฮบริด = เรดดอท, ไม่รู้จัก = null
+        static string ScopeKey(ScopeDetect.Panel p) =>
+            p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? "reddot" : p.ScopeLabel;
+
+        double ScopeLearned(ScopeDetect.Panel p)
+        {
+            var c = cfg.Calc;
+            string sk = ScopeKey(p);
+            return c != null && c.On && c.AutoLearn && sk != null && c.LearnScope.TryGetValue(sk, out double v) ? v : 1;
+        }
+
+        string HeldScopeText()
+        {
+            var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
+            if (cfg.ScopeAuto && p != null && p.Set != -1) return p.Set == 0 ? "ศูนย์เหล็ก" : "สโคป " + ScopeName(p.ScopeLabel);
+            return "ชุด " + cfg.Names[Math.Clamp(gun, 1, cfg.Names.Length) - 1];
+        }
+
+        // ---------------------------------------------------------------- รูปโลโก้ (สร้างจากภาพป้ายของในเกมที่ผู้ใช้แคป เก็บในเครื่อง saved\art)
+        //   guns\<ปืน>.png = โลโก้ปืนสีทอง, att\<ชิ้น>.png = ของแต่ง/สโคป — ไม่มีไฟล์ = ใช้ภาพจากหน้ากระเป๋าแทน
+        static readonly Dictionary<string, System.Windows.Media.Imaging.BitmapSource> artCache = new();
+
+        static System.Windows.Media.Imaging.BitmapSource ArtOf(string kind, string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            string key = kind + "/" + id;
+            if (artCache.TryGetValue(key, out var bs)) return bs;
+            string path = System.IO.Path.Combine(Settings.KitDir, "art", kind, id + ".png");
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var bi = new System.Windows.Media.Imaging.BitmapImage();
+                    bi.BeginInit();
+                    bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bi.UriSource = new Uri(path);
+                    bi.EndInit();
+                    bi.Freeze();
+                    bs = bi;
+                }
+            }
+            catch (Exception ex) { Log.Error("art " + key, ex); }
+            artCache[key] = bs;
+            return bs;
         }
 
         // ---------------------------------------------------------------- หน้ามาโคร: อัปเดตสด
@@ -211,7 +260,7 @@ namespace GunBeep
             var held = cfg.ScopeAuto ? slotInfo[Math.Clamp(heldSlot, 1, 2)] : null;
             HeldText.Text = magSlot == 0 && cfg.HolsterPause ? "ระเบิด / มีด / เก็บปืน"
                           : held != null && held.Name.Length > 0 ? held.Name.ToUpperInvariant()
-                          : "ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1];
+                          : HeldScopeText();
             HeldSlotText.Text = cfg.ScopeAuto ? $"ช่อง {heldSlot}" : $"ชุด {gun}";
 
             // สถานะมาโคร
@@ -221,7 +270,7 @@ namespace GunBeep
                 !on ? (PRed, PRedBg, B("#FCA5A5"), cfg.AutoOn ? "มาโครปิด · รอเข้าเกม" : "มาโครปิด")
                 : paused ? (PAmber, PAmberBg, B("#FCD34D"), "หยุดชั่วคราว · " + PauseText(pauseWhy))
                 : spraying ? (PCyan, PBlueBg, PCyan, "กำลังดึง")
-                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1] + (magSlot is 1 or 2 && cfg.MagMode != 0 ? $" · แม็ก ~{Math.Max(0, MagCap(magSlot) - (int)MagNow())}/{MagCap(magSlot)}" : ""));
+                : (PGreen, PGreenBg, B("#86EFAC"), "พร้อมยิง · " + HeldScopeText() + (magSlot is 1 or 2 && cfg.MagMode != 0 && !IsSemi(magSlot) ? $" · ดึงสูงสุด {MagCap(magSlot) + 2} นัด/ชุด" : ""));
             LiveDot.Fill = st.dot;
             LivePill.Background = st.bg;
             LiveText.Foreground = st.fg;
@@ -235,7 +284,7 @@ namespace GunBeep
             {
                 HeroTitle.Text = cfg.ScopeAuto ? "รอตรวจจับ" : "ตรวจสโคปอัตโนมัติปิดอยู่";
                 HeroHint.Text = cfg.ScopeAuto ? " ในเกม — ดูปืน สโคป ของแต่งให้เอง" : " (เปิดได้ในหน้าตั้งค่า)";
-                HeroSet.Text = "ตอนนี้ใช้ชุด " + cfg.Names[Math.Clamp(gun, 1, 3) - 1] + (Native ? " · ตัวขยับเมาส์ในตัว" : " · ผ่าน G Hub");
+                HeroSet.Text = "ตอนนี้ใช้ " + HeldScopeText() + (Native ? " · ตัวขยับเมาส์ในตัว" : " · ผ่าน G Hub");
                 liveSig = null;
                 return;
             }
@@ -336,6 +385,7 @@ namespace GunBeep
                 PopOsd("ภาพช่องสโคปไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องสโคป แล้วกดเลือกอีกครั้ง");
                 return;
             }
+            if (label == "hybrid") label = "reddot";        // ไฮบริดใช้ค่าเดียวกับเรดดอท
             int set = ScopeDetect.SetFor(label, cfg.Names);
             ScopeDetect.Teach(p.Icon, set, label);
             p.Set = set;
@@ -395,8 +445,11 @@ namespace GunBeep
 
             // สโคป
             string scopeTitle = p.Set == 0 ? "ไม่มีสโคป (ศูนย์เหล็ก)" : p.Set == -1 ? "ยังไม่รู้จัก — เลือกด้านล่างครั้งเดียว จำให้เอง" : ScopeName(p.ScopeLabel);
-            string scopeSub = setOk ? $"ใช้ชุด {setName}" + (Math.Abs(scopeMult - 1) > 0.005 ? $" × {scopeMult:0.00} (คำนวณจากความไวในเกม)" : "") : "ใช้ชุดที่เลือกอยู่";
-            root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeMult, PBlue, null, null, p.Set == -1));
+            double scopeAll = scopeMult * ScopeLearned(p);
+            string scopeNm = p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel);
+            string scopeSub = p.Set == -1 ? "ยังใช้ค่าเดิมไปก่อน" : !setOk ? "ใช้ค่าที่เลือกอยู่"
+                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {scopeNm} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "");
+            root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeAll, PBlue, null, null, p.Set == -1, p.Set > 0 || p.Set == -2 ? ArtOf("att", ScopeKey(p) == "reddot" && p.ScopeLabel == "hybrid" ? "hybrid" : p.ScopeLabel) : null));
             root.Children.Add(ScopeTeachRow(s, p));
 
             // แรงดึง: ตัวคูณรวม | กราฟ | ท่าทาง
@@ -406,9 +459,9 @@ namespace GunBeep
             mid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
             var left = new StackPanel();
             left.Children.Add(Stat("ตัวคูณ", "×" + mult.ToString("0.00"), Pct(mult)));
-            left.Children.Add(Stat("ชุดค่า", setName, setOk ? $"base {GHub.Fmt(vals[set - 1].Base)}" : ""));
+            left.Children.Add(Stat("สโคป", p.Set == -1 ? "?" : scopeNm, Pct(scopeAll)));
             mid.Children.Add(left);
-            var graph = Graph(setOk ? vals[set - 1] : null, mult, gk, PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null);
+            var graph = Graph(setOk ? vals[set - 1] : null, mult, gk, ArtOf("guns", gk) ?? PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null);
             Grid.SetColumn(graph, 1);
             mid.Children.Add(graph);
             var right = new StackPanel();
@@ -423,6 +476,8 @@ namespace GunBeep
             string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
                 ? $" · แม็ก {(p.ExtMag ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
             if (gk != null && RecoilCalc.SemiKick.ContainsKey(gk)) magTxt += " · ปืนเคาะ: ดึงทีละนัด";
+            else if (magTxt != "") magTxt += $" → ดึงสูงสุด {MagCap(s) + 2} นัด/ชุด";
+            if (p.Att != null && p.Att[2] && !p.ExtMag) magTxt += " · แม็ก QuickDraw";
             string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
             root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}",
                                   gf, PGold, gk == null ? null : () => AdjustGun(gk, -0.05), gk == null ? null : () => AdjustGun(gk, +0.05), gk == null));
@@ -457,7 +512,8 @@ namespace GunBeep
             LiveDirty();
         }
 
-        Border Row(string glyph, string tag, string title, string sub, double mult, Brush accentBrush, Action minus, Action plus, bool dim)
+        Border Row(string glyph, string tag, string title, string sub, double mult, Brush accentBrush, Action minus, Action plus, bool dim,
+                   System.Windows.Media.Imaging.BitmapSource icon = null)
         {
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
@@ -467,7 +523,9 @@ namespace GunBeep
             {
                 Width = 40, Height = 40, CornerRadius = new CornerRadius(10), Background = PInner, BorderBrush = PLine, BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Child = new TextBlock { Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 17, Foreground = accentBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+                Child = icon != null
+                    ? new System.Windows.Controls.Image { Source = icon, Stretch = Stretch.Uniform, Margin = new Thickness(3) }
+                    : new TextBlock { Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 17, Foreground = accentBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
             });
             var mid = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var top = new StackPanel { Orientation = Orientation.Horizontal };
@@ -523,7 +581,7 @@ namespace GunBeep
             }
             bool tune = has && it == null;          // รู้ชนิดแล้วใช้ตัวเลขเกม ไม่ต้องปรับ
             var r = Row(has ? "\uE73E" : "\uE711", name, title, sub, rel, has ? PGreen : PFaint,
-                        tune ? () => Step(-1) : null, tune ? () => Step(+1) : null, !has);
+                        tune ? () => Step(-1) : null, tune ? () => Step(+1) : null, !has, has ? ArtOf("att", id) : null);
             r.Margin = new Thickness(0, 0, 0, 8);
             return r;
         }
@@ -671,7 +729,7 @@ namespace GunBeep
                 ("ปืนพก / มีด / ระเบิด", cfg.HolsterPause ? "ถืออยู่ = ไม่ดึง" : "ปิดอยู่ (ดึงตลอด)", $"{KeyName(gs.Pistol)} · {KeyName(gs.Melee)} · {KeyName(gs.Throwable)}"),
                 ("เก็บปืน", cfg.HolsterPause ? "ไม่ดึงจนกว่าจะหยิบปืน" : "ปิดอยู่", KeyName(gs.Holster)),
                 ("กระเป๋า / แผนที่", "เคอร์เซอร์โผล่ = ไม่ดึง", "Tab · M"),
-                ("แม็กหมด", cfg.MagMode != 0 ? "นับตามขนาดแม็กของปืน (+แม็กขยาย) → รอรีโหลด" : "ไม่หยุด (เทรนนิ่ง)", KeyName(gs.ReloadKey)),
+                ("แม็ก", cfg.MagMode != 0 ? "แต่ละชุดดึงไม่เกินขนาดแม็กของปืน (+แม็กขยาย) + 2 นัด" : "ไม่จำกัด (เทรนนิ่ง)", "อัตโนมัติ"),
             }));
             KeyCards.Children.Add(KeyCard("", "ใช้แรงดึง", "ตอนยิง", PBlue, new[]
             {
@@ -865,10 +923,16 @@ namespace GunBeep
             if (learnX > total * 0.35) { Log.Info($"learn {gk}: skipped (tracking sideways {learnX:0} vs pull {total:0})"); return; }
             var cv = c.Learn.TryGetValue(gk, out var old) && old?.Length == NativeRecoil.BINS ? old : Enumerable.Repeat(1.0, NativeRecoil.BINS).ToArray();
             var parts = new List<string>();
+            // แรงที่มือแก้ทั้งชุด: ครึ่งหนึ่งเป็นของสโคปนี้ (ค่าแยกแต่ละสโคป) อีกครึ่งเป็นของปืน (เส้นแรงดึงของปืน)
+            string sk = ScopeKey(slotInfo[Math.Clamp(heldSlot, 1, 2)]);
+            double su = 0, sm = 0;
+            for (int b = 0; b < NativeRecoil.BINS; b++) if (macroY[b] >= 15) { su += user[b]; sm += macroY[b]; }
+            double toScope = sk != null && sm > 0 ? 0.5 * Math.Clamp(su / sm, -0.35, 0.35) : 0;
+            double gain0 = (c.LearnN.TryGetValue(gk, out int seen0) ? seen0 : 0) < 5 ? 0.6 : 0.35;
             for (int b = 0; b < NativeRecoil.BINS; b++)
             {
                 if (macroY[b] < 15) continue;
-                double r = Math.Clamp(user[b] / macroY[b], -0.35, 0.35);
+                double r = Math.Clamp(user[b] / macroY[b] - toScope, -0.35, 0.35);
                 double gain = (c.LearnN.TryGetValue(gk, out int seen) ? seen : 0) < 5 ? 0.6 : 0.35;   // ชุดแรกๆ ปรับเร็ว แล้วค่อยละเอียด
                 cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain * r), 0.5, 1.7), 4);
                 parts.Add($"{b * 0.5:0.0}s {r:+0.00;-0.00}→×{cv[b]:0.00}");
@@ -878,6 +942,13 @@ namespace GunBeep
             int lastSeen = Enumerable.Range(0, NativeRecoil.BINS).Last(b => macroY[b] >= 15 || b == 0);
             if (!c.LearnN.ContainsKey(gk)) for (int b = lastSeen + 1; b < NativeRecoil.BINS; b++) cv[b] = cv[lastSeen];
             c.Learn[gk] = cv;
+            if (sk != null && Math.Abs(toScope) > 1e-4)
+            {
+                double os = c.LearnScope.TryGetValue(sk, out double ov) ? ov : 1;
+                double ns = Math.Round(Math.Clamp(os * (1 + gain0 * toScope), 0.6, 1.6), 4);
+                c.LearnScope[sk] = ns;
+                parts.Add($"สโคป {sk} ×{os:0.00}→×{ns:0.00}");
+            }
             // ซ้ายขวา: ปืนไหลไปทางเดียวเป็นประจำ → มือดึงกลับ → จำเป็นค่า x ของปืนนั้น (หน่วยเดียวกับ x ต่อ 10 ms)
             if (id == learnId && ms > 0)
             {
@@ -889,6 +960,7 @@ namespace GunBeep
             }
             c.LearnN[gk] = (c.LearnN.TryGetValue(gk, out int n) ? n : 0) + 1;
             Log.Info($"learn {gk} #{c.LearnN[gk]}: " + string.Join(" · ", parts));
+            if (sk != null) ApplyScope("learn");                 // แรงของสโคปเปลี่ยน → คำนวณตัวคูณใหม่
             engine.SetCurve(HeldCurve());
             engine.SetXBias(HeldXBias());
             LiveDirty();

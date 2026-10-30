@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -33,7 +33,7 @@ namespace GunBeep
             new("half", "กริปแบบครึ่ง", "grip", 8), new("thumb", "กริปหัวแม่มือ", "grip", 10),
             new("light", "กริปน้ำหนักเบา", "grip", 10), new("laser", "เลเซอร์", "grip", 0),
             new("tactical", "พานท้ายยุทธวิธี", "stock", 10), new("heavy", "พานท้ายขนาดใหญ่", "stock", 10),
-            new("folding", "พานท้ายพับได้", "stock", 20),
+            new("folding", "พานท้ายพับได้", "stock", 20), new("cheek", "แผ่นรองแก้ม (DMR, SR)", "stock", 20),
         };
 
         public static Item Get(string id) => Items.FirstOrDefault(i => i.Id == id);

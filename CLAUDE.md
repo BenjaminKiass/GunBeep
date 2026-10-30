@@ -366,3 +366,13 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Mag slot: the gun's own magazine art overlaps the top of the slot (AKM/Beryl/Mk47 read "extended" → 40 instead of 30).
   Now has = bottom band (56–94%) sd ≥ 15; teal ≥ 3% = QuickDraw only (no extra rounds) else extended. No real
   equipped-mag sample yet — thresholds from tooltip icons, unverified in slots.
+- 2026-10-31: scope templates rebuilt from the user's 22:2x test (Mk12) + older samples, clustered from hand-picked
+  seeds and checked by eye (gbtest "cluster"): 2x/3x/holo/8x/15x added, old single "3x" (was really matching 8x) dropped.
+  Hybrid = red dot (user). Card name "Red/Holo" → "Red Dot".
+- Per-scope values: UI shows each scope's own pull (game sensitivity ratio × learned c.LearnScope[scope]); no "via 4x"
+  wording. LearnSpray gives half of the spray-wide hand correction to the scope, half to the gun curve.
+- Mag: no counting across sprays / no reload key; each spray stops at mag(+ext)+2 shots (engine.MaxShots).
+- Gold logos: gbtest "art" turns the user's tooltip screenshots into saved\art\guns\<KEY>.png and
+  saved\art\att\<id|scope>.png (local only, never committed). MacroPage.ArtOf loads them; fallback = inventory crop.
+- FullRecoil (reference app) clip: Tab detection key, reads game sens per scope, inventory position calibrator,
+  per-scope "% sens vertical" over one pattern. It renames its process to look like PUBG — we do not copy that.

@@ -38,6 +38,7 @@ namespace GunBeep
         public Dictionary<string, int> LearnN { get; set; } = new();
         public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)
         public Dictionary<string, double> LearnKick { get; set; } = new();  // ปืนเคาะ → แรงต่อนัดที่เรียนรู้ (คูณ)
+        public Dictionary<string, double> LearnScope { get; set; } = new(); // สโคป → แรงดึงที่เรียนรู้ของสโคปนั้น (คูณ) แยกทุกสโคป
     }
 
     public static class RecoilCalc
@@ -46,7 +47,7 @@ namespace GunBeep
         public static readonly (string label, double mag, string sensName)[] Scopes =
         {
             ("reddot", 1, "Scoping"), ("holo", 1, "Scoping"), ("2x", 2, "Scope2X"), ("3x", 3, "Scope3X"),
-            ("4x", 4, "Scope4X"), ("hybrid", 4, "Scope4X"), ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
+            ("4x", 4, "Scope4X"), ("hybrid", 1, "Scoping"),     // ไฮบริด = ใช้แบบเรดดอท (ผู้ใช้บอก) ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
         };
 
         // ความไวที่แต่ละสโคปใช้จริง จากการตั้งค่าเกม (ความไวเดียวทุกสโคป = ทุกสโคปขยายใช้ค่าเล็งขยาย)

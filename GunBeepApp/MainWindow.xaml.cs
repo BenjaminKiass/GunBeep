@@ -395,12 +395,7 @@ namespace GunBeep
             WatchLanguage(front, front && !cursor && !invSession);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
-            if (!magEmpty && on && TimeCounting && MagCap(magSlot) > 0 && MagNow() >= MagCap(magSlot))
-            {
-                magEmptyBy[magSlot] = true;
-                Log.Info($"mag empty: {MagNow():0}/{MagCap(magSlot)} shots ({GunShotMs(magSlot):0} ms/shot) → stop pulling until reload");
-                PopOsd("แม็กหมด — กด R");
-            }
+            // (ไม่นับกระสุนข้ามชุดแล้ว: แต่ละครั้งที่กดยิงค้าง ตัวยิงหยุดดึงเองเมื่อครบขนาดแม็กของปืน + 2 นัด — แม็กหมดในเกมก็หยุดยิงเอง)
             bool want = false;
             string why = null;
             if (on && magEmpty) { want = true; why = "mag empty"; }
@@ -937,8 +932,7 @@ namespace GunBeep
             if (setChanged) SelectGun(set);
             PushMults();
             string name = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
-            string target = set >= 1 && set <= vals.Length ? cfg.Names[set - 1] : "ชุดเดิม";
-            PopOsd($"{name} · {(p.Set == 0 ? "ไม่มีสโคป" : p.ScopeLabel)} → {target}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+            PopOsd($"{name} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
         }
 
         CalcWindow calcWin;
@@ -1345,8 +1339,7 @@ namespace GunBeep
             if (game)
             {
                 if (ScopeKeyPressed(vk)) return;
-                if (vk == GameSettings.Current.ReloadKey) ResetMag("reload key");             // รีโหลด (ปุ่มตามที่ตั้งในเกม)
-                else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+                if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
                 if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
                 if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
             }

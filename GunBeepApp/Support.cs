@@ -103,6 +103,8 @@ namespace GunBeep
                     }
                     var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
                     if (s.Names == null || s.Names.Length < 3) s.Names = new Settings().Names;
+            // ชื่อรวม "Red/Holo" → "Red Dot" (Holo คำนวณแยกเอง ไม่รวมชื่อกัน)
+            for (int i = 0; i < s.Names.Length; i++) if (s.Names[i] == "Red/Holo") s.Names[i] = "Red Dot";
                     if (s.MagMode == 2) s.MagMode = 1;          // ฟังเสียงปืนเอาออกแล้ว (ไม่เสถียร) → นับกระสุนแทน
                     MigrateCalc(s);
                     return s;
