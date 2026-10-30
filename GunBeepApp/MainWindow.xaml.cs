@@ -2324,6 +2324,7 @@ namespace GunBeep
             bool opened = false;
             if (!CursorShown())
             {
+                if (!cfg.LootAutoTab) return;                     // ตั้งไว้ให้เปิดกระเป๋าเอง
                 invKeyAt = DateTime.Now;                          // ให้ระบบตรวจปืนนับว่าเปิดกระเป๋าด้วย Tab
                 KeyHook.Tap(0x09, 0x0F, false);
                 for (int i = 0; i < 20 && !CursorShown(); i++) await Task.Delay(30);

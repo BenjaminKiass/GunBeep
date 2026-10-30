@@ -1075,6 +1075,16 @@
                                                 <RadioButton x:Name="LootSpeed1" Grid.Column="2" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="1" Checked="LootSpeed_Checked" Content="กลาง" Margin="6,0,0,0"/>
                                                 <RadioButton x:Name="LootSpeed2" Grid.Column="3" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="2" Checked="LootSpeed_Checked" Content="เร็ว" Margin="6,0,0,0"/>
                                             </Grid>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="เปิดกระเป๋า" FontSize="12.5" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                <RadioButton x:Name="LootTabAuto" Grid.Column="1" GroupName="loottab" Style="{StaticResource SegRadio}" Tag="1" Checked="LootTab_Checked" Content="กด Tab ให้เอง"/>
+                                                <RadioButton x:Name="LootTabSelf" Grid.Column="2" GroupName="loottab" Style="{StaticResource SegRadio}" Tag="0" Checked="LootTab_Checked" Content="กด Tab เอง" Margin="6,0,0,0"/>
+                                            </Grid>
                                         </StackPanel>
                                     </Border>
                                     <Border Grid.Column="2" Style="{StaticResource Card}">

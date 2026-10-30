@@ -414,3 +414,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - Fast loot key while playing (no cursor): taps Tab (tagged injected key), waits for the cursor, loots, then taps Tab again to close. With the inventory already open it only loots (as before). Scope templates: +13 8x from Mk47/SKS samples (gun art under the slot differed; scores sat at 0.53–0.61).
 - 2026-10-31 user: Beryl/AKM/Groza at 1.10/1.06/1.03 underpulled (gun floats up) → back to 1.20/1.15/1.10. LMGs (lots of rounds) overpull → M249/MG3/RPD/DP28 = 0.75.
 - 2026-10-31: AKM 'pulls too hard' was really an undetected flash hider (no slot template → read as not fitted → +11% pull). attachments-builtin.json now has Real templates for flash_ar (+brake/thumb variants) from 2053 panels; AKM set to 1.05.
+- Loot page option Settings.LootAutoTab (default on): on = loot key while playing taps Tab open/close; off = only works with the inventory already open.

@@ -841,7 +841,8 @@ namespace GunBeep
             (string t, string d)[] steps =
             {
                 ("เข้าใกล้ของ", "ยืนใกล้ของบนพื้น หรือกล่องศพ"),
-                ("เปิดกระเป๋า + กดปุ่ม", "Tab แล้วกดปุ่มเก็บของที่ตั้งไว้ครั้งเดียว"),
+                cfg.LootAutoTab ? ("กดปุ่มเก็บ", "กดได้เลยตอนวิ่งอยู่ — โปรแกรมกด Tab เปิดกระเป๋าให้ แล้วปิดให้หลังเก็บ")
+                                : ("เปิดกระเป๋า + กดปุ่ม", "Tab แล้วกดปุ่มเก็บของที่ตั้งไว้ครั้งเดียว"),
                 ("เก็บให้อัตโนมัติ", "ลากของเข้ากระเป๋าทีละช่อง แล้วเมาส์กลับกลางจอ"),
             };
             LootSteps.Children.Clear();
@@ -883,6 +884,8 @@ namespace GunBeep
             LootSpeed0.IsChecked = cfg.LootSpeed == 0;
             LootSpeed1.IsChecked = cfg.LootSpeed == 1;
             LootSpeed2.IsChecked = cfg.LootSpeed == 2;
+            LootTabAuto.IsChecked = cfg.LootAutoTab;
+            LootTabSelf.IsChecked = !cfg.LootAutoTab;
             LootPosText.Text = File.Exists(LootWindow.RefImagePath) ? "ตั้งจากภาพในเกมแล้ว" : "ยังใช้ตำแหน่งเริ่มต้น — กด \"ตั้งตำแหน่ง\" ให้ตรงจอคุณ";
             lootUi = false;
         }
@@ -911,6 +914,15 @@ namespace GunBeep
             cfg.LootSlots = Math.Clamp(cfg.LootSlots + d, 1, 15);
             cfg.Save();
             UpdateLootPage();
+        }
+
+        void LootTab_Checked(object sender, RoutedEventArgs e)
+        {
+            if (lootUi) return;
+            cfg.LootAutoTab = (string)((FrameworkElement)sender).Tag == "1";
+            cfg.Save();
+            BuildLootSteps();
+            Flash(cfg.LootAutoTab ? "เก็บของเร็ว: กดปุ่มตอนวิ่งได้เลย โปรแกรมกด Tab เปิด/ปิดให้" : "เก็บของเร็ว: เปิดกระเป๋า (Tab) เองก่อน แล้วกดปุ่มเก็บ");
         }
 
         void LootSpeed_Checked(object sender, RoutedEventArgs e)
