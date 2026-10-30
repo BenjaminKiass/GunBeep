@@ -146,6 +146,16 @@ namespace GunBeep
                 foreach (var k in new List<string>(c.LearnN.Keys)) if (!c.LearnKick.ContainsKey(k)) c.LearnN.Remove(k);
                 c.Ver = 3;
             }
+            if (c.Ver < 4)
+            {
+                // ผู้ใช้: ไม่เอาค่าที่เรียนจากมือ → ล้างทั้งหมด (รวมปืนเคาะ) เรียนใหม่จากภาพอย่างเดียว
+                c.Learn.Clear();
+                c.LearnX.Clear();
+                c.LearnScope.Clear();
+                c.LearnKick.Clear();
+                c.LearnN.Clear();
+                c.Ver = 4;
+            }
         }
 
         public void Save()

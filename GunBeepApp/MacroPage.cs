@@ -34,7 +34,7 @@ namespace GunBeep
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
             ViewTracker.Shared.Start();
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
-            engine.Kicked += (moved, id, ads) => Dispatcher.BeginInvoke(new Action(() => KickDone(moved, id, ads)));
+            // (ปืนเคาะไม่เรียนจากมือแล้ว: ใช้แรงต่อนัดที่คำนวณ)
             BuildGameCard();
             HolsterSwitch.IsChecked = cfg.HolsterPause;
             UpdateEngineUi();
@@ -961,7 +961,16 @@ namespace GunBeep
                 }
                 if (!vision) need = user;
             }
-            if (!vision && learnX > total * 0.35) { Log.Info($"learn {gk}: skipped (tracking sideways {learnX:0} vs pull {total:0})"); return; }
+            if (!vision)
+            {
+                // ไม่เรียนจากมือผู้ใช้แล้ว (มือไม่นิ่ง ค่าเพี้ยน) — ใช้ค่าที่คำนวณไปก่อนจนกว่าจะวัดจากภาพได้
+                if (DateTime.Now - noVisionLogAt > TimeSpan.FromSeconds(30))
+                {
+                    noVisionLogAt = DateTime.Now;
+                    Log.Info($"learn {gk}: skipped (no camera measurement for {kKey ?? "?"} yet: aim and move the mouse without firing, or scene too dark)");
+                }
+                return;
+            }
             var cv = c.Learn.TryGetValue(gk, out var old) && old?.Length == NativeRecoil.BINS ? old : Enumerable.Repeat(1.0, NativeRecoil.BINS).ToArray();
             var parts = new List<string> { vision ? $"ภาพ k={ky:0.00}" : "มือ" };
             // แรงที่แก้ทั้งชุด: ครึ่งหนึ่งเป็นของสโคปนี้ (ค่าแยกแต่ละสโคป) อีกครึ่งเป็นของปืน (เส้นแรงดึงของปืน)
@@ -975,15 +984,27 @@ namespace GunBeep
             int seen = c.LearnN.TryGetValue(gk, out int sn) ? sn : 0;
             double gain0 = vision ? (seen < 5 ? 0.5 : 0.3) : (seen < 5 ? 0.35 : 0.2);
             var touched = new bool[NativeRecoil.BINS];
+            var rs = new double[NativeRecoil.BINS];
+            int nb = 0, wild = 0;
             for (int b = 0; b < NativeRecoil.BINS; b++)
             {
                 if (macroY[b] < 15) continue;
-                double r = Math.Clamp(need[b] / macroY[b] - toScope, -0.35, 0.35);
-                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain0 * r), 0.5, 1.7), 4);
+                double raw = need[b] / macroY[b] - toScope;
+                rs[b] = Math.Clamp(raw, -0.35, 0.35);
                 touched[b] = true;
-                parts.Add($"{b * 0.5:0.0}s {r:+0.00;-0.00}→×{cv[b]:0.00}");
+                nb++;
+                if (Math.Abs(raw) >= 0.35) wild++;
             }
-            if (parts.Count <= 1) return;
+            if (nb == 0) return;
+            // ภาพวัดได้แปลก (ครึ่งหนึ่งของช่วงต่างเกิน 35% เช่น หันกล้องตามเป้า/ฉากเปลี่ยน) → ไม่เอาชุดนี้
+            if (wild * 2 >= nb) { Log.Info($"learn {gk}: skipped (camera measurement out of range in {wild}/{nb} bins)"); return; }
+            cv = (double[])cv.Clone();
+            for (int b = 0; b < NativeRecoil.BINS; b++)
+            {
+                if (!touched[b]) continue;
+                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain0 * rs[b]), 0.5, 1.7), 4);
+                parts.Add($"{b * 0.5:0.0}s {rs[b]:+0.00;-0.00}→×{cv[b]:0.00}");
+            }
             // เส้นแรงดึงต้องเรียบ: ไม่ให้ช่วงติดกันกระโดดสลับขึ้นลง (เคยเป็น ×1.49 ×0.96 ×1.28 → ช่วงหนึ่งดึงเกิน อีกช่วงขาด)
             var sm2 = (double[])cv.Clone();
             for (int b = 1; b < NativeRecoil.BINS - 1; b++)
@@ -1002,11 +1023,12 @@ namespace GunBeep
             }
             else if (mixed) parts.Add("กด Shift บางช่วง: ไม่ปรับระดับสโคป");
             // ซ้ายขวา: ปืนไหลไปทางเดียวเป็นประจำ → มือดึงกลับ → จำเป็นค่า x ของปืนนั้น (หน่วยเดียวกับ x ต่อ 10 ms)
-            if ((vision && !double.IsNaN(visX) || id == learnId) && ms > 0)
+            if (!double.IsNaN(visX) && ms > 0)
             {
-                double xPer10 = Math.Clamp((vision && !double.IsNaN(visX) ? visX : learnDx) / (ms / 10.0), -1.5, 1.5);
+                // ซ้ายขวาแกว่งง่าย (ผู้เล่นหันตามเป้า) → ปรับช้า
+                double xPer10 = Math.Clamp(visX / (ms / 10.0), -1.0, 1.0);
                 double xb = c.LearnX.TryGetValue(gk, out double ox) ? ox : 0;
-                double xn = Math.Round(Math.Clamp(xb + (vision ? 0.5 : 0.25) * xPer10, -3, 3), 3);
+                double xn = Math.Round(Math.Clamp(xb + 0.25 * xPer10, -3, 3), 3);
                 c.LearnX[gk] = xn;
                 parts.Add($"x {xb:+0.00;-0.00}→{xn:+0.00;-0.00}");
             }
@@ -1024,6 +1046,8 @@ namespace GunBeep
         }
 
         void LearnSaveTick(object s, EventArgs e) { learnSave.Stop(); cfg.Save(); }
+
+        DateTime noVisionLogAt;
 
         // ปืนเคาะ: หลังเตะ 0.4 วิ ดูว่ามือยังดึงลงช่วย (เตะน้อยไป) หรือดันขึ้น (เตะเกิน) → ปรับแรงต่อนัดของปืนนั้น
         const int KICK_WINDOW_MS = 400;
