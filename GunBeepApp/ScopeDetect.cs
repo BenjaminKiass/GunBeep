@@ -615,7 +615,8 @@ namespace GunBeep
                                 if (m.score > best.s) best = m;
                             }
                         p.Score = best.s;
-                        if (best.t != null && best.s >= 0.55 && best.margin >= 0.04) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
+                        // ต้องเหมือน ≥ 0.62 และชนะสโคปอื่น ≥ 0.06 (เคยรับ 0.58 → Micro UZI ที่ไม่มีราวสโคปถูกอ่านเป็น Holo)
+                        if (best.t != null && best.s >= 0.62 && best.margin >= 0.06) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
                         // ไม่รู้จัก + ส่วนบนของช่องเรียบ = ช่องว่างที่รูปปืนทับแค่ด้านล่าง (รูปปืนเข้ามาจากล่าง, ไอคอนสโคปอยู่กลางช่อง)
                         //   วัดจากภาพจริง: ช่องว่าง sd 0–6, สโคปทุกแบบรวม 3x sd 21–31 (3x/2x ไม่มีสีฟ้า เลยใช้สีแยกไม่ได้)
                         //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน) → ไม่แน่ใจ ใช้ค่าเดิม
@@ -649,7 +650,7 @@ namespace GunBeep
                 if (sig == lastSample) return;
                 lastSample = sig;
                 Directory.CreateDirectory(SampleDir);
-                if (Directory.GetFiles(SampleDir, "*.png").Length >= 300) return;
+                if (Directory.GetFiles(SampleDir, "2026*.png").Length + Directory.GetFiles(SampleDir, "2027*.png").Length >= 1500) return;
                 string name = $"{DateTime.Now:yyyyMMdd-HHmmss-fff}_{origin.X}_{origin.Y}_{w}x{h}.png";
                 shot.Save(Path.Combine(SampleDir, name), ImageFormat.Png);
                 File.AppendAllText(Path.Combine(SampleDir, "index.txt"), name + "  " + sig + Environment.NewLine);

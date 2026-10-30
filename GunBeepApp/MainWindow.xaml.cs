@@ -392,6 +392,10 @@ namespace GunBeep
             bool cursor = CursorShown();
             engine?.SetFront(front);
             TrackInventory(front, cursor);
+            var vt = ViewTracker.Shared;
+            vt.Wanted = Native && on && front && !cursor && !invSession;
+            vt.ScopeKey = ScopeKey(slotInfo[Math.Clamp(heldSlot, 1, 2)]);
+            vt.Vertical = GameSettings.Current.Vertical;
             WatchLanguage(front, front && !cursor && !invSession);
             WatchScope(front, cursor);
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
@@ -811,7 +815,7 @@ namespace GunBeep
             invWas = inv;
             sessionWas = invSession;
             if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(150) || now - invOpenedAt < TimeSpan.FromMilliseconds(80)
-                || now - lastScan < TimeSpan.FromMilliseconds(250)) return;
+                || now - lastScan < TimeSpan.FromMilliseconds(150)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
             if (cfg.ScopeCalib != $"{size.Width}x{size.Height}")

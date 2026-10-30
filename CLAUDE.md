@@ -376,3 +376,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   saved\art\att\<id|scope>.png (local only, never committed). MacroPage.ArtOf loads them; fallback = inventory crop.
 - FullRecoil (reference app) clip: Tab detection key, reads game sens per scope, inventory position calibrator,
   per-scope "% sens vertical" over one pattern. It renames its process to look like PUBG — we do not copy that.
+- ViewTracker.cs (2026-10-31): while ADS in game, captures a 0.5H×0.28H strip above the crosshair ~100 Hz and
+  measures frame-to-frame view shift from row/column brightness-derivative profiles (normalized cross-correlation,
+  centre band excluded for the reticle). k = px per mouse count per scope, learned from the user's own mouse moves
+  while ADS and not firing (≥ 6 samples). LearnSpray uses need = hand − view/k per bin (objective; any sens), falls
+  back to hand-only with lower gain; learned curves are smoothed across neighbouring bins. Calc Ver 3 cleared the
+  old hand-only Learn/LearnX/LearnScope (they oscillated). Scope match now needs ≥ 0.62 & margin ≥ 0.06.

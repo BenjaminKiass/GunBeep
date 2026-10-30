@@ -136,6 +136,16 @@ namespace GunBeep
                 if (GameSettings.Current.Found) RecoilCalc.SnapshotRef(c);
                 c.Ver = 2;
             }
+            if (c.Ver < 3)
+            {
+                // ค่าที่เรียนจากมืออย่างเดียวมีเล็งตามเป้าปน (AUG ช่วงติดกันสลับ ×1.49/×0.96, Tommy ×0.5, Beryl ซ้ายขวา +1.69)
+                //   → ล้าง แล้วเรียนใหม่ด้วยการวัดจากภาพ (ViewTracker) — ค่าปืนเคาะ (LearnKick) เก็บไว้
+                c.Learn.Clear();
+                c.LearnX.Clear();
+                c.LearnScope.Clear();
+                foreach (var k in new List<string>(c.LearnN.Keys)) if (!c.LearnKick.ContainsKey(k)) c.LearnN.Remove(k);
+                c.Ver = 3;
+            }
         }
 
         public void Save()

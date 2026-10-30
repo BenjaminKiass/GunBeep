@@ -32,6 +32,7 @@ namespace GunBeep
             AutoOnSwitch.IsChecked = cfg.AutoOn;
             GameSettings.Changed += () => Dispatcher.BeginInvoke(new Action(OnGameSettingsChanged));
             try { RawMouse.Shared.Input += LearnInput; } catch (Exception ex) { Log.Error("learn input", ex); }
+            ViewTracker.Shared.Start();
             engine.SprayEnded += (y, ms, ads, id) => Dispatcher.BeginInvoke(new Action(() => LearnSpray(y, ms, ads, id)));
             engine.Kicked += (moved, id, ads) => Dispatcher.BeginInvoke(new Action(() => KickDone(moved, id, ads)));
             BuildGameCard();
@@ -885,6 +886,7 @@ namespace GunBeep
         void LearnInput(IntPtr dev, int dx, int dy, int left)
         {
             if (left > 0) fireDev = dev;
+            if (dev != IntPtr.Zero && (dx != 0 || dy != 0)) ViewTracker.Shared.Hand(dx, dy);   // เมาส์จริง (ไว้หา px ต่อ count)
             if (engine == null || dev == IntPtr.Zero || dev != fireDev) return;
             // ปืนเคาะ: นับมือในช่วง 0.4 วิหลังเตะ
             double sinceKick = (System.Diagnostics.Stopwatch.GetTimestamp() - engine.KickTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -920,24 +922,56 @@ namespace GunBeep
             double total = macroY.Sum();
             if (total < 40) return;
             double[] user = id == learnId ? learnY.ToArray() : new double[NativeRecoil.BINS];
-            if (learnX > total * 0.35) { Log.Info($"learn {gk}: skipped (tracking sideways {learnX:0} vs pull {total:0})"); return; }
-            var cv = c.Learn.TryGetValue(gk, out var old) && old?.Length == NativeRecoil.BINS ? old : Enumerable.Repeat(1.0, NativeRecoil.BINS).ToArray();
-            var parts = new List<string>();
-            // แรงที่มือแก้ทั้งชุด: ครึ่งหนึ่งเป็นของสโคปนี้ (ค่าแยกแต่ละสโคป) อีกครึ่งเป็นของปืน (เส้นแรงดึงของปืน)
             string sk = ScopeKey(slotInfo[Math.Clamp(heldSlot, 1, 2)]);
+            // วัดจากภาพ: มุมกล้องที่ขยับจริงแต่ละช่วง → แรงที่ยังขาด(+)/เกิน(−) = มือ − ภาพ ÷ k (count)
+            //   ไม่ต้องพึ่งว่าผู้ใช้แก้มือพอดีไหม และใช้ได้ทุกค่า sens (k วัดจากเกมจริงแยกสโคป)
+            var vt = ViewTracker.Shared;
+            double ky = vt.KY(sk), kxv = vt.KX(sk);
+            double[] need = user;
+            double visX = double.NaN;
+            bool vision = ky > 0 && engine.SprayId == id;
+            if (vision)
+            {
+                long st = engine.SprayStartTs, binT = (long)(NativeRecoil.BIN_MS / 1000.0 * System.Diagnostics.Stopwatch.Frequency);
+                need = new double[NativeRecoil.BINS];
+                for (int b = 0; b < NativeRecoil.BINS && vision; b++)
+                {
+                    var (_, vy, fr) = vt.Sum(st + b * binT, st + (b + 1) * binT);
+                    if (macroY[b] >= 15 && fr < 20) vision = false;           // วัดภาพได้ไม่พอ (ฉากมืด/ควัน) → ใช้มือแทน
+                    need[b] = user[b] - vy / ky;
+                }
+                if (vision && kxv > 0)
+                {
+                    var (vx, _, _) = vt.Sum(st, st + (long)(ms / 1000.0 * System.Diagnostics.Stopwatch.Frequency));
+                    visX = (id == learnId ? learnDx : 0) - vx / kxv;
+                }
+                if (!vision) need = user;
+            }
+            if (!vision && learnX > total * 0.35) { Log.Info($"learn {gk}: skipped (tracking sideways {learnX:0} vs pull {total:0})"); return; }
+            var cv = c.Learn.TryGetValue(gk, out var old) && old?.Length == NativeRecoil.BINS ? old : Enumerable.Repeat(1.0, NativeRecoil.BINS).ToArray();
+            var parts = new List<string> { vision ? $"ภาพ k={ky:0.00}" : "มือ" };
+            // แรงที่แก้ทั้งชุด: ครึ่งหนึ่งเป็นของสโคปนี้ (ค่าแยกแต่ละสโคป) อีกครึ่งเป็นของปืน (เส้นแรงดึงของปืน)
             double su = 0, sm = 0;
-            for (int b = 0; b < NativeRecoil.BINS; b++) if (macroY[b] >= 15) { su += user[b]; sm += macroY[b]; }
+            for (int b = 0; b < NativeRecoil.BINS; b++) if (macroY[b] >= 15) { su += need[b]; sm += macroY[b]; }
             double toScope = sk != null && sm > 0 ? 0.5 * Math.Clamp(su / sm, -0.35, 0.35) : 0;
-            double gain0 = (c.LearnN.TryGetValue(gk, out int seen0) ? seen0 : 0) < 5 ? 0.6 : 0.35;
+            // วัดจากภาพแม่นกว่า → ปรับเร็วกว่า; จากมืออย่างเดียวมีเล็งตามเป้าปน → ปรับช้า
+            int seen = c.LearnN.TryGetValue(gk, out int sn) ? sn : 0;
+            double gain0 = vision ? (seen < 5 ? 0.5 : 0.3) : (seen < 5 ? 0.35 : 0.2);
+            var touched = new bool[NativeRecoil.BINS];
             for (int b = 0; b < NativeRecoil.BINS; b++)
             {
                 if (macroY[b] < 15) continue;
-                double r = Math.Clamp(user[b] / macroY[b] - toScope, -0.35, 0.35);
-                double gain = (c.LearnN.TryGetValue(gk, out int seen) ? seen : 0) < 5 ? 0.6 : 0.35;   // ชุดแรกๆ ปรับเร็ว แล้วค่อยละเอียด
-                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain * r), 0.5, 1.7), 4);
+                double r = Math.Clamp(need[b] / macroY[b] - toScope, -0.35, 0.35);
+                cv[b] = Math.Round(Math.Clamp(cv[b] * (1 + gain0 * r), 0.5, 1.7), 4);
+                touched[b] = true;
                 parts.Add($"{b * 0.5:0.0}s {r:+0.00;-0.00}→×{cv[b]:0.00}");
             }
-            if (parts.Count == 0) return;
+            if (parts.Count <= 1) return;
+            // เส้นแรงดึงต้องเรียบ: ไม่ให้ช่วงติดกันกระโดดสลับขึ้นลง (เคยเป็น ×1.49 ×0.96 ×1.28 → ช่วงหนึ่งดึงเกิน อีกช่วงขาด)
+            var sm2 = (double[])cv.Clone();
+            for (int b = 1; b < NativeRecoil.BINS - 1; b++)
+                if (touched[b]) sm2[b] = Math.Round(0.25 * cv[b - 1] + 0.5 * cv[b] + 0.25 * cv[b + 1], 4);
+            cv = sm2;
             // ช่วงหลังที่ยังไม่เคยยิงถึง เริ่มจากค่าของช่วงสุดท้ายที่เรียนแล้ว
             int lastSeen = Enumerable.Range(0, NativeRecoil.BINS).Last(b => macroY[b] >= 15 || b == 0);
             if (!c.LearnN.ContainsKey(gk)) for (int b = lastSeen + 1; b < NativeRecoil.BINS; b++) cv[b] = cv[lastSeen];
@@ -950,11 +984,11 @@ namespace GunBeep
                 parts.Add($"สโคป {sk} ×{os:0.00}→×{ns:0.00}");
             }
             // ซ้ายขวา: ปืนไหลไปทางเดียวเป็นประจำ → มือดึงกลับ → จำเป็นค่า x ของปืนนั้น (หน่วยเดียวกับ x ต่อ 10 ms)
-            if (id == learnId && ms > 0)
+            if ((vision && !double.IsNaN(visX) || id == learnId) && ms > 0)
             {
-                double xPer10 = Math.Clamp(learnDx / (ms / 10.0), -1.5, 1.5);
+                double xPer10 = Math.Clamp((vision && !double.IsNaN(visX) ? visX : learnDx) / (ms / 10.0), -1.5, 1.5);
                 double xb = c.LearnX.TryGetValue(gk, out double ox) ? ox : 0;
-                double xn = Math.Round(Math.Clamp(xb + 0.5 * xPer10, -4, 4), 3);
+                double xn = Math.Round(Math.Clamp(xb + (vision ? 0.5 : 0.25) * xPer10, -3, 3), 3);
                 c.LearnX[gk] = xn;
                 parts.Add($"x {xb:+0.00;-0.00}→{xn:+0.00;-0.00}");
             }
