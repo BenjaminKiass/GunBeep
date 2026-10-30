@@ -286,6 +286,13 @@ namespace GunBeep
 
         static bool IsEnglish(IntPtr hkl) => ((long)hkl & 0x3FF) == 0x09;     // LANG_ENGLISH (ทุกประเทศ)
 
+        // ภาษาแป้นพิมพ์ของหน้าต่างที่อยู่ข้างหน้า (เกม) เป็นอังกฤษไหม
+        static bool GameKeyboardEnglish()
+        {
+            IntPtr fg = GetForegroundWindow();
+            return fg == IntPtr.Zero || IsEnglish(GetKeyboardLayout(GetWindowThreadProcessId(fg, out _)));
+        }
+
         void WatchLanguage(bool front, bool playing)
         {
             if (cfg.AutoEnglish && playing && !playingWas)
@@ -1370,6 +1377,9 @@ namespace GunBeep
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
             // ปุ่มในเกม (เลขปืน รีโหลด ย่อ/หมอบ Tab) นับเฉพาะตอนเกมอยู่หน้าจอ — พิมพ์เลขในแอปอื่นแล้วค่าเปลี่ยน = บัค
             bool game = GameInFront();
+            // แป้นภาษาไทยในเกม: PUBG อ่านปุ่มตามตัวอักษร → เลข/ตัวอักษร (1 2 3, C, Z, B, I …) ไม่ทำงานในเกม
+            //   ถ้าโปรแกรมยังนับ = เปลี่ยนปืน/ท่า/โหมดเองทั้งที่ในเกมไม่เปลี่ยน → ไม่นับปุ่มพวกนี้ตอนหน้าต่างเกมไม่ใช่ภาษาอังกฤษ
+            if (game && vk >= 0x30 && vk <= 0x5A && !GameKeyboardEnglish()) game = false;
             if (game) StanceKey(vk);                             // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
             if (game && (vk == 0x09 || vk == 0x49 || vk == 0x1B))   // Tab / I / Esc
             {

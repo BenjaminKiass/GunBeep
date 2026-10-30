@@ -408,3 +408,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   mode (default = auto if the gun has it). S/B → engine.Semi kick per click (KickOf: SemiKick or 0.65 for auto
   guns); B = kick × BurstN spread over n shots. MG3 F = 990 rpm (×1.5 gear, ms 61). User: tap guns kicked too hard
   → SemiKick ×0.6; MG3 overpulled → 0.85 (normal mode 660 rpm, ms 91); Beryl/AKM/Groza −6–8%.
+- Thai keyboard in PUBG: the game ignores letter/digit keys (it reads characters), so OnKey ignores VK 0x30–0x5A while the foreground window's layout is not English (GameKeyboardEnglish).
