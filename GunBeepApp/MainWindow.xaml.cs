@@ -967,6 +967,10 @@ namespace GunBeep
                         slotInfo[s] = null;
                     }
                     slotEmpty[s] = true;
+                    // ถือช่องที่ว่างไม่ได้ในเกม → ถ้าอีกช่องมีปืน แปลว่าถือปืนนั้นอยู่
+                    int o = 3 - s;
+                    if (magSlot == s && !slotEmpty[o] && slotInfo[o] != null) { Log.Info($"slot {s} empty → holding slot {o}"); MagSlotTo(o); }
+                    if (heldSlot == s && !slotEmpty[o] && slotInfo[o] != null) heldSlot = o;
                 }
                 ApplyScope("scan");
             }
@@ -1146,14 +1150,16 @@ namespace GunBeep
             if (Playing() && DateTime.Now - lastMagWheel > TimeSpan.FromMilliseconds(180))   // หมุนหลายแก๊กติดกัน = สลับครั้งเดียว
             {
                 lastMagWheel = DateTime.Now;
-                MagSlotTo(magSlot == 1 ? 2 : 1);                // ลูกกลิ้ง = สลับปืนหลัก/รอง (โดยประมาณ)
+                int other = magSlot == 1 ? 2 : 1;
+                if (!slotEmpty[other]) MagSlotTo(other);         // ลูกกลิ้ง = สลับปืนหลัก/รอง (โดยประมาณ) — อีกช่องว่าง = ไม่สลับ
             }
             if (cfg.ScopeAuto)
             {
                 if (Playing() && DateTime.Now - lastWheel > TimeSpan.FromMilliseconds(180))
                 {
                     lastWheel = DateTime.Now;
-                    HeldSlotTo(heldSlot == 1 ? 2 : 1, "wheel");
+                    int other = heldSlot == 1 ? 2 : 1;
+                    if (!slotEmpty[other]) HeldSlotTo(other, "wheel");
                 }
                 return;                                          // ตรวจสโคปเลือกชุดให้แทน "สลับปืนตามช่อง"
             }
@@ -1428,8 +1434,12 @@ namespace GunBeep
             {
                 if (ScopeKeyPressed(vk)) return;
                 if (vk == 0x42 && !CursorShown()) FireModeKey();                         // B = เปลี่ยนโหมดยิง
-                if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);          // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
-                if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { HeldSlotTo(si + 1, "weapon key"); return; }
+                // กดปุ่มช่องปืนที่ว่าง = ในเกมไม่เปลี่ยนอาวุธ (ยังถือปืนเดิม) → โปรแกรมก็ไม่เปลี่ยน
+                //   (เคยเปลี่ยนเป็น "ช่องนี้ไม่มีปืน" แล้วหยุดดึง ทั้งที่ยังยิง AUG อยู่)
+                bool toEmpty = WeaponSlotOf(vk) is int we and (1 or 2) && slotEmpty[we];
+                if (toEmpty) Log.Info($"weapon key to empty slot {WeaponSlotOf(vk)} → keep holding slot {magSlot}");
+                else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);   // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
+                if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { if (!slotEmpty[si + 1]) HeldSlotTo(si + 1, "weapon key"); return; }
                 if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
             }
 

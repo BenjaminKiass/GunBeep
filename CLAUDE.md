@@ -419,3 +419,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   panel's gun-picture feature (≤ 8 per gun, skins included). Kill-feed text covering the name/badge → the gun is
   recognised from its picture (≥ 0.80, margin 0.06); a panel whose picture area is still sharp (PicSharp ≥ 8) is
   never marked empty.
+- Weapon key / wheel to a slot known to be empty is ignored (the game keeps the current gun). Bug 2026-10-31: pressing the empty slot-2 key paused the macro ('no gun in slot') while the user kept firing the AUG. When a held slot is confirmed empty and the other slot has a gun, magSlot/heldSlot move to it.
