@@ -386,3 +386,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   learned only from sprays with Shift held ≥ 80% — then the whole level error goes to that key; 20–80% = no level
   learning). ViewTracker keeps a separate k for "+shift" (1x sights zoom in) and drops windows where Shift toggled.
 - Stance: counted while PUBG is in front with no cursor (not Playing(), which stays false 0.6 s after closing the inventory and lost C/Z presses). Crouch + sprint (LShift with W, not ADS) = stand.
+- ReadGun: after the 3 whole-box OCR passes, crops tight to the white text and OCRs again (bw x4, bw x6, colour x5). MP9 went from 0 to 45/49 real panels. QuickDraw-only mag detection confirmed correct by the user (2026-10-30).

@@ -395,7 +395,23 @@ namespace GunBeep
             catch (Exception ex) { Log.Error("ocr read", ex); return ""; }
         }
 
-        // อ่านชื่อปืน: OCR แบบปกติ → แบบขาวดำ → แบบขาวดำขยาย 4 เท่า → เทียบหน้าตาตัวหนังสือที่จำไว้
+        // ตัวหนังสือขาว (ทุกสี > 200): ตัดกรอบแน่น + ขอบ 4 px, null = ไม่มีตัวหนังสือ
+        static Bitmap TightText(Bitmap c)
+        {
+            int x0 = c.Width, x1 = -1, y0 = c.Height, y1 = -1;
+            for (int y = 0; y < c.Height; y++)
+                for (int x = 0; x < c.Width; x++)
+                {
+                    var p = c.GetPixel(x, y);
+                    if (Math.Min(p.R, Math.Min(p.G, p.B)) <= 200) continue;
+                    x0 = Math.Min(x0, x); x1 = Math.Max(x1, x); y0 = Math.Min(y0, y); y1 = Math.Max(y1, y);
+                }
+            if (x1 - x0 < 4 || y1 - y0 < 4) return null;
+            var r = Rectangle.FromLTRB(Math.Max(0, x0 - 4), Math.Max(0, y0 - 4), Math.Min(c.Width, x1 + 5), Math.Min(c.Height, y1 + 5));
+            return c.Clone(r, PixelFormat.Format24bppRgb);
+        }
+
+        // อ่านชื่อปืน: OCR แบบปกติ → แบบขาวดำ → แบบขาวดำขยาย 4 เท่า → ตัดกรอบตัวหนังสือแล้วอ่านอีก 3 แบบ → เทียบหน้าตาตัวหนังสือที่จำไว้
         //   OCR อ่านออกเมื่อไหร่ จำหน้าตาตัวหนังสือชื่อนั้นไว้ (ตัวเลข ไม่ใช่ภาพ, saved\names.json)
         //   ทดสอบกับภาพจริง 385 แผง: OCR แบบเดียวอ่านออก 80%, สามแบบรวมกัน 89%, + หน้าตาที่จำไว้ = ที่เหลือ
         public static async Task<(string key, string name, string raw)> ReadGun(Bitmap crop)
@@ -408,6 +424,15 @@ namespace GunBeep
                 var m = RecoilCalc.MatchGun(raw);
                 if (m.key != null) { LearnNameShape(crop, m.key); return (m.key, m.name, raw); }
             }
+            // ตัดกรอบเฉพาะตัวหนังสือก่อน (ชื่อสั้นอย่าง "MP9" มีที่ว่างรอบเยอะ OCR เลยไม่อ่าน — ตัดแล้วอ่านออกทุกภาพที่ทดสอบ)
+            using (var tight = TightText(crop))
+                if (tight != null)
+                    foreach (var (mode, scale) in new[] { (1, 4), (1, 6), (0, 5) })
+                    {
+                        string raw = await ReadName(tight, mode, scale);
+                        var m = RecoilCalc.MatchGun(raw);
+                        if (m.key != null) { LearnNameShape(crop, m.key); return (m.key, m.name, raw + " (tight)"); }
+                    }
             var s = MatchNameShape(crop);
             return s != null ? (s, RecoilCalc.GunNames.First(g => g.key == s).name, first + " (shape)") : (null, null, first);
         }
