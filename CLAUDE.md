@@ -420,3 +420,4 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   recognised from its picture (≥ 0.80, margin 0.06); a panel whose picture area is still sharp (PicSharp ≥ 8) is
   never marked empty.
 - Weapon key / wheel to a slot known to be empty is ignored (the game keeps the current gun). Bug 2026-10-31: pressing the empty slot-2 key paused the macro ('no gun in slot') while the user kept firing the AUG. When a held slot is confirmed empty and the other slot has a gun, magSlot/heldSlot move to it.
+- 2026-10-31: attachment weight RecoilCalc.AttEffect = 0.5 (bare AKM/M416 overpulled with the full 'missing brake+thumb' ×1.23). New Real templates from the user's AUG test: light, angled, laser grips, supp_ar (tactical stock still missing: the slot was hovered in every frame).

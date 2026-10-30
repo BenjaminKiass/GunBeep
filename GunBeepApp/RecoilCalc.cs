@@ -378,8 +378,12 @@ namespace GunBeep
 
         // ---------------------------------------------------------------- รวม
         // ของแต่งชิ้นนี้คูณแรงดึงเท่าไหร่: รู้ชนิด = ตัวเลขจากเกม, ติดแต่ไม่แน่ใจชนิด = ค่ากลาง (ตั้งได้)
+        //   น้ำหนักของแต่ง ×0.5: ตัวเลข "+10%" ในป้ายเกมไม่ได้ลดแรงดีด 10% ตรงๆ — ผู้ใช้ 2026-10-31: ปืนไม่ติดของแต่ง (AKM, M416)
+        //   ถูกชดเชย "ขาดเบรก+กริป" ×1.23 แล้วดึงแรงเกินทั้งคู่ (ตารางจูนตอน AUG ติดเบรก+กริปหัวแม่มือ)
+        public const double AttEffect = 0.5;
+
         public static double AttFactor(bool has, string id, double defPct) =>
-            !has ? 1 : AttachmentId.Get(id) is AttachmentId.Item it ? 1 - it.Vertical / 100 : 1 + defPct / 100;
+            !has ? 1 : AttachmentId.Get(id) is AttachmentId.Item it ? 1 - it.Vertical / 100 * AttEffect : 1 + defPct / 100 * AttEffect;
 
         public static double DefPct(CalcSettings c, int slot) => slot == 0 ? c.MuzzlePct : slot == 1 ? c.GripPct : c.StockPct;
 
