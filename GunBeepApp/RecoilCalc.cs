@@ -178,6 +178,13 @@ namespace GunBeep
         public const double SingleKick = 0.65;
         public static double KickOf(string gk) => gk != null && SemiKick.TryGetValue(gk, out double v) ? v : SingleKick;
 
+        // ปืนที่ไม่ดึงเลย: สไนเปอร์ขึ้นลำ / ลูกซอง / ยิงระเบิด / หน้าไม้ (ยิงทีละนัดแล้วต้องเล็งใหม่ ดึงลง = เป้าหลุด)
+        public static readonly HashSet<string> NoPull = new()
+        {
+            "KAR98K", "M24", "AWM", "MOSIN", "LYNX", "WIN94", "S12K", "S1897", "S686", "DBS", "O12", "SAWED",
+            "CROSSBOW", "PANZERFAUST", "M79", "MGL",
+        };
+
         public static double GunFactor(CalcSettings c, string gunKey)
         {
             double Of(string k) => k != null && BuiltinGun.TryGetValue(k, out double v) ? v : 1;

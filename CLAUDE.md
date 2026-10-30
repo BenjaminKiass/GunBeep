@@ -409,3 +409,6 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   guns); B = kick × BurstN spread over n shots. MG3 F = 990 rpm (×1.5 gear, ms 61). User: tap guns kicked too hard
   → SemiKick ×0.6; MG3 overpulled → 0.85 (normal mode 660 rpm, ms 91); Beryl/AKM/Groza −6–8%.
 - Thai keyboard in PUBG: the game ignores letter/digit keys (it reads characters), so OnKey ignores VK 0x30–0x5A while the foreground window's layout is not English (GameKeyboardEnglish).
+- Empty weapon slot (panel without badge, confirmed twice) clears slotInfo and sets slotEmpty → pause "no gun in slot"
+  while that slot is held. RecoilCalc.NoPull (bolt snipers, shotguns, launchers, crossbow) → pause, never pull.
+- Fast loot key while playing (no cursor): taps Tab (tagged injected key), waits for the cursor, loots, then taps Tab again to close. With the inventory already open it only loots (as before). Scope templates: +13 8x from Mk47/SKS samples (gun art under the slot differed; scores sat at 0.53–0.61).

@@ -411,6 +411,7 @@ namespace GunBeep
             string why = null;
             if (on && magEmpty) { want = true; why = "mag empty"; }
             else if (on && cfg.HolsterPause && magSlot == 0) { want = true; why = "grenade / melee / holstered"; }
+            else if (on && NoPullReason() is string np) { want = true; why = np; }
             else if (cfg.PauseInMenu && on && gameWas)
             {
                 if (!GameInFront()) { want = true; why = "game not in front"; }
@@ -890,6 +891,8 @@ namespace GunBeep
                     return res;
                 });
                 if (panels == null) return;
+                // แผงไหนไม่มีป้ายเลข = ช่องปืนนั้นว่าง (อ่านก่อนกันหลอนเปลี่ยน Slot)
+                var hadBadge = panels.Select(x => x.Slot != 0).ToArray();
                 foreach (var p in panels)
                 {
                     if (p.Slot is not (1 or 2)) continue;
@@ -934,6 +937,21 @@ namespace GunBeep
                     slotInfo[p.Slot] = p;
                 }
                 foreach (var p in panels) if (p.Slot is not (1 or 2)) p.Icon?.Dispose();
+                // ช่องว่าง (เห็นซ้ำ 2 รอบ) → ลืมปืนเก่าของช่องนั้น → ถือช่องนั้นอยู่ = ไม่ดึง
+                for (int i = 0; i < 2 && i < hadBadge.Length; i++)
+                {
+                    int s = i + 1;
+                    if (hadBadge[i]) { slotEmpty[s] = false; continue; }
+                    if (slotInfo[s] != null)
+                    {
+                        if (!Confirmed(s, "empty", "gun", "empty")) continue;
+                        Log.Info($"scope scan: slot {s} empty (was {slotInfo[s].Name})");
+                        slotInfo[s].Icon?.Dispose();
+                        if (slotInfo[s].AttIcons != null) foreach (var ai in slotInfo[s].AttIcons) ai?.Dispose();
+                        slotInfo[s] = null;
+                    }
+                    slotEmpty[s] = true;
+                }
                 ApplyScope("scan");
             }
             catch (Exception ex) { Log.Error("scope scan", ex); }
@@ -2296,14 +2314,34 @@ namespace GunBeep
             new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, cfg.LootKey }.Concat(ScopeKeys).Contains(vk)
             || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1);
 
-        // ในเกมเปิดกระเป๋าอยู่ (เคอร์เซอร์โผล่) → ลากของให้; นอกนั้นไม่ทำอะไร
-        void LootKeyPressed()
+        // เก็บของเร็ว: เปิดกระเป๋าอยู่ = เก็บเลย; กำลังเล่น (วิ่งอยู่) = กด Tab เปิดให้ → เก็บ → กด Tab ปิดให้
+        async void LootKeyPressed()
         {
-            if (!GameInFront() || !CursorShown()) return;
+            if (!GameInFront()) return;
             var hwnd = GetForegroundWindow();
-            bool started = Loot.Run(cfg, () => GetForegroundWindow() == hwnd && CursorShown(),
-                moved => Log.Info($"loot: {moved} slot(s)"));
-            if (!started) Log.Info("loot: stopped by key");
+            bool StillOk() => GetForegroundWindow() == hwnd && CursorShown();
+            if (Loot.Busy) { Loot.Run(cfg, StillOk, null); Log.Info("loot: stopped by key"); return; }
+            bool opened = false;
+            if (!CursorShown())
+            {
+                invKeyAt = DateTime.Now;                          // ให้ระบบตรวจปืนนับว่าเปิดกระเป๋าด้วย Tab
+                KeyHook.Tap(0x09, 0x0F, false);
+                for (int i = 0; i < 20 && !CursorShown(); i++) await Task.Delay(30);
+                if (!CursorShown()) { Log.Info("loot: inventory did not open"); return; }
+                await Task.Delay(120);                            // รอหน้ากระเป๋าวาดเสร็จ
+                opened = true;
+            }
+            Loot.Run(cfg, StillOk, moved => Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                Log.Info($"loot: {moved} slot(s)");
+                if (!opened) return;
+                await Task.Delay(80);
+                if (GetForegroundWindow() == hwnd && CursorShown())
+                {
+                    invCloseKeyAt = DateTime.Now;
+                    KeyHook.Tap(0x09, 0x0F, false);                // ปิดกระเป๋าที่เปิดให้
+                }
+            })));
         }
 
         void ShotsMoved(int n)

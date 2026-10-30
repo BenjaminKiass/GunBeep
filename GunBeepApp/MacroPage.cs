@@ -316,6 +316,8 @@ namespace GunBeep
         {
             "mag empty" => "แม็กหมด กด R",
             "grenade / melee / holstered" => "ถือระเบิด/มีด",
+            "no gun in slot" => "ช่องนี้ไม่มีปืน",
+            "gun without recoil control" => "ปืนนี้ไม่ดึง (สไนเปอร์/ลูกซอง)",
             "game not in front" => "ไม่ได้อยู่ในเกม",
             "cursor shown (inventory/map/menu)" => "เปิดกระเป๋า/แผนที่",
             _ => why ?? ""
@@ -1146,6 +1148,17 @@ namespace GunBeep
             if (p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi))
                 return p.ExtMag ? gi.ext : gi.mag;
             return cfg.MaxShots;
+        }
+
+        // ช่องปืนที่เห็นว่าว่างจากหน้ากระเป๋า (ยังไม่เคยเปิดกระเป๋า = ไม่รู้ = ไม่ถือว่าว่าง)
+        readonly bool[] slotEmpty = new bool[3];
+
+        // ถือช่องว่าง / ปืนที่ไม่ต้องดึง → หยุดดึง (เดิมไม่ได้ถือปืนแต่คลิกขวา+ซ้ายก็ยังดึงด้วยค่าปืนเก่า)
+        string NoPullReason()
+        {
+            if (!cfg.ScopeAuto || magSlot is not (1 or 2)) return null;
+            if (slotEmpty[magSlot]) return "no gun in slot";
+            return SlotGunKey(magSlot) is string gk && RecoilCalc.NoPull.Contains(gk) ? "gun without recoil control" : null;
         }
 
         string SlotGunKey(int slot) => SlotPanelOf(slot) is ScopeDetect.Panel p ? RecoilCalc.GunKey(p.Name) : null;
