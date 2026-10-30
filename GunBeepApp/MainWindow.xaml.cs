@@ -907,6 +907,18 @@ namespace GunBeep
                     if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
                         for (int k = 0; k < 4; k++)
                             if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
+                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (แยกชื่อปืน / สโคป / ของแต่งแต่ละช่อง)
+                    //   ภาพที่เก็บไว้ 720 จังหวะ: 11–14% ของการเปลี่ยนเป็นการอ่านแวบรอบเดียวแล้วกลับ (เกมวาดแผงใหม่/ลากของ)
+                    if (old != null)
+                    {
+                        if (!Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
+                        if (!Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
+                        if (p.Att != null && old.Att != null)
+                            for (int k = 0; k < 4; k++)
+                                if (!Confirmed(p.Slot, "att" + k, $"{old.Att[k]}|{old.AttId?[k]}", $"{p.Att[k]}|{p.AttId?[k]}"))
+                                { p.Att[k] = old.Att[k]; if (p.AttId != null) p.AttId[k] = old.AttId?[k]; }
+                    }
                     string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p + " att " + attSig(p));
                     else if (attSig(old) != attSig(p)) Log.Info($"scope scan: slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
@@ -922,6 +934,18 @@ namespace GunBeep
         }
 
         string lastScopeSeen;
+
+        // ค่าที่รอยืนยัน: ช่อง:ส่วน → ค่าใหม่ที่เห็นรอบก่อน
+        readonly Dictionary<string, string> pendingRead = new();
+
+        bool Confirmed(int slot, string field, string oldV, string newV)
+        {
+            string k = slot + ":" + field;
+            if (oldV == newV) { pendingRead.Remove(k); return true; }
+            if (pendingRead.TryGetValue(k, out var pv) && pv == newV) { pendingRead.Remove(k); return true; }
+            pendingRead[k] = newV;                               // เห็นครั้งแรก → รอรอบหน้า
+            return false;
+        }
 
         // ใช้ชุดค่าตามสโคปของปืนที่ถืออยู่ + คำนวณตัวคูณ ปืน × สโคป × ของแต่ง
         void ApplyScope(string why)
