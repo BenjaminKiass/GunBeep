@@ -358,3 +358,11 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   → ScopeDetect.Teach(icon) into saved\\scopes (refused when the icon is obscured or has no teal pixels).
   Built-in templates: 4x 39, reddot 20, 6x 18, 3x 1 — no 2x/holo/8x/15x yet.
 - Game keys (weapon numbers, reload, stance, Tab, scope keys) are ignored unless PUBG is the foreground window.
+- 2026-10-30 user screenshots of every in-game item tooltip: %USERPROFILE%\Downloads\มาโครพับจี\ปืนทั้งหมดบวกของแต่ง.
+  Gun tooltips: mag size, fire modes, stat bars (rate bar ≈ rpm/1000) → GunInfo fixed (FAMAS 30, RPD added).
+  Scope tooltip icons do NOT match slot icons well by gradient NCC (~0.4; 4x↔15x confusion) → not used as templates.
+- Empty scope slot = top band (6–40% height) luminance sd < 12 (empty 0–6, any scope incl. 3x 21–31). The teal rule was
+  wrong: 2x/3x icons have no teal.
+- Mag slot: the gun's own magazine art overlaps the top of the slot (AKM/Beryl/Mk47 read "extended" → 40 instead of 30).
+  Now has = bottom band (56–94%) sd ≥ 15; teal ≥ 3% = QuickDraw only (no extra rounds) else extended. No real
+  equipped-mag sample yet — thresholds from tooltip icons, unverified in slots.

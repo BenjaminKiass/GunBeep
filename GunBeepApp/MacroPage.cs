@@ -263,7 +263,7 @@ namespace GunBeep
         static string GunClass(string key) => key switch
         {
             "UMP" or "VECTOR" or "MICRO" or "UZI" or "TOMMY" or "MP5K" or "PP19" or "BIZON" or "P90" or "JS9" or "MP9" => "SMG",
-            "DP28" or "M249" or "MG3" => "LMG",
+            "DP28" or "M249" or "MG3" or "RPD" => "LMG",
             "MINI14" or "SKS" or "SLR" or "MK12" or "QBU" or "VSS" or "MK14" or "DRAGUNOV" => "DMR",
             "KAR98K" or "M24" or "AWM" or "MOSIN" or "LYNX" or "WIN94" => "SNIPER",
             null => "ปืน",
@@ -292,7 +292,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- สอนสโคป
         //   สโคปที่ยังไม่รู้จัก (2x, 3x, Holo, 8x, 15x, สโคปมีสกิน …) หรืออ่านผิด → กดเลือกครั้งเดียว จำภาพช่องสโคปนั้นไว้ (saved\\scopes)
         static readonly (string label, string text)[] ScopeChoices =
-            { ("reddot", "Red Dot"), ("holo", "Holo"), ("2x", "2x"), ("3x", "3x"), ("4x", "4x"), ("6x", "6x"), ("8x", "8x"), ("15x", "15x") };
+            { ("reddot", "Red Dot"), ("holo", "Holo"), ("2x", "2x"), ("3x", "3x"), ("4x", "4x"), ("6x", "6x"), ("8x", "8x"), ("15x", "15x"), ("hybrid", "Hybrid") };
         readonly bool[] teachOpen = new bool[3];
 
         static string ScopeName(string label) => ScopeChoices.FirstOrDefault(c => c.label == label).text ?? label;
@@ -331,7 +331,7 @@ namespace GunBeep
             var p = slotInfo[s];
             if (p?.Icon == null) return;
             // ภาพช่องสโคปต้องเห็นไอคอนชัด (ไม่โดนเมาส์ชี้/ป้ายบัง) ไม่งั้นจำภาพผิด
-            if (ScopeDetect.Obscured(p.Icon) || ScopeDetect.TealShare(p.Icon) < 0.005)
+            if (ScopeDetect.Obscured(p.Icon) || ScopeDetect.BandSd(p.Icon, 0.06, 0.40) < 12)
             {
                 PopOsd("ภาพช่องสโคปไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องสโคป แล้วกดเลือกอีกครั้ง");
                 return;
@@ -421,7 +421,7 @@ namespace GunBeep
             // ปืน
             double gf = RecoilCalc.GunFactor(c, gk);
             string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
-                ? $" · แม็ก {(p.Att != null && p.Att[2] ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
+                ? $" · แม็ก {(p.ExtMag ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
             if (gk != null && RecoilCalc.SemiKick.ContainsKey(gk)) magTxt += " · ปืนเคาะ: ดึงทีละนัด";
             string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
             root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}",
@@ -939,7 +939,7 @@ namespace GunBeep
         {
             var p = SlotPanelOf(slot);
             if (p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi))
-                return p.Att != null && p.Att[2] ? gi.ext : gi.mag;
+                return p.ExtMag ? gi.ext : gi.mag;
             return cfg.MaxShots;
         }
 

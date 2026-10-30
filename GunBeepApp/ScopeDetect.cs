@@ -36,6 +36,7 @@ namespace GunBeep
             public bool[] Att;                        // ของแต่ง: [0] ปากกระบอก, [1] กริป, [3] พานท้าย
             public string[] AttId;                    // ชนิดของแต่งที่รู้จัก (AttachmentId), null = ไม่แน่ใจ
             public bool[] AttUnsure;                  // ช่องที่เมาส์ชี้อยู่ (พื้นขาว) → อ่านรอบนี้ไม่ได้ ใช้ค่าเดิม
+            public bool ExtMag => Att != null && Att[2] && AttId?[2] != "quickdraw";   // แม็ก QuickDraw อย่างเดียวไม่เพิ่มนัด
             public Bitmap Pic;                        // ภาพปืนจากหน้ากระเป๋าของผู้ใช้ (ไว้โชว์ในหน้ามาโคร)
             public object PicUi;                      // ภาพเดียวกันแบบ WPF (แปลงครั้งเดียว)
             public double Score;
@@ -215,7 +216,7 @@ namespace GunBeep
             "AKM", "M416", "BERYL", "MK12", "SCAR", "AUG", "ACE32", "QBZ", "G36C", "K2", "FAMAS", "M16A4", "GROZA", "MK47",
             "SLR", "SKS", "MINI14", "MK14", "QBU", "VSS", "UMP", "VECTOR", "MICRO", "UZI", "TOMMY", "MP5K", "PP19", "BIZON", "P90",
             "JS9", "MP9", "DP28", "M249", "MG3", "KAR98K", "M24", "AWM", "MOSIN", "LYNX", "WIN94", "S12K", "S1897", "S686", "DBS",
-            "O12", "SAWED", "DRAGUNOV", "P92", "P1911", "P18C", "R1895", "R45", "DEAGLE", "SKORPION", "CROSSBOW", "PANZERFAUST", "M79", "MGL",
+            "O12", "SAWED", "DRAGUNOV", "RPD", "P92", "P1911", "P18C", "R1895", "R45", "DEAGLE", "SKORPION", "CROSSBOW", "PANZERFAUST", "M79", "MGL",
         };
 
         static bool IsGunWord(string w)
@@ -550,6 +551,23 @@ namespace GunBeep
             return n > 0 && (double)l / n > 0.3;
         }
 
+        // ความต่างของความสว่าง (sd 0–255) ในแถบแนวนอนของช่อง (y0–y1 เป็นสัดส่วนความสูง, เว้นขอบซ้ายขวา 8%)
+        public static double BandSd(Bitmap c, double y0, double y1)
+        {
+            double sum = 0, sq = 0;
+            int n = 0;
+            for (int y = (int)(c.Height * y0); y < (int)(c.Height * y1); y++)
+                for (int x = (int)(c.Width * 0.08); x < (int)(c.Width * 0.92); x++)
+                {
+                    var p = c.GetPixel(x, y);
+                    double l = 0.3 * p.R + 0.59 * p.G + 0.11 * p.B;
+                    sum += l; sq += l * l; n++;
+                }
+            if (n == 0) return 0;
+            double m = sum / n;
+            return Math.Sqrt(Math.Max(0, sq / n - m * m));
+        }
+
         // สัดส่วนพิกเซลสีฟ้าอมเขียวสด (สีไอคอนของในกระเป๋า PUBG)
         public static double TealShare(Bitmap c)
         {
@@ -598,9 +616,10 @@ namespace GunBeep
                             }
                         p.Score = best.s;
                         if (best.t != null && best.s >= 0.55 && best.margin >= 0.04) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
-                        // ไม่รู้จัก + ไม่มีสีฟ้าของไอคอนเลย = ช่องว่างที่รูปปืนหรือพื้นหลังทับ (ไอคอนสโคปทุกอันมีสีฟ้า 4–7%, ช่องว่าง 0%)
-                        //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน): ก็ไม่มีสีฟ้า → ไม่แน่ใจ ใช้ค่าเดิม
-                        else if (TealShare(ic) < 0.005 && !Obscured(ic)) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
+                        // ไม่รู้จัก + ส่วนบนของช่องเรียบ = ช่องว่างที่รูปปืนทับแค่ด้านล่าง (รูปปืนเข้ามาจากล่าง, ไอคอนสโคปอยู่กลางช่อง)
+                        //   วัดจากภาพจริง: ช่องว่าง sd 0–6, สโคปทุกแบบรวม 3x sd 21–31 (3x/2x ไม่มีสีฟ้า เลยใช้สีแยกไม่ได้)
+                        //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน) → ไม่แน่ใจ ใช้ค่าเดิม
+                        else if (BandSd(ic, 0.06, 0.40) < 12 && !Obscured(ic)) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
