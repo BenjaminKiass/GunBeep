@@ -408,14 +408,24 @@ namespace GunBeep
                 p.AttUnsure[3] = false;
             }
 
-            // 3. ตรวจสอบของแต่งว่าขัดกับประเภทปืนหรือไม่ หรือช่องที่มีของแต่รอบแรกไม่แน่ใจ
+            // 3. รันระบุของแต่งซ้ำด้วย gunKey ที่รู้แน่ชัด เพื่อให้ IsCompatible กรองเฉพาะของแต่งที่ปืนนี้ใส่ได้จริง
             for (int i = 0; i < 4; i++)
             {
                 if (i == 2) continue; // แม็กกาซีน
-                bool incompatible = p.AttId[i] != null && !AttachmentId.IsCompatible(gunKey, i, p.AttId[i]);
-                bool needRetry = incompatible || (p.AttIcons?[i] != null && p.AttId[i] == null && p.Att[i]);
-                if (needRetry && p.AttIcons?[i] != null)
+                if (i == 1 && !HasGripSlot(gunKey)) continue;
+                if (i == 3 && !HasStockSlot(gunKey)) continue;
+
+                if (p.AttIcons?[i] != null)
                 {
+                    // ถ้าความคมต่ำ (พื้นหลังเบลอ ไม่ใช่ไอคอนจริง) ให้ตัดเป็นไม่ได้ใส่
+                    if (Sharpness(p.AttIcons[i]) < 10)
+                    {
+                        p.Att[i] = false;
+                        p.AttId[i] = null;
+                        p.AttUnsure[i] = false;
+                        continue;
+                    }
+
                     var m = AttachmentId.Identify(p.AttIcons[i], i, gunKey);
                     if (m.item != null)
                     {
@@ -423,7 +433,7 @@ namespace GunBeep
                         p.AttId[i] = m.item.Id;
                         p.AttUnsure[i] = false;
                     }
-                    else if (incompatible)
+                    else
                     {
                         p.Att[i] = false;
                         p.AttId[i] = null;
