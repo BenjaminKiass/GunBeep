@@ -144,7 +144,7 @@ namespace GunBeep
                 if (gunKey == "BERYL") return itemId == "heavy";
                 if (gunKey == "MP5K") return itemId is "tactical" or "heavy" or "folding";
                 if (gunKey == "MICRO") return itemId == "folding";
-                if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR") return itemId is "tactical" or "heavy";
+                if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "M249") return itemId is "tactical" or "heavy";
                 return true;
             }
 
