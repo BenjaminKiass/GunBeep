@@ -499,7 +499,8 @@ namespace GunBeep
             if (ResWanted)
             {
                 var c = Display.Current();
-                if (!(resSwitched && c.w == cfg.GameResW && c.h == cfg.GameResH)) SwitchRes();
+                if (c.w == cfg.GameResW && c.h == cfg.GameResH) resSwitched = true;
+                else if (!resSwitched) SwitchRes();
             }
             else if (resSwitched) RestoreRes();
             if (gameWas) FitGameSoon();
@@ -514,7 +515,7 @@ namespace GunBeep
             {
                 var c = Display.Current();
                 string r = Display.FitWindow("TslGame", c.w, c.h);
-                Log.Info($"fit PUBG window to {c.w}x{c.h}: {r ?? "window not found"}");
+                if (r != null) Log.Info($"fit PUBG window to {c.w}x{c.h}: {r}");
                 if (++n >= 2) t.Stop(); else t.Interval = TimeSpan.FromSeconds(1.5);
             };
             t.Start();
@@ -540,6 +541,8 @@ namespace GunBeep
             tray.ShowBalloonTip(5000, title, text, System.Windows.Forms.ToolTipIcon.None);
         }
 
+        int resFailCount;
+
         void SwitchRes()
         {
             // ยังเป็นจอปกติ → จำตำแหน่งหน้าต่างไว้ คืนจอแล้ววางกลับที่เดิม (ไม่งั้นที่ย่อ/แบ่งจอไว้กลายเป็นเต็มจอ)
@@ -553,17 +556,31 @@ namespace GunBeep
             switch (r)
             {
                 case Display.Result.Ok:
+                case Display.Result.Already:
                     resSwitched = true;
+                    resFailCount = 0;
+                    deferred.RemoveAll(d => d.title.Contains("GunBeep") && d.text.Contains("ความละเอียด"));
                     break;
                 case Display.Result.Missing:
                     resSwitched = false;              // ไม่ลองซ้ำเองทุก 10 วิ
+                    resFailCount = 0;
                     PopOsd("✗  ไม่มีความละเอียด " + res);
                     Notify("GunBeep: ไม่มีความละเอียด " + res, "สร้างใน NVIDIA Control Panel → Change resolution → Customize ก่อน", true);
                     break;
                 case Display.Result.Failed:
+                    if (Display.Current().w == cfg.GameResW && Display.Current().h == cfg.GameResH)
+                    {
+                        resSwitched = true;
+                        resFailCount = 0;
+                        deferred.RemoveAll(d => d.title.Contains("GunBeep") && d.text.Contains("ความละเอียด"));
+                        break;
+                    }
                     resSwitched = false;
-                    PopOsd("✗  เปลี่ยนจอเป็น " + res + " ไม่สำเร็จ");
-                    Notify("GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", true);
+                    if (++resFailCount >= 2)
+                    {
+                        PopOsd("✗  เปลี่ยนจอเป็น " + res + " ไม่สำเร็จ");
+                        Notify("GunBeep", "เปลี่ยนความละเอียดจอไม่สำเร็จ", true);
+                    }
                     break;
             }
         }

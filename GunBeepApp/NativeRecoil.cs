@@ -257,13 +257,14 @@ namespace GunBeep
         [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
 
         const uint MOVE = 0x1;
-        const long MAGIC = 0x47424545;                   // เครื่องหมายเดียวกับปุ่มที่ KeyHook กดเอง
+        const long MAGIC_v1 = 0x47424545;               // ลายเซ็นเดิม v1 ("GBEE")
+        const long MAGIC = 0;                           // v2: Stealth - ล้าง extra info เป็น 0 ป้องกันตรวจจับ
 
         static readonly int InputSize = Marshal.SizeOf<INPUT>();
 
         static void Move(int dx, int dy)
         {
-            var inp = new[] { new INPUT { type = 0, mi = new MOUSEINPUT { dx = dx, dy = dy, flags = MOVE, extra = (IntPtr)MAGIC } } };
+            var inp = new[] { new INPUT { type = 0, mi = new MOUSEINPUT { dx = dx, dy = dy, flags = MOVE, extra = IntPtr.Zero } } };
             SendInput(1, inp, InputSize);
         }
     }

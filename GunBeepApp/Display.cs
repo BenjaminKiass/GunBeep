@@ -68,6 +68,19 @@ namespace GunBeep
 
         public enum Result { Ok, Missing, Failed, Already }
 
+        public static Result Switch_v1(int w, int h)
+        {
+            var cur = Current();
+            if (cur.w == w && cur.h == h) return Result.Already;
+            var modes = Modes().Where(m => m.dmPelsWidth == w && m.dmPelsHeight == h).ToList();
+            if (modes.Count == 0) return Result.Missing;
+            var dm = modes.FirstOrDefault(m => m.dmDisplayFrequency == cur.hz);
+            if (dm.dmPelsWidth == 0) dm = modes.OrderByDescending(m => m.dmDisplayFrequency).First();
+            dm.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+            return ChangeDisplaySettingsEx(null, ref dm, IntPtr.Zero, CDS_FULLSCREEN, IntPtr.Zero) == DISP_CHANGE_SUCCESSFUL
+                ? Result.Ok : Result.Failed;
+        }
+
         public static Result Switch(int w, int h)
         {
             var cur = Current();
@@ -78,8 +91,11 @@ namespace GunBeep
             var dm = modes.FirstOrDefault(m => m.dmDisplayFrequency == cur.hz);
             if (dm.dmPelsWidth == 0) dm = modes.OrderByDescending(m => m.dmDisplayFrequency).First();
             dm.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
-            return ChangeDisplaySettingsEx(null, ref dm, IntPtr.Zero, CDS_FULLSCREEN, IntPtr.Zero) == DISP_CHANGE_SUCCESSFUL
-                ? Result.Ok : Result.Failed;
+            int ret = ChangeDisplaySettingsEx(null, ref dm, IntPtr.Zero, CDS_FULLSCREEN, IntPtr.Zero);
+            if (ret == DISP_CHANGE_SUCCESSFUL) return Result.Ok;
+            // fallback เป็นโหมดปกติหาก CDS_FULLSCREEN คืนค่าล้มเหลว
+            ret = ChangeDisplaySettingsEx(null, ref dm, IntPtr.Zero, 0, IntPtr.Zero);
+            return ret == DISP_CHANGE_SUCCESSFUL ? Result.Ok : Result.Failed;
         }
 
         // กลับเป็นความละเอียดที่ตั้งไว้ใน Windows

@@ -17,7 +17,8 @@ namespace GunBeep
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
 
         const uint MOVE = 0x1, LEFTDOWN = 0x2, LEFTUP = 0x4, ABSOLUTE = 0x8000;
-        const long MAGIC = 0x47424545;                   // เครื่องหมายเดียวกับปุ่มที่ KeyHook กดเอง
+        const long MAGIC_v1 = 0x47424545;               // ลายเซ็นเดิม v1 ("GBEE")
+        const long MAGIC = 0;                           // v2: Stealth - ล้าง extra info เป็น 0
 
         static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 16, 10 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
 
@@ -75,7 +76,7 @@ namespace GunBeep
 
         static void Send(uint flags, int dx = 0, int dy = 0)
         {
-            var inp = new[] { new INPUT { type = 0, mi = new MOUSEINPUT { dx = dx, dy = dy, flags = flags, extra = (IntPtr)MAGIC } } };
+            var inp = new[] { new INPUT { type = 0, mi = new MOUSEINPUT { dx = dx, dy = dy, flags = flags, extra = IntPtr.Zero } } };
             SendInput(1, inp, Marshal.SizeOf<INPUT>());
         }
     }

@@ -167,6 +167,26 @@ namespace GunBeep
             ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
+        // แรงดึงแกนแนวนอน (X-axis) ชดเชยการปัดซ้าย/ขวาตามธรรมชาติของแต่ละปืน (+ ดึงขวา, - ดึงซ้าย)
+        //   BERYL ดีดขวาแรง → ดึงซ้ายชดเชย (-1.0)
+        //   AUG ดีดซ้าย → ดึงขวาชดเชย (+0.6)
+        //   ACE32 / AKM / GROZA ดีดขวาเล็กน้อย → ดึงซ้ายชดเชย (-0.5 ถึง -0.6)
+        public static readonly Dictionary<string, double> BuiltinGunX_v1 = new(); // เดิมไม่มี = 0
+        public static readonly Dictionary<string, double> BuiltinGunX = new()
+        {
+            ["BERYL"] = -1.0,
+            ["AUG"] = 0.6,
+            ["ACE32"] = -0.6,
+            ["AKM"] = -0.5,
+            ["GROZA"] = -0.5,
+            ["FAMAS"] = -0.4,
+            ["M416"] = 0.0,
+            ["SCAR"] = 0.0,
+            ["G36C"] = 0.0,
+            ["QBZ"] = 0.0,
+            ["K2"] = 0.0,
+        };
+
         // แม็กปกติ, แม็กขยาย, เวลาต่อนัด (ms) ตอนยิงออโต้ — ค่าที่ผู้เล่นรู้กันทั่วไป (ไม่ใช่ข้อมูลทางการ อาจต่างตามแพตช์)
         //   2026-10-30: แม็กปกติ + เวลาต่อนัด เทียบกับป้ายปืนในเกมที่ผู้ใช้แคป (แถบอัตรายิง ≈ นัดต่อนาที ÷ 1000; AKM 0.60, M416 0.70, FAMAS 0.90)
         public static readonly Dictionary<string, (int mag, int ext, double ms)> GunInfo = new()
