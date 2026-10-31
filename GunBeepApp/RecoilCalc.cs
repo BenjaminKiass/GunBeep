@@ -314,7 +314,9 @@ namespace GunBeep
 
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
-        static readonly double[] SlotDx = { 0.009, 0.104, 0.206, 0.308 };
+        // ค่าเดิม v1 สำรองไว้กันบั๊ก: 0.308 เดิมคำนวณพลาดคิดว่าห่างเท่าๆ กัน แต่ในเกมจริงช่องพานท้ายอยู่ขวาสุดใต้ท้ายปืน (dx ~ 0.401)
+        public static readonly double[] SlotDx_v1 = { 0.009, 0.104, 0.206, 0.308 };
+        public static readonly double[] SlotDx = { 0.009, 0.104, 0.206, 0.401 };
         const double SlotDy = 0.140, SlotSize = 0.044;
 
         public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids, out bool[] unsure)
