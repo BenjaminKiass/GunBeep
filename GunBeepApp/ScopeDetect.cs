@@ -44,6 +44,7 @@ namespace GunBeep
             public double Score;
             public string ScopeLabel = "?";
             public string Name = "";
+            public bool Obscured;                                     // แผงโดนบัง (เมาส์ชี้ หรือ Killfeed ลอยทับ)
             public override string ToString() => $"slot {Slot} {Name} scope {ScopeLabel} ({Score:0.00}) set {Set}";
         }
 
@@ -627,8 +628,8 @@ namespace GunBeep
             catch (Exception ex) { Log.Error("read pubg keys", ex); return null; }
         }
 
-        // ช่องโดนบัง: เทาอ่อน/ขาว (ทุกสี > 150, ต่างกัน < 30) เกิน 30% — วัดจากภาพจริง: เมาส์ชี้ 98–99%, ป้ายบัง 81%, ช่องปกติ 0–2%
-        public static bool Obscured(Bitmap c)
+        // ช่องโดนบัง (เวอร์ชันเดิม v1 กันบั๊ก): ตรวจเฉพาะสีขาว/เทาอ่อน
+        public static bool Obscured_v1(Bitmap c)
         {
             int n = 0, l = 0;
             for (int y = 0; y < c.Height; y += 2)
@@ -640,6 +641,29 @@ namespace GunBeep
                     if (mn > 150 && mx - mn < 30) l++;
                 }
             return n > 0 && (double)l / n > 0.3;
+        }
+
+        // ช่องโดนบัง: เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อน > 30%) หรือ แถบ Killfeed บัง (> 8%)
+        public static bool Obscured(Bitmap c)
+        {
+            if (c == null || c.Width < 4 || c.Height < 4) return false;
+            int n = 0, whiteHover = 0, kf = 0;
+            for (int y = 0; y < c.Height; y += 2)
+                for (int x = 0; x < c.Width; x += 2)
+                {
+                    var p = c.GetPixel(x, y);
+                    n++;
+                    int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                    if (mn > 150 && mx - mn < 30) whiteHover++;
+
+                    // แถบ Killfeed: ไอคอนปืน/X สี Cyan, ป้ายเลขทีมสีน้ำเงินสด, ป้ายศัตรูสีแดงสด, หรือพื้นหลังแถบน้ำเงินเข้ม
+                    bool isCyan = p.G > 160 && p.B > 160 && p.R < 115;
+                    bool isBlue = p.B > 170 && p.B > p.R + 70 && p.G < 160;
+                    bool isRed = p.R > 180 && p.R > p.B + 70 && p.G < 120;
+                    bool isSlate = p.B > p.R + 25 && p.B >= 55 && p.B <= 140 && p.R < 65 && p.G < 95;
+                    if (isCyan || isBlue || isRed || isSlate) kf++;
+                }
+            return n > 0 && ((double)whiteHover / n > 0.30 || (double)kf / n > 0.08);
         }
 
         // ความต่างของความสว่าง (sd 0–255) ในแถบแนวนอนของช่อง (y0–y1 เป็นสัดส่วนความสูง, เว้นขอบซ้ายขวา 8%)
@@ -687,10 +711,17 @@ namespace GunBeep
                 var p = new Panel();
                 // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
                 //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
-                using (var b = Crop(shot, badge)) p.Slot = ReadSlot(b) != 0 ? i + 1 : 0;
+                using (var b = Crop(shot, badge))
+                {
+                    bool obs = Obscured(b);
+                    p.Slot = ReadSlot(b) != 0 ? i + 1 : (obs ? i + 1 : 0);
+                    if (obs) p.Obscured = true;
+                }
                 using (var ic = Crop(shot, icon))
                 {
-                    if (Detail(ic) < 0.035) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
+                    bool icObs = Obscured(ic);
+                    if (icObs) p.Obscured = true;
+                    if (Detail(ic) < 0.035 && !icObs) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
                     else
                     {
                         // ลองเลื่อนกรอบ ±2–4 px เผื่อตั้งจุดเพี้ยนนิดหน่อย เอาตำแหน่งที่ตรงที่สุด
@@ -711,7 +742,7 @@ namespace GunBeep
                         // ไม่รู้จัก + ส่วนบนของช่องเรียบ = ช่องว่างที่รูปปืนทับแค่ด้านล่าง (รูปปืนเข้ามาจากล่าง, ไอคอนสโคปอยู่กลางช่อง)
                         //   วัดจากภาพจริง: ช่องว่าง sd 0–6, สโคปทุกแบบรวม 3x sd 21–31 (3x/2x ไม่มีสีฟ้า เลยใช้สีแยกไม่ได้)
                         //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน) → ไม่แน่ใจ ใช้ค่าเดิม
-                        else if (BandSd(ic, 0.06, 0.40) < 12 && !Obscured(ic)) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
+                        else if (BandSd(ic, 0.06, 0.40) < 12 && !icObs) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
@@ -722,7 +753,7 @@ namespace GunBeep
                     p.PicSharp = RecoilCalc.Sharpness(pc);
                 }
                 // ป้ายเลขโดนบัง (ชื่อคนฆ่ากันลอยทับ) แต่ยังเห็นรูปปืน → อ่านของแต่งไว้ด้วย ให้ตัวสแกนเทียบรูปปืนที่จำไว้
-                if (p.Slot != 0 || p.PicSharp >= GunArtSharp)
+                if (p.Slot != 0 || p.PicSharp >= GunArtSharp || p.Obscured)
                 {
                     p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
                     p.AttIcons = new Bitmap[4];

@@ -974,7 +974,7 @@ namespace GunBeep
                 {
                     int s = i + 1;
                     if (hadBadge[i]) { slotEmpty[s] = false; continue; }
-                    if (panels[i].PicSharp >= ScopeDetect.GunArtSharp) continue;   // ป้ายเลขโดนบังแต่ยังเห็นรูปปืน → ไม่ใช่ช่องว่าง
+                    if (panels[i].PicSharp >= ScopeDetect.GunArtSharp || panels[i].Obscured) continue;   // ป้ายเลขโดนบังแต่ยังเห็นรูปปืน หรือแผงโดนบัง → ไม่ใช่ช่องว่าง
                     if (slotInfo[s] != null)
                     {
                         if (!Confirmed(s, "empty", "gun", "empty")) continue;
