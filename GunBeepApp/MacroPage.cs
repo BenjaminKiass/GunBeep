@@ -92,8 +92,6 @@ namespace GunBeep
             engine.MaxShots = EffectiveMaxShots;
             engine.SetGear(multWant[0] * FastGear());
             engine.SetStance(multWant[1]);
-            engine.SetCurve(HeldCurve());
-            engine.SetXBias(HeldXBias());
             engine.SetActive(Native && on && !paused);
             PushSemi();
             LiveDirty();
@@ -982,22 +980,11 @@ namespace GunBeep
             learnDx += dx;
         }
 
-        double HeldXBias_v1()
-        {
-            var c = cfg.Calc;
-            string gk = HeldGunKey();
-            return c != null && c.AutoLearn && gk != null && c.LearnX.TryGetValue(gk, out double x) ? x : 0;
-        }
-
         double HeldXBias()
         {
             var c = cfg.Calc;
             string gk = HeldGunKey();
-            if (gk == null) return 0;
-            double baseBias = RecoilCalc.BuiltinGunX.TryGetValue(gk, out double bx) ? bx : 0;
-            if (c != null && c.AutoLearn && c.LearnX.TryGetValue(gk, out double lx))
-                return baseBias + lx;
-            return baseBias;
+            return c != null && c.AutoLearn && gk != null && c.LearnX.TryGetValue(gk, out double x) ? x : 0;
         }
 
         void LearnSpray(double[] macroY, double ms, double ads, int id)
