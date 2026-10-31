@@ -319,7 +319,7 @@ namespace GunBeep
         public static bool IsSmg(string key) => key is "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "PP19" or "MICRO" or "JS9" or "MP9" or "P90";
 
         public static bool HasGripSlot(string key) =>
-            key is "M416" or "BERYL" or "SCAR" or "AUG" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
+            key is "M416" or "BERYL" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
 
         public static bool HasStockSlot(string key) =>
             key is "M416" or "ACE32" or "M16A4" or "MK47" or "BERYL" or "VECTOR" or "MP5K" or "MICRO" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "DRAGUNOV" or "VSS";
@@ -350,7 +350,7 @@ namespace GunBeep
                 if (c.Width > 4 && (BrightShare(c) > 0.4 || ScopeDetect.Obscured(c))) { unsure[i] = true; continue; }
                 has[i] = c.Width > 4 && ScopeDetect.Detail(c) >= 0.05;
                 // ช่องว่างที่เห็นพื้นหลังเป็นลาย (ดิน/ฟ้า) เบลอ → ความคม 1–7; ไอคอนจริงคม 19–33 (วัดจากภาพจริง 639 ช่อง)
-                if (has[i] && i != 2 && Sharpness(c) < 12) has[i] = false;
+                if (has[i] && i != 2 && Sharpness(c) < 8) has[i] = false;
                 if (i == 2 && has[i])
                 {
                     // รูปแม็กของตัวปืน (AKM, Beryl, Mk47 …) ยื่นลงมาทับครึ่งบนของช่อง → เดิมอ่านว่าใส่แม็กขยาย (นับ 40 แทน 30)
@@ -418,7 +418,7 @@ namespace GunBeep
                 if (p.AttIcons?[i] != null)
                 {
                     // ถ้าความคมต่ำ (พื้นหลังเบลอ ไม่ใช่ไอคอนจริง) ให้ตัดเป็นไม่ได้ใส่
-                    if (Sharpness(p.AttIcons[i]) < 10)
+                    if (Sharpness(p.AttIcons[i]) < 8)
                     {
                         p.Att[i] = false;
                         p.AttId[i] = null;

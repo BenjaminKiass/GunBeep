@@ -118,7 +118,7 @@ namespace GunBeep
                 bool isDmr = RecoilCalc.IsDmr(gunKey);
                 bool isSr = RecoilCalc.IsSr(gunKey);
 
-                if (itemId == "brake") return !isSr; // เบรกปากกระบอกใส่ได้ทั้ง AR, DMR, SMG แต่ใส่กับ SR สไนเปอร์ไม่ได้
+                if (itemId == "brake") return isAr || isDmr; // เบรกปากกระบอกใส่ได้เฉพาะ AR และ DMR (ไม่ให้ติดกับ SR หรือ SMG) // เบรกปากกระบอกใส่ได้ทั้ง AR, DMR, SMG แต่ใส่กับ SR สไนเปอร์ไม่ได้
                 if (isSr) return itemId.EndsWith("_dmr"); // สไนเปอร์ (M24, Kar98k, etc.) ใส่ได้เฉพาะปาก DMR/SR เท่านั้น
                 if (isAr) return itemId.EndsWith("_ar");  // AR ใส่ได้เฉพาะปาก AR
                 if (isSmg) return itemId.EndsWith("_smg"); // SMG ใส่ได้เฉพาะปาก SMG
