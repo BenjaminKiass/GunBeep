@@ -103,8 +103,56 @@ namespace GunBeep
             }
         }
 
+        // ตรวจสอบความเข้ากันได้ของของแต่งกับประเภทปืนจริงใน PUBG (กันตรวจผิดหมวด เช่น M24 ติดลดแสง AR)
+        public static bool IsCompatible(string gunKey, int slot, string itemId)
+        {
+            if (string.IsNullOrEmpty(gunKey)) return true;
+            var it = Get(itemId);
+            if (it == null) return false;
+
+            // 1. ปากกระบอก (slot 0)
+            if (slot == 0)
+            {
+                if (itemId == "brake") return true; // เบรกปากกระบอกใส่ได้ทั้ง AR, DMR, SR, SMG
+                bool isAr = RecoilCalc.IsAr(gunKey);
+                bool isSmg = RecoilCalc.IsSmg(gunKey);
+                bool isDmr = RecoilCalc.IsDmr(gunKey);
+                bool isSr = RecoilCalc.IsSr(gunKey);
+
+                if (isSr) return itemId.EndsWith("_dmr"); // สไนเปอร์ (M24, Kar98k, etc.) ใส่ได้เฉพาะปาก DMR/SR เท่านั้น
+                if (isAr) return itemId.EndsWith("_ar");  // AR ใส่ได้เฉพาะปาก AR
+                if (isSmg) return itemId.EndsWith("_smg"); // SMG ใส่ได้เฉพาะปาก SMG
+                if (isDmr) return itemId.EndsWith("_dmr") || itemId.EndsWith("_ar"); // DMR ใส่ได้ทั้ง AR และ DMR
+                return true;
+            }
+
+            // 2. กริป (slot 1)
+            if (slot == 1)
+            {
+                if (!RecoilCalc.HasGripSlot(gunKey)) return false; // ปืนไม่มีช่องกริป (AKM, M24, etc.)
+                if (gunKey == "VECTOR") return itemId == "vertical" || itemId == "laser";
+                if (gunKey == "TOMMY") return itemId == "vertical";
+                return true;
+            }
+
+            // 3. พานท้าย (slot 3)
+            if (slot == 3)
+            {
+                if (!RecoilCalc.HasStockSlot(gunKey)) return false; // ปืนไม่มีช่องพานท้าย (AUG, AKM, SCAR, etc.)
+                if (RecoilCalc.IsSr(gunKey) || gunKey is "SLR" or "MINI14" or "DRAGUNOV") return itemId == "cheek";
+                if (gunKey is "SKS" or "MK12") return itemId is "cheek" or "tactical" or "heavy";
+                if (gunKey == "BERYL") return itemId == "heavy";
+                if (gunKey == "MP5K") return itemId is "tactical" or "heavy" or "folding";
+                if (gunKey == "MICRO") return itemId == "folding";
+                if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR") return itemId is "tactical" or "heavy";
+                return true;
+            }
+
+            return true;
+        }
+
         // ช่อง 0 ปากกระบอก, 1 กริป, 3 พานท้าย → ชิ้นที่ตรงที่สุด (null = ไม่แน่ใจ ใช้ % กลาง)
-        public static (Item item, double score, double margin) Identify(Bitmap slotCrop, int slot)
+        public static (Item item, double score, double margin) Identify(Bitmap slotCrop, int slot, string gunKey = null)
         {
             string cat = slot == 0 ? "muzzle" : slot == 1 ? "grip" : slot == 3 ? "stock" : null;
             if (cat == null) return (null, 0, 0);
@@ -114,16 +162,22 @@ namespace GunBeep
             double bs = -1, other = -1;
             List<Tpl> userList;
             lock (userGate) userList = User.ToList();
+            int compatibleCount = 0;
             foreach (var t in userList.Concat(Builtins))
             {
                 var it = Get(t.Id);
                 if (it == null || it.Slot != cat) continue;
+                if (!IsCompatible(gunKey, slot, it.Id)) continue; // กรองของแต่งที่ไม่ตรงประเภทปืนทิ้ง
+                compatibleCount++;
                 double s = Dot(f, t.Feature) - (t.Real ? 0 : TipPenalty);
                 if (s > bs) { if (best != null && best.Id != it.Id) other = Math.Max(other, bs); best = it; bs = s; }
                 else if (best != null && it.Id != best.Id) other = Math.Max(other, s);
             }
+            // ถ้าของชิ้นนั้นเป็นของแต่งชิ้นเดียวที่เป็นไปได้ของปืนนี้ (เช่น cheek บน M24) เกณฑ์ความมั่นใจจะยืดหยุ่นขึ้น
+            double reqMargin = compatibleCount <= 1 ? 0.0 : MinMargin;
+            double reqScore = compatibleCount <= 1 ? 0.45 : MinScore;
             double margin = other < 0 ? bs : bs - other;
-            return bs >= MinScore && margin >= MinMargin ? (best, bs, margin) : (null, bs, margin);
+            return bs >= reqScore && margin >= reqMargin ? (best, bs, margin) : (null, bs, margin);
         }
 
         // เดิม 0.30 / 0.02 (ต้นแบบจากภาพป้ายอย่างเดียว) → อ่านพื้นหลังเป็น "กริปเบา", กริปหัวแม่มือเป็น "ครึ่ง"

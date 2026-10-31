@@ -312,6 +312,18 @@ namespace GunBeep
 
         public static string GunKey(string name) => MatchGun(name).key;
 
+        // แยกหมวดหมู่ปืนและช่องของแต่งตามระบบ PUBG
+        public static bool IsAr(string key) => key is "AKM" or "M416" or "BERYL" or "SCAR" or "AUG" or "ACE32" or "QBZ" or "G36C" or "K2" or "FAMAS" or "GROZA" or "M16A4" or "MK47";
+        public static bool IsDmr(string key) => key is "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "QBU" or "DRAGUNOV" or "VSS";
+        public static bool IsSr(string key) => key is "KAR98K" or "M24" or "AWM" or "MOSIN" or "LYNX" or "WIN94";
+        public static bool IsSmg(string key) => key is "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "PP19" or "MICRO" or "JS9" or "MP9" or "P90";
+
+        public static bool HasGripSlot(string key) =>
+            key is "M416" or "BERYL" or "SCAR" or "AUG" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
+
+        public static bool HasStockSlot(string key) =>
+            key is "M416" or "ACE32" or "M16A4" or "MK47" or "BERYL" or "VECTOR" or "MP5K" or "MICRO" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "DRAGUNOV";
+
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
         // ค่าเดิม v1 สำรองไว้กันบั๊ก: 0.308 เดิมคำนวณพลาดคิดว่าห่างเท่าๆ กัน แต่ในเกมจริงช่องพานท้ายอยู่ขวาสุดใต้ท้ายปืน (dx ~ 0.401)
@@ -319,7 +331,7 @@ namespace GunBeep
         public static readonly double[] SlotDx = { 0.009, 0.104, 0.206, 0.401 };
         const double SlotDy = 0.140, SlotSize = 0.044;
 
-        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids, out bool[] unsure)
+        public static bool[] ReadAttachments(Settings cfg, Bitmap shot, Point origin, int w, int h, int panel, out string[] ids, out bool[] unsure, string gunKey = null)
         {
             var b = panel == 0 ? cfg.ScopeBadge1 : cfg.ScopeBadge2;
             var has = new bool[4];
@@ -327,6 +339,10 @@ namespace GunBeep
             unsure = new bool[4];
             for (int i = 0; i < 4; i++)
             {
+                // ถ้าปืนนี้ไม่มีช่องกริปหรือพานท้าย ข้ามทันที (กันตรวจติดลายตัวปืน)
+                if (i == 1 && gunKey != null && !HasGripSlot(gunKey)) { has[1] = false; continue; }
+                if (i == 3 && gunKey != null && !HasStockSlot(gunKey)) { has[3] = false; continue; }
+
                 var r = SlotRect(cfg, w, h, panel, i);
                 r.Offset(-origin.X, -origin.Y);
                 using var c = ScopeDetect.Crop(shot, r);
@@ -353,16 +369,67 @@ namespace GunBeep
                         var rr = r;
                         rr.Offset(ox, oy);
                         using var cc = (ox | oy) == 0 ? null : ScopeDetect.Crop(shot, rr);
-                        var m = AttachmentId.Identify(cc ?? c, i);
+                        var m = AttachmentId.Identify(cc ?? c, i, gunKey);
                         if (m.item != null && m.score > best.score) best = (m.item, m.score);
                     }
                 ids[i] = best.item?.Id;
-                // ปืนที่ไม่มีช่องพานท้าย (AUG, Beryl …) ตำแหน่งนี้ทับรูปแม็กของปืน → นับว่ามีพานท้ายเฉพาะตอนรู้จักว่าเป็นพานท้ายจริง
-                if (i == 3 && ids[i] == null) has[i] = false;
+                // ปืนที่ไม่มีช่องพานท้าย (AUG, AKM …) นับว่ามีพานท้ายเฉพาะตอนรู้จักว่าเป็นพานท้ายจริง หรือปืนนั้นมีช่องพานท้าย
+                if (i == 3 && ids[i] == null)
+                {
+                    if (gunKey != null && !HasStockSlot(gunKey)) has[i] = false;
+                    else { has[i] = false; unsure[i] = true; }
+                }
                 // ปาก/กริป: คมแต่จำไม่ได้ (ต้นไม้/รั้วข้างหลัง, รูปปืนทับ, ของที่ยังไม่มีต้นแบบ) → ไม่แน่ใจ ใช้ค่าเดิม แทนการเดาว่า "ติด"
                 if (i != 3 && ids[i] == null) { has[i] = false; unsure[i] = true; }
             }
             return has;
+        }
+
+        // ปรับแต่งและกรองของแต่งของ Panel ให้ตรงกับชนิดปืนจริง
+        public static void RefineAttachmentsForGun(ScopeDetect.Panel p, string gunKey)
+        {
+            if (p == null || string.IsNullOrEmpty(gunKey)) return;
+            p.Att ??= new bool[4];
+            p.AttId ??= new string[4];
+            p.AttUnsure ??= new bool[4];
+
+            // 1. ปืนไม่มีช่องกริป (เช่น AKM, M24) → เคลียร์ช่องกริปทันที
+            if (!HasGripSlot(gunKey))
+            {
+                p.Att[1] = false;
+                p.AttId[1] = null;
+                p.AttUnsure[1] = false;
+            }
+            // 2. ปืนไม่มีช่องพานท้าย (เช่น AUG, AKM, SCAR) → เคลียร์ช่องพานท้ายทันที
+            if (!HasStockSlot(gunKey))
+            {
+                p.Att[3] = false;
+                p.AttId[3] = null;
+                p.AttUnsure[3] = false;
+            }
+
+            // 3. ตรวจสอบของแต่งว่าขัดกับประเภทปืนหรือไม่ หรือช่องที่มีของแต่รอบแรกไม่แน่ใจ
+            for (int i = 0; i < 4; i++)
+            {
+                if (i == 2) continue; // แม็กกาซีน
+                bool incompatible = p.AttId[i] != null && !AttachmentId.IsCompatible(gunKey, i, p.AttId[i]);
+                bool needRetry = incompatible || (p.AttIcons?[i] != null && p.AttId[i] == null && p.Att[i]);
+                if (needRetry && p.AttIcons?[i] != null)
+                {
+                    var m = AttachmentId.Identify(p.AttIcons[i], i, gunKey);
+                    if (m.item != null)
+                    {
+                        p.Att[i] = true;
+                        p.AttId[i] = m.item.Id;
+                        p.AttUnsure[i] = false;
+                    }
+                    else if (incompatible)
+                    {
+                        p.Att[i] = false;
+                        p.AttId[i] = null;
+                    }
+                }
+            }
         }
 
         // ความคม: ค่าเฉลี่ย |ความสว่างต่างกับพิกเซลขวา/ล่าง| เว้นขอบ 10% (พื้นหลังในหน้ากระเป๋าเบลอ ไอคอนคม)

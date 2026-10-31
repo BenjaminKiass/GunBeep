@@ -939,6 +939,8 @@ namespace GunBeep
                     if (RecoilCalc.GunKey(p.Name) == null) p.Name = slotInfo[p.Slot].Name;     // อ่านชื่อรอบนี้ไม่ชัด ใช้ชื่อเดิม
                     // ปืนที่เจอครั้งแรก → เพิ่มในหน้าคำนวณแรงดีด (×1) ให้ปรับทีหลังได้
                     if (RecoilCalc.GunKey(p.Name) is string gk && (cfg.Calc ??= new CalcSettings()).Guns.TryAdd(gk, 1)) cfg.Save();
+                    // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
+                    if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
                     // อ่านสโคปไม่ชัดรอบนี้ (เช่นเมาส์ชี้ช่องสโคปอยู่ พื้นเป็นสีขาว) → ใช้สโคปเดิม แต่ของแต่ง/ภาพปืนใช้ของรอบนี้
                     if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
@@ -1126,9 +1128,9 @@ namespace GunBeep
             bool Held(int k) => KeyHook.GetAsyncKeyState(k) < 0;
             if (vk == stanceKeys[0]) stance = stance == 1 ? 0 : 1;
             else if (vk == stanceKeys[1]) stance = stance == 2 ? 0 : 2;
-            else if (vk == 0x20) stance = stance == 2 ? 1 : 0;        // Space: หมอบ → ย่อ, ย่อ → ยืน
-            // ย่ออยู่แล้ววิ่ง (Shift ซ้าย + W ไม่ได้เล็ง) = เกมให้ลุกยืน (Shift ตอนเล็ง = กลั้นหายใจ ไม่ลุก)
-            else if (stance == 1 && !Held(0x02) && ((vk == 0xA0 && Held(0x57)) || (vk == 0x57 && Held(0xA0)))) stance = 0;
+            else if (vk == 0x20) stance = 0;        // Space: กระโดด = ยืนเสมอ (ทั้งจากย่อและหมอบ)
+            // ย่อหรือหมอบอยู่แล้ววิ่ง (Shift ซ้าย + W ไม่ได้เล็ง) = เกมให้ลุกยืนวิ่งทันที
+            else if (stance != 0 && !Held(0x02) && ((vk == 0xA0 && Held(0x57)) || (vk == 0x57 && Held(0xA0)))) stance = 0;
             else return;
             if (stance == was) return;
             multWant[1] = stance == 1 ? 1 + c.CrouchPct / 100 : stance == 2 ? 1 + c.PronePct / 100 : 1;
@@ -1164,6 +1166,13 @@ namespace GunBeep
 
         void OnWheel(int delta)
         {
+            // 1. ขณะคลิกขวาเล็ง (ADS) หรือถือสโคปซูม (6x/8x/15x) การหมุนลูกกลิ้งคือการซูมเข้า/ออก (Variable Zoom)
+            // หรือปรับความสว่างเรติเคิลในเกม PUBG — ห้ามสลับช่องปืนหรือเปลี่ยนชุดมาโครเด็ดขาด!
+            if (KeyHook.GetAsyncKeyState(0x02) < 0) return;
+
+            // 2. ถ้าผู้ใช้ไม่ได้เปิดโหมดสลับปืนด้วยลูกกลิ้ง (SlotSwitch != 2) ห้ามสลับช่อง
+            if (cfg.SlotSwitch != 2) return;
+
             if (Playing() && DateTime.Now - lastMagWheel > TimeSpan.FromMilliseconds(180))   // หมุนหลายแก๊กติดกัน = สลับครั้งเดียว
             {
                 lastMagWheel = DateTime.Now;
@@ -1180,7 +1189,7 @@ namespace GunBeep
                 }
                 return;                                          // ตรวจสโคปเลือกชุดให้แทน "สลับปืนตามช่อง"
             }
-            if (cfg.SlotSwitch != 2 || !on || capturing) return;
+            if (!on || capturing) return;
             var now = DateTime.Now;
             if (now - lastWheel < TimeSpan.FromMilliseconds(180)) return;    // หมุนหลายแก๊กติดกัน = เปลี่ยนครั้งเดียว
             lastWheel = now;
