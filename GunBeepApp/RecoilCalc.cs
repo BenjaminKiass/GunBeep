@@ -319,7 +319,7 @@ namespace GunBeep
         public static bool IsSmg(string key) => key is "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "PP19" or "MICRO" or "JS9" or "MP9" or "P90";
 
         public static bool HasGripSlot(string key) =>
-            key is "M416" or "BERYL" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
+            key is "M416" or "BERYL" or "AUG" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
 
         public static bool HasStockSlot(string key) =>
             key is "M416" or "ACE32" or "M16A4" or "MK47" or "BERYL" or "VECTOR" or "MP5K" or "MICRO" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "DRAGUNOV" or "VSS";
