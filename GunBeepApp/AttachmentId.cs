@@ -110,40 +110,53 @@ namespace GunBeep
             var it = Get(itemId);
             if (it == null) return false;
 
-            // 1. ปากกระบอก (slot 0)
+            // 0. ปากกระบอก (slot 0)
             if (slot == 0)
             {
-                bool isAr = RecoilCalc.IsAr(gunKey);
+                if (!RecoilCalc.HasMuzzleSlot(gunKey)) return false;
+                if (gunKey == "GROZA") return itemId == "supp_ar";
+                if (gunKey == "TOMMY") return itemId == "supp_smg";
+
+                bool isAr = RecoilCalc.IsAr(gunKey) || gunKey is "S12K" or "O12";
                 bool isSmg = RecoilCalc.IsSmg(gunKey);
                 bool isDmr = RecoilCalc.IsDmr(gunKey);
                 bool isSr = RecoilCalc.IsSr(gunKey);
 
-                if (itemId == "brake") return isAr || isDmr; // เบรกปากกระบอกใส่ได้เฉพาะ AR และ DMR (ไม่ให้ติดกับ SR หรือ SMG) // เบรกปากกระบอกใส่ได้ทั้ง AR, DMR, SMG แต่ใส่กับ SR สไนเปอร์ไม่ได้
-                if (isSr) return itemId.EndsWith("_dmr"); // สไนเปอร์ (M24, Kar98k, etc.) ใส่ได้เฉพาะปาก DMR/SR เท่านั้น
-                if (isAr) return itemId.EndsWith("_ar");  // AR ใส่ได้เฉพาะปาก AR
-                if (isSmg) return itemId.EndsWith("_smg"); // SMG ใส่ได้เฉพาะปาก SMG
+                if (itemId == "brake") return isAr || isDmr; // เบรกปากกระบอกใส่ได้เฉพาะ AR และ DMR (รวมถึง S12K/O12 ไม่ให้ติดกับ SR หรือ SMG)
+                if (isSr) return itemId.EndsWith("_dmr");     // สไนเปอร์ (M24, Kar98k, etc.) ใส่ได้เฉพาะปาก DMR/SR เท่านั้น
+                if (isAr) return itemId.EndsWith("_ar");      // AR ใส่ได้เฉพาะปาก AR
+                if (isSmg) return itemId.EndsWith("_smg");    // SMG ใส่ได้เฉพาะปาก SMG
                 if (isDmr) return itemId.EndsWith("_dmr") || itemId.EndsWith("_ar"); // DMR ใส่ได้ทั้ง AR และ DMR
                 return true;
             }
 
-            // 2. กริป (slot 1)
+            // 1. กริป (slot 1)
             if (slot == 1)
             {
-                if (!RecoilCalc.HasGripSlot(gunKey)) return false; // ปืนไม่มีช่องกริป (AKM, M24, etc.)
-                if (gunKey == "VECTOR") return itemId == "vertical" || itemId == "laser";
-                if (gunKey == "TOMMY") return itemId == "vertical";
+                if (!RecoilCalc.HasGripSlot(gunKey)) return false;
+                if (gunKey == "TOMMY") return itemId == "vertical"; // ทอมมี่ใส่ได้เฉพาะกริปแนวตั้ง
+                if (gunKey == "VECTOR") return itemId != "angled";  // เวกเตอร์ใส่ได้ทุกกริปยกเว้นกริปแบบเอียง (angled)
+                return true;
+            }
+
+            // 2. แม็ก (slot 2)
+            if (slot == 2)
+            {
+                if (!RecoilCalc.HasMagSlot(gunKey)) return false;
                 return true;
             }
 
             // 3. พานท้าย (slot 3)
             if (slot == 3)
             {
-                if (!RecoilCalc.HasStockSlot(gunKey)) return false; // ปืนไม่มีช่องพานท้าย (AUG, AKM, SCAR, etc.)
-                if (RecoilCalc.IsSr(gunKey) || gunKey is "SLR" or "MINI14" or "DRAGUNOV" or "MK14" or "VSS") return itemId == "cheek";
-                if (gunKey is "SKS" or "MK12") return itemId is "cheek" or "tactical" or "heavy";
-                if (gunKey == "BERYL") return itemId == "heavy";
+                if (!RecoilCalc.HasStockSlot(gunKey)) return false;
+                // DMR และ SR: SKS, SLR, Mk14, Dragunov, VSS และ SR ทุกตัว ใส่แผ่นรองแก้มเท่านั้น
+                if (RecoilCalc.IsSr(gunKey) || gunKey is "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS") return itemId == "cheek";
+                // Micro Uzi ใส่พานท้ายพับได้เท่านั้น
+                if (gunKey is "MICRO" or "UZI") return itemId == "folding";
+                // MP5K ใส่ได้ทั้ง tactical, heavy, folding
                 if (gunKey == "MP5K") return itemId is "tactical" or "heavy" or "folding";
-                if (gunKey == "MICRO") return itemId == "folding";
+                // M416, ACE32, M16A4, Mk47, Vector, M249 ใส่พานท้ายยุทธวิธี หรือพานท้ายขนาดใหญ่
                 if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "M249") return itemId is "tactical" or "heavy";
                 return true;
             }

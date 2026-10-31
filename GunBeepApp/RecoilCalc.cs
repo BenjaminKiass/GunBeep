@@ -318,11 +318,17 @@ namespace GunBeep
         public static bool IsSr(string key) => key is "KAR98K" or "M24" or "AWM" or "MOSIN" or "LYNX" or "WIN94";
         public static bool IsSmg(string key) => key is "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "PP19" or "MICRO" or "JS9" or "MP9" or "P90";
 
+        public static bool HasMuzzleSlot(string key) =>
+            key is not ("VSS" or "M249" or "DP28" or "MG3" or "RPD" or "LYNX" or "WIN94" or "DBS" or "P90" or "PANZERFAUST" or "M79" or "CROSSBOW");
+
         public static bool HasGripSlot(string key) =>
-            key is "M416" or "BERYL" or "AUG" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY";
+            key is "M416" or "BERYL" or "AUG" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "O12";
+
+        public static bool HasMagSlot(string key) =>
+            key is not ("DP28" or "MG3" or "RPD" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW");
 
         public static bool HasStockSlot(string key) =>
-            key is "M416" or "ACE32" or "M16A4" or "MK47" or "BERYL" or "VECTOR" or "MP5K" or "MICRO" or "M249" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "DRAGUNOV" or "VSS";
+            key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
 
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
@@ -339,8 +345,10 @@ namespace GunBeep
             unsure = new bool[4];
             for (int i = 0; i < 4; i++)
             {
-                // ถ้าปืนนี้ไม่มีช่องกริปหรือพานท้าย ข้ามทันที (กันตรวจติดลายตัวปืน)
+                // ถ้าปืนนี้ไม่มีช่องของแต่งช่องนี้ ข้ามทันที (กันตรวจติดลายตัวปืน)
+                if (i == 0 && gunKey != null && !HasMuzzleSlot(gunKey)) { has[0] = false; continue; }
                 if (i == 1 && gunKey != null && !HasGripSlot(gunKey)) { has[1] = false; continue; }
+                if (i == 2 && gunKey != null && !HasMagSlot(gunKey)) { has[2] = false; continue; }
                 if (i == 3 && gunKey != null && !HasStockSlot(gunKey)) { has[3] = false; continue; }
 
                 var r = SlotRect(cfg, w, h, panel, i);
@@ -393,6 +401,13 @@ namespace GunBeep
             p.AttId ??= new string[4];
             p.AttUnsure ??= new bool[4];
 
+            // 0. ปืนไม่มีช่องปากกระบอก (เช่น VSS, M249, DP28) → เคลียร์ทันที
+            if (!HasMuzzleSlot(gunKey))
+            {
+                p.Att[0] = false;
+                p.AttId[0] = null;
+                p.AttUnsure[0] = false;
+            }
             // 1. ปืนไม่มีช่องกริป (เช่น AKM, M24) → เคลียร์ช่องกริปทันที
             if (!HasGripSlot(gunKey))
             {
@@ -400,7 +415,14 @@ namespace GunBeep
                 p.AttId[1] = null;
                 p.AttUnsure[1] = false;
             }
-            // 2. ปืนไม่มีช่องพานท้าย (เช่น AUG, AKM, SCAR) → เคลียร์ช่องพานท้ายทันที
+            // 2. ปืนไม่มีช่องแม็ก (เช่น DP28, Kar98k) → เคลียร์ทันที
+            if (!HasMagSlot(gunKey))
+            {
+                p.Att[2] = false;
+                p.AttId[2] = null;
+                p.AttUnsure[2] = false;
+            }
+            // 3. ปืนไม่มีช่องพานท้าย (เช่น AUG, AKM, Beryl, Mini14, Mk12) → เคลียร์ช่องพานท้ายทันที
             if (!HasStockSlot(gunKey))
             {
                 p.Att[3] = false;
@@ -408,11 +430,23 @@ namespace GunBeep
                 p.AttUnsure[3] = false;
             }
 
-            // 3. รันระบุของแต่งซ้ำด้วย gunKey ที่รู้แน่ชัด เพื่อให้ IsCompatible กรองเฉพาะของแต่งที่ปืนนี้ใส่ได้จริง
+            // ถ้าของแต่งที่เคยมีไม่เข้ากับปืนนี้ ให้ล้างออก
             for (int i = 0; i < 4; i++)
             {
-                if (i == 2) continue; // แม็กกาซีน
+                if (p.AttId[i] != null && !AttachmentId.IsCompatible(gunKey, i, p.AttId[i]))
+                {
+                    p.Att[i] = false;
+                    p.AttId[i] = null;
+                    p.AttUnsure[i] = false;
+                }
+            }
+
+            // 4. รันระบุของแต่งซ้ำด้วย gunKey ที่รู้แน่ชัด เพื่อให้ IsCompatible กรองเฉพาะของแต่งที่ปืนนี้ใส่ได้จริง
+            for (int i = 0; i < 4; i++)
+            {
+                if (i == 0 && !HasMuzzleSlot(gunKey)) continue;
                 if (i == 1 && !HasGripSlot(gunKey)) continue;
+                if (i == 2) continue; // แม็กกาซีน
                 if (i == 3 && !HasStockSlot(gunKey)) continue;
 
                 if (p.AttIcons?[i] != null)
