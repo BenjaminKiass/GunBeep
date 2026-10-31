@@ -643,7 +643,30 @@ namespace GunBeep
             return n > 0 && (double)l / n > 0.3;
         }
 
-        // ช่องโดนบัง: เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อน > 30%) หรือ แถบ Killfeed บัง (> 8%)
+        // ตรวจว่าบริเวณแถบแผงปืนมีแถบ Killfeed ลอยพาดผ่านไหม (นับพิกเซล Cyan, น้ำเงินสด, แดงสด)
+        public static bool PanelHasKillfeed(Bitmap shot, int y0, int y1)
+        {
+            if (shot == null || shot.Width < 10) return false;
+            int top = Math.Max(0, y0), bottom = Math.Min(shot.Height, y1);
+            if (bottom <= top) return false;
+            int kf = 0;
+            for (int y = top; y < bottom; y += 2)
+                for (int x = 0; x < shot.Width; x += 2)
+                {
+                    var p = shot.GetPixel(x, y);
+                    bool isCyan = p.G > 160 && p.B > 160 && p.R < 115;
+                    bool isBlue = p.B > 170 && p.B > p.R + 70 && p.G < 160;
+                    bool isRed = p.R > 180 && p.R > p.B + 70 && p.G < 120;
+                    if (isCyan || isBlue || isRed)
+                    {
+                        kf++;
+                        if (kf > 25) return true;     // สุ่มตรวจทุก 2 px เจอ > 25 จุด (~100 px จริง) = มี Killfeed พาดแน่นอน
+                    }
+                }
+            return false;
+        }
+
+        // ช่องโดนบัง: เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อน > 30%) หรือ ไอคอน/ป้าย Killfeed บัง (> 2.5%)
         public static bool Obscured(Bitmap c)
         {
             if (c == null || c.Width < 4 || c.Height < 4) return false;
@@ -656,14 +679,13 @@ namespace GunBeep
                     int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
                     if (mn > 150 && mx - mn < 30) whiteHover++;
 
-                    // แถบ Killfeed: ไอคอนปืน/X สี Cyan, ป้ายเลขทีมสีน้ำเงินสด, ป้ายศัตรูสีแดงสด, หรือพื้นหลังแถบน้ำเงินเข้ม
+                    // แถบ Killfeed: ไอคอนปืน/X สี Cyan, ป้ายเลขทีมสีน้ำเงินสด, ป้ายศัตรูสีแดงสด
                     bool isCyan = p.G > 160 && p.B > 160 && p.R < 115;
                     bool isBlue = p.B > 170 && p.B > p.R + 70 && p.G < 160;
                     bool isRed = p.R > 180 && p.R > p.B + 70 && p.G < 120;
-                    bool isSlate = p.B > p.R + 25 && p.B >= 55 && p.B <= 140 && p.R < 65 && p.G < 95;
-                    if (isCyan || isBlue || isRed || isSlate) kf++;
+                    if (isCyan || isBlue || isRed) kf++;
                 }
-            return n > 0 && ((double)whiteHover / n > 0.30 || (double)kf / n > 0.08);
+            return n > 0 && ((double)whiteHover / n > 0.30 || (double)kf / n > 0.025);
         }
 
         // ความต่างของความสว่าง (sd 0–255) ในแถบแนวนอนของช่อง (y0–y1 เป็นสัดส่วนความสูง, เว้นขอบซ้ายขวา 8%)
@@ -703,23 +725,28 @@ namespace GunBeep
         {
             var boxes = Boxes(cfg, screenW, screenH);
             var res = new Panel[2];
+            int ySplit = (int)(((cfg.ScopeBadge1[1] + cfg.ScopeBadge2[1]) / 2.0) * screenH - origin.Y);
             for (int i = 0; i < 2; i++)
             {
                 var (badge, _, icon) = boxes[i];
                 badge.Offset(-origin.X, -origin.Y);
                 icon.Offset(-origin.X, -origin.Y);
                 var p = new Panel();
+                int py0 = i == 0 ? Math.Max(0, (int)(0.015 * screenH)) : ySplit;
+                int py1 = i == 0 ? ySplit : shot.Height;
+                bool panelKf = PanelHasKillfeed(shot, py0, py1);
+
                 // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
                 //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
                 using (var b = Crop(shot, badge))
                 {
-                    bool obs = Obscured(b);
+                    bool obs = Obscured(b) || panelKf;
                     p.Slot = ReadSlot(b) != 0 ? i + 1 : (obs ? i + 1 : 0);
                     if (obs) p.Obscured = true;
                 }
                 using (var ic = Crop(shot, icon))
                 {
-                    bool icObs = Obscured(ic);
+                    bool icObs = Obscured(ic) || panelKf;
                     if (icObs) p.Obscured = true;
                     if (Detail(ic) < 0.035 && !icObs) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
                     else
@@ -756,6 +783,12 @@ namespace GunBeep
                 if (p.Slot != 0 || p.PicSharp >= GunArtSharp || p.Obscured)
                 {
                     p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
+                    if (panelKf && p.AttUnsure != null)
+                    {
+                        // ถ้าแถบ Killfeed พาดแผงนี้อยู่ ช่องของแต่งไหนที่อ่านไม่ชัด/ไม่เจอ ให้คงสถานะไม่แน่ใจไว้
+                        for (int k = 0; k < 4; k++)
+                            if (p.AttId?[k] == null) p.AttUnsure[k] = true;
+                    }
                     p.AttIcons = new Bitmap[4];
                     foreach (int k in new[] { 0, 1, 3 })
                     {
