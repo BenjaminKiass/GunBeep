@@ -90,6 +90,8 @@ namespace GunBeep
             engine.SetGun(gun);
             engine.RequireAds = cfg.RequireAds;
             engine.MaxShots = EffectiveMaxShots;
+            engine.Humanize = cfg.Humanize;
+            engine.HumanizePct = cfg.HumanizePct;
             engine.SetGear(multWant[0] * FastGear());
             engine.SetStance(multWant[1]);
             engine.SetActive(Native && on && !paused);

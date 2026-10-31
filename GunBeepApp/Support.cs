@@ -16,6 +16,8 @@ namespace GunBeep
         public int Gun { get; set; } = 1;
         public bool TopMost { get; set; }
         public bool RequireAds { get; set; } = false; // true = ดึงเฉพาะตอนเล็งสโคป (ADS), false = ดึงทุกครั้งที่ยิง (ตรงกับสคริปต์ตั้งต้น)
+        public bool Humanize { get; set; } = true;     // จำลองความสั่นแบบมือมนุษย์ (สุ่มความแปรผัน ±1.5% - 2.5% หลบการตรวจจับ)
+        public double HumanizePct { get; set; } = 2.0; // เปอร์เซ็นต์สุ่ม (ค่าเริ่มต้น ±2%)
         public int OsdMode { get; set; } = 1;       // ป้ายบนจอเกม: 0 ปิด, 1 ตอนเปลี่ยน, 2 ตลอด
         public int OsdCorner { get; set; }          // 0 ซ้ายบน, 1 ขวาบน, 2 ซ้ายล่าง, 3 ขวาล่าง
         public string Preset { get; set; }         // โปรไฟล์ค่าปืนที่โหลด/บันทึกล่าสุด

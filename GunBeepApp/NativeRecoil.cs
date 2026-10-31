@@ -86,6 +86,8 @@ namespace GunBeep
         public event Action<double, int, bool> Kicked;   // แรงที่ดึงจริง (count), เลขนัด, กดคลิกขวา (เล็ง) อยู่ไหม
         public void SetSemiKick(double k) => Volatile.Write(ref semiKick, k);
         public void SetXBias(double x) => Volatile.Write(ref xBias, x);     // ซ้าย/ขวาที่เรียนรู้ของปืนที่ถือ (บวกกับ x ของชุดค่า)
+        public volatile bool Humanize = true;                               // เปิด/ปิดจำลองมือมนุษย์ (สุ่มความแปรผัน)
+        public double HumanizePct = 2.0;                                     // ±2.0% micro-variance
 
         public void Dispose() => stop = true;
 
@@ -143,6 +145,11 @@ namespace GunBeep
             bool ads = Down(VK_RBUTTON);
             double total = Volatile.Read(ref semiKick) * Volatile.Read(ref gear) * Volatile.Read(ref stance);
             if (total <= 0) return;
+            if (Humanize)
+            {
+                double jitter = (Random.Shared.NextDouble() * 2.0 - 1.0) * (HumanizePct / 100.0);
+                total *= (1.0 + jitter);
+            }
             var sw = Stopwatch.StartNew();
             int moved = 0;
             while (!stop && active && front)
@@ -215,6 +222,13 @@ namespace GunBeep
                         if (hi > lo) y += (rc[Math.Min(k, n) - 1] + bas) * factor * (hi - lo) / STEP_MS;
                         if (s1 >= now) break;
                         k++;
+                    }
+
+                    // Humanizer: Micro-variance จำลองความแปรผันของมือมนุษย์ (สุ่มสมมาตร Mean = 0 กลุ่มกระสุนไม่หลุด)
+                    if (Humanize && y > 0)
+                    {
+                        double jitter = (Random.Shared.NextDouble() * 2.0 - 1.0) * (HumanizePct / 100.0);
+                        y *= (1.0 + jitter);
                     }
 
                     var cur = guns;                      // ค่า x ปรับระหว่างยิงได้

@@ -59,7 +59,7 @@ namespace GunBeep
         {
             InitializeComponent();
             GHub.Native = Native;
-            engine = new NativeRecoil();
+            engine = new NativeRecoil { Humanize = cfg.Humanize, HumanizePct = cfg.HumanizePct };
 
             accent = Freeze(new LinearGradientBrush(Color.FromRgb(0x1D, 0x6B, 0xFF), Color.FromRgb(0x5C, 0xE1, 0xFF), 45));
             activeBg = Freeze(new LinearGradientBrush(Color.FromRgb(0x10, 0x2C, 0x5C), Color.FromRgb(0x0A, 0x12, 0x24), 90));
