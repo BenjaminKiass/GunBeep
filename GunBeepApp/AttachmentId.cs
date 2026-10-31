@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -22,6 +22,22 @@ namespace GunBeep
             public Item(string id, string name, string slot, double v) { Id = id; Name = name; Slot = slot; Vertical = v; }
         }
 
+        // ===== ข้อมูลเดิม v1 สำรองไว้กันบั๊ก / Fallback =====
+        public static readonly Item[] Items_v1 =
+        {
+            new("comp_ar", "ตัวชดเชย (AR)", "muzzle", 15), new("flash_ar", "ตัวลดแสง (AR)", "muzzle", 10),
+            new("supp_ar", "ตัวเก็บเสียง (AR)", "muzzle", 0), new("brake", "เบรกปากกระบอก", "muzzle", 10),
+            new("comp_dmr", "ตัวชดเชย (DMR)", "muzzle", 20), new("flash_dmr", "ตัวลดแสง (DMR)", "muzzle", 10),
+            new("supp_dmr", "ตัวเก็บเสียง (DMR)", "muzzle", 0), new("comp_smg", "ตัวชดเชย (SMG)", "muzzle", 25),
+            new("flash_smg", "ตัวลดแสง (SMG)", "muzzle", 10), new("supp_smg", "ตัวเก็บเสียง (SMG)", "muzzle", 0),
+            new("vertical", "กริปแนวตั้ง", "grip", 15), new("angled", "กริปแบบเอียง", "grip", 12),
+            new("half", "กริปแบบครึ่ง", "grip", 8), new("thumb", "กริปหัวแม่มือ", "grip", 10),
+            new("light", "กริปน้ำหนักเบา", "grip", 10), new("laser", "เลเซอร์", "grip", 0),
+            new("tactical", "พานท้ายยุทธวิธี", "stock", 10), new("heavy", "พานท้ายขนาดใหญ่", "stock", 10),
+            new("folding", "พานท้ายพับได้", "stock", 20), new("cheek", "แผ่นรองแก้ม (DMR, SR)", "stock", 20),
+        };
+
+        // ===== ข้อมูล v2 ปัจจุบัน =====
         public static readonly Item[] Items =
         {
             new("comp_ar", "ตัวชดเชย (AR)", "muzzle", 15), new("flash_ar", "ตัวลดแสง (AR)", "muzzle", 10),
@@ -36,7 +52,7 @@ namespace GunBeep
             new("folding", "พานท้ายพับได้", "stock", 20), new("cheek", "แผ่นรองแก้ม (DMR, SR)", "stock", 20),
         };
 
-        public static Item Get(string id) => Items.FirstOrDefault(i => i.Id == id);
+        public static Item Get(string id) => Items.FirstOrDefault(i => i.Id == id) ?? Items_v1.FirstOrDefault(i => i.Id == id);
 
         // ---------------------------------------------------------------- ผู้ใช้สอน: กดเลือกชนิดในหน้ามาโคร → จำลักษณะของภาพช่องจริงนี้
         static readonly string UserPath = Path.Combine(Settings.KitDir, "attachments.json");

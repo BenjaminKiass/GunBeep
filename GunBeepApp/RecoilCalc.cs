@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -126,6 +126,37 @@ namespace GunBeep
         // แรงดีดแนวตั้งโดยประมาณของแต่ละปืน เทียบ M416 = 1 (ค่าประมาณจากประสบการณ์ผู้เล่น ไม่ใช่ตัวเลขทางการของเกม)
         //   ตัวคูณปืน = ค่าของปืนที่ถือ / ค่าของปืนที่ใช้จูนตาราง (RefGun) × ที่ผู้ใช้ปรับเพิ่ม
         //   2026-10-30: ปืนแรง (Beryl/AKM/…) ลดลง ~12% ตามที่ระบบเรียนรู้เห็นจากมือผู้ใช้ (ดันเมาส์ขึ้นทุกชุด)
+        // ===== สำรองค่าเดิม v1 กันบั๊ก / Fallback =====
+        public static readonly Dictionary<string, double> BuiltinGun_v1 = new()
+        {
+            ["M416"] = 1.00, ["SCAR"] = 0.90, ["QBZ"] = 0.90, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.08,
+            ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.05, ["GROZA"] = 1.10,
+            ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
+            ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
+            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.75, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
+            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
+        };
+
+        public static readonly Dictionary<string, (int mag, int ext, double ms)> GunInfo_v1 = new()
+        {
+            ["M416"] = (30, 40, 86), ["SCAR"] = (30, 40, 93), ["QBZ"] = (30, 40, 93), ["G36C"] = (30, 40, 86),
+            ["AUG"] = (30, 40, 84), ["ACE32"] = (30, 40, 88), ["K2"] = (30, 40, 86), ["FAMAS"] = (30, 35, 67),
+            ["M16A4"] = (30, 40, 75), ["BERYL"] = (30, 40, 86), ["AKM"] = (30, 40, 100), ["GROZA"] = (30, 40, 80),
+            ["MK47"] = (20, 30, 100), ["UMP"] = (25, 35, 90), ["VECTOR"] = (19, 33, 55), ["MICRO"] = (25, 35, 48),
+            ["UZI"] = (25, 35, 48), ["TOMMY"] = (30, 50, 80), ["MP5K"] = (30, 40, 67), ["PP19"] = (53, 53, 86),
+            ["BIZON"] = (53, 53, 86), ["P90"] = (50, 50, 60), ["JS9"] = (30, 40, 67), ["MP9"] = (30, 40, 60),
+            ["DP28"] = (47, 47, 109), ["RPD"] = (50, 50, 80), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 91), ["MINI14"] = (20, 30, 100),
+            ["SKS"] = (10, 20, 100), ["SLR"] = (10, 20, 100), ["MK12"] = (20, 30, 100), ["QBU"] = (10, 20, 100),
+            ["VSS"] = (10, 20, 86), ["MK14"] = (10, 20, 90), ["DRAGUNOV"] = (10, 20, 100),
+        };
+
+        public static readonly Dictionary<string, double> SemiKick_v1 = new()
+        {
+            ["MINI14"] = 0.95, ["MK12"] = 1.05, ["QBU"] = 1.05, ["SKS"] = 1.45, ["SLR"] = 1.7, ["DRAGUNOV"] = 1.7,
+            ["M16A4"] = 0.75, ["MK47"] = 0.95,
+        };
+
+        // ===== ค่าปัจจุบัน v2 =====
         public static readonly Dictionary<string, double> BuiltinGun = new()
         {
             ["M416"] = 1.00, ["SCAR"] = 0.90, ["QBZ"] = 0.90, ["G36C"] = 1.00, ["AUG"] = 0.92, ["ACE32"] = 1.08,
@@ -176,7 +207,7 @@ namespace GunBeep
 
         // ปืนออโต้ที่สลับเป็นทีละนัด/ยิงชุด: แรงต่อนัดเทียบนัดหนึ่งของตาราง (ไม่มีแรงสะสมเหมือนยิงค้าง)
         public const double SingleKick = 0.65;
-        public static double KickOf(string gk) => gk != null && SemiKick.TryGetValue(gk, out double v) ? v : SingleKick;
+        public static double KickOf(string gk) => gk != null && (SemiKick.TryGetValue(gk, out double v) || SemiKick_v1.TryGetValue(gk, out v)) ? v : SingleKick;
 
         // ปืนที่ไม่ดึงเลย: สไนเปอร์ขึ้นลำ / ลูกซอง / ยิงระเบิด / หน้าไม้ (ยิงทีละนัดแล้วต้องเล็งใหม่ ดึงลง = เป้าหลุด)
         public static readonly HashSet<string> NoPull = new()
@@ -187,7 +218,7 @@ namespace GunBeep
 
         public static double GunFactor(CalcSettings c, string gunKey)
         {
-            double Of(string k) => k != null && BuiltinGun.TryGetValue(k, out double v) ? v : 1;
+            double Of(string k) => k != null && (BuiltinGun.TryGetValue(k, out double v) || BuiltinGun_v1.TryGetValue(k, out v)) ? v : 1;
             double user = gunKey != null && c.Guns.TryGetValue(gunKey, out double u) ? u : 1;
             return Of(gunKey) / Of(c.RefGun ?? "AUG") * user;
         }
