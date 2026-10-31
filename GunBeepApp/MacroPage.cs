@@ -515,10 +515,11 @@ namespace GunBeep
             mid.ColumnDefinitions.Add(new ColumnDefinition());
             mid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
             var left = new StackPanel();
-            left.Children.Add(Stat("ตัวคูณ", "×" + mult.ToString("0.00"), Pct(mult)));
+            bool isNoPull = gk != null && RecoilCalc.NoPull.Contains(gk);
+            left.Children.Add(Stat("ตัวคูณ", isNoPull ? "ปิดดึง" : "×" + mult.ToString("0.00"), isNoPull ? "No Pull" : Pct(mult)));
             left.Children.Add(Stat("สโคป", p.Set == -1 ? "?" : scopeNm, Pct(scopeAll)));
             mid.Children.Add(left);
-            var graph = Graph(setOk ? vals[set - 1] : null, mult, gk, ArtOf("guns", gk) ?? PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null);
+            var graph = Graph(setOk && !isNoPull ? vals[set - 1] : null, mult, gk, ArtOf("guns", gk) ?? PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null, isNoPull);
             Grid.SetColumn(graph, 1);
             mid.Children.Add(graph);
             var right = new StackPanel();
@@ -536,9 +537,11 @@ namespace GunBeep
                 magTxt += $" · โหมด{ModeName(FireMode(s))}" + (fm.Length > 1 ? " (กด B ในเกม)" : "") + (IsSemi(s) ? ": ดึงทีละคลิก" : "");
             else if (magTxt != "") magTxt += $" → ดึงสูงสุด {MagCap(s) + 2} นัด/ชุด";
             if (p.Att != null && p.Att[2] && !p.ExtMag) magTxt += " · แม็ก QuickDraw";
-            string learnTxt = gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
-            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", gk == null ? "ใช้ ×1" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}",
-                                  gf, PGold, gk == null ? null : () => AdjustGun(gk, -0.05), gk == null ? null : () => AdjustGun(gk, +0.05), gk == null));
+            string learnTxt = isNoPull ? " · ปืนยิงทีละนัด (ปิดดึงเมาส์อัตโนมัติ)" :
+                gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
+            string subTxt = gk == null ? "ใช้ ×1" : isNoPull ? "ปืนยิงทีละนัด (ไม่ดึงแรงดีด)" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}";
+            root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", subTxt,
+                                  isNoPull ? 0 : gf, PGold, gk == null || isNoPull ? null : () => AdjustGun(gk, -0.05), gk == null || isNoPull ? null : () => AdjustGun(gk, +0.05), gk == null || isNoPull));
 
             // ของแต่ง
             int n = p.Att == null ? 0 : (p.Att[0] ? 1 : 0) + (p.Att[1] ? 1 : 0) + (p.Att[3] ? 1 : 0);
@@ -700,7 +703,7 @@ namespace GunBeep
             catch { return null; }
         }
 
-        Border Graph(GHub.GunVals v, double mult, string gk, System.Windows.Media.Imaging.BitmapSource pic, double[] learned)
+        Border Graph(GHub.GunVals v, double mult, string gk, System.Windows.Media.Imaging.BitmapSource pic, double[] learned, bool isNoPull = false)
         {
             var g = new Grid();
             if (pic != null)
@@ -710,12 +713,12 @@ namespace GunBeep
                     Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0xC9, 0xA5, 0x4A), BlurRadius = 18, ShadowDepth = 0, Opacity = 0.55 }
                 });
             var cap = new DockPanel { Margin = new Thickness(10, 7, 10, 0), VerticalAlignment = VerticalAlignment.Top };
-            var r = T(gk == null ? "" : "MUL " + mult.ToString("0.00"), 9, PFaint, FontWeights.Bold, Mono);
+            var r = T(gk == null ? "" : isNoPull ? "NO PULL" : "MUL " + mult.ToString("0.00"), 9, PFaint, FontWeights.Bold, Mono);
             DockPanel.SetDock(r, Dock.Right);
             cap.Children.Add(r);
             var dotRow = new StackPanel { Orientation = Orientation.Horizontal };
-            dotRow.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = PGreen, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
-            dotRow.Children.Add(T("RECOIL_CTRL // " + (Native ? "NATIVE" : "G HUB"), 9, PFaint, FontWeights.Bold, Mono));
+            dotRow.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = isNoPull ? PMuted : PGreen, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+            dotRow.Children.Add(T(isNoPull ? "RECOIL_CTRL // STANDBY" : "RECOIL_CTRL // " + (Native ? "NATIVE" : "G HUB"), 9, PFaint, FontWeights.Bold, Mono));
             cap.Children.Add(dotRow);
             g.Children.Add(cap);
             if (v?.Steps != null && v.Steps.Length > 0)

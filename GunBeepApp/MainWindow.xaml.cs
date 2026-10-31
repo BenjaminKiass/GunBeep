@@ -822,7 +822,7 @@ namespace GunBeep
             if (!invSession && sessionWas) ApplyScope("inventory closed");
             invWas = inv;
             sessionWas = invSession;
-            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(150) || now - invOpenedAt < TimeSpan.FromMilliseconds(80)
+            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(150) || now - invOpenedAt < TimeSpan.FromMilliseconds(160)
                 || now - lastScan < TimeSpan.FromMilliseconds(150)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
