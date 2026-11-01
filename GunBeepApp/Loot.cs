@@ -20,10 +20,12 @@ namespace GunBeep
         const long MAGIC_v1 = 0x47424545;               // ลายเซ็นเดิม v1 ("GBEE")
         const long MAGIC = 0;                           // v2: Stealth - ล้าง extra info เป็น 0
 
-        static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 16, 10 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
+        static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 18, 12 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
 
         static int busy;
         public static bool Busy => busy != 0;
+
+        public static void Cancel() => cancel = true;
 
         // คืน false ถ้ากำลังเก็บอยู่ (กดซ้ำ = หยุด)
         public static bool Run(Settings cfg, Func<bool> stillOk, Action<int> done)
@@ -39,6 +41,7 @@ namespace GunBeep
                 bool held = false;
                 try
                 {
+                    // ลากจากช่องล่างขึ้นบน: ของช่องบนไม่เลื่อนลงมาทับตำแหน่งเดิม
                     for (int i = n - 1; i >= 0; i--)
                     {
                         if (cancel || !stillOk()) break;
@@ -46,6 +49,17 @@ namespace GunBeep
                         Move(x, y); Thread.Sleep(d[0]);
                         Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
                         Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);   // ขยับผ่านกลางทางให้เกมรู้ว่าลาก
+                        Move(drop[0], drop[1]); Thread.Sleep(d[0]);
+                        Send(LEFTUP); held = false; Thread.Sleep(d[1]);
+                        moved++;
+                    }
+                    // ลากช่อง 0 (ช่องบนสุด) ซ้ำอีก 1 รอบ เผื่อไอเท็มจากช่องถัดไปเลื่อนขึ้นมาแทนที่
+                    if (!cancel && stillOk() && n >= 2)
+                    {
+                        double x0 = a[0], y0 = a[1];
+                        Move(x0, y0); Thread.Sleep(d[0]);
+                        Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
+                        Move((x0 * 2 + drop[0]) / 3, (y0 * 2 + drop[1]) / 3); Thread.Sleep(d[1]);
                         Move(drop[0], drop[1]); Thread.Sleep(d[0]);
                         Send(LEFTUP); held = false; Thread.Sleep(d[1]);
                         moved++;
