@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
@@ -82,7 +83,22 @@ namespace GunBeep
             Deactivated += (s, e) => UpdateAmbient();
             IsVisibleChanged += (s, e) => UpdateAmbient();
             StateChanged += (s, e) => { UpdateAmbient(); OnWindowStateChanged(); };
-            Loaded += (s, e) => AnimateIn();
+                        SourceInitialized += (s, e) =>
+            {
+                var h = new WindowInteropHelper(this).Handle;
+                var src = HwndSource.FromHwnd(h);
+                if (src?.CompositionTarget != null)
+                    src.CompositionTarget.BackgroundColor = Colors.Transparent;
+
+                var m = new StreamModeHelper.MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+                StreamModeHelper.DwmExtendFrameIntoClientArea(h, ref m);
+
+                if (cfg.StreamMode)
+                {
+                    StreamModeHelper.Apply(this, true);
+                }
+            };
+Loaded += (s, e) => AnimateIn();
 
             if (cfg.Left.HasValue && cfg.Top.HasValue
                 && cfg.Left.Value >= 0

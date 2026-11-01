@@ -61,7 +61,7 @@ namespace GunBeep
         public Overlay()
         {
             WindowStyle = WindowStyle.None;
-            AllowsTransparency = true;
+            AllowsTransparency = false;
             Background = Brushes.Transparent;
             Topmost = true;
             ShowInTaskbar = false;
@@ -114,8 +114,15 @@ namespace GunBeep
             SourceInitialized += (s, e) =>
             {
                 var h = new WindowInteropHelper(this).Handle;
+                var src = HwndSource.FromHwnd(h);
+                if (src?.CompositionTarget != null)
+                    src.CompositionTarget.BackgroundColor = Colors.Transparent;
+
+                var m = new StreamModeHelper.MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+                StreamModeHelper.DwmExtendFrameIntoClientArea(h, ref m);
+
                 int ex = GetWindowLong(h, GWL_EXSTYLE);
-                SetWindowLong(h, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED);
+                SetWindowLong(h, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
                 if (StreamModeHelper.Active) StreamModeHelper.Apply(h, true);
             };
         }

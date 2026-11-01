@@ -462,7 +462,30 @@ namespace GunBeep
     public static class StreamModeHelper
     {
         [DllImport("user32.dll", SetLastError = true)]
-        static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        [DllImport("user32.dll")]
+        public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll")]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MARGINS { public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight; }
+
+        public const int GWL_EXSTYLE = -20;
+        public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WS_EX_APPWINDOW = 0x00040000;
+        public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOSIZE = 0x0001;
+        public const uint SWP_NOZORDER = 0x0004;
+        public const uint SWP_FRAMECHANGED = 0x0020;
 
         public const uint WDA_NONE = 0x00000000;
         public const uint WDA_MONITOR = 0x00000001;
@@ -508,7 +531,13 @@ namespace GunBeep
             try
             {
                 var h = new WindowInteropHelper(w).Handle;
-                if (h != IntPtr.Zero) return Apply(h, enable);
+                if (h != IntPtr.Zero)
+                {
+                    Apply(h, enable);
+                    SetAltTabHidden(h, enable);
+                    w.ShowInTaskbar = !enable;
+                    return true;
+                }
             }
             catch { }
             return false;
@@ -528,6 +557,22 @@ namespace GunBeep
                 return ok;
             }
             catch { return false; }
+        }
+
+        public static void SetAltTabHidden(IntPtr hWnd, bool hide)
+        {
+            if (hWnd == IntPtr.Zero) return;
+            try
+            {
+                int ex = GetWindowLong(hWnd, GWL_EXSTYLE);
+                if (hide)
+                    ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+                else
+                    ex = (ex & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW;
+                SetWindowLong(hWnd, GWL_EXSTYLE, ex);
+                SetWindowPos(hWnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            }
+            catch { }
         }
     }
 }
