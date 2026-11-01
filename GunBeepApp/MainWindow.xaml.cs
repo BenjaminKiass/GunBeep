@@ -1046,6 +1046,8 @@ namespace GunBeep
                     int s = i + 1;
                     if (hadBadge[i]) { slotEmpty[s] = false; continue; }
                     if (panels[i].PicSharp >= ScopeDetect.GunArtSharp || panels[i].Obscured) continue;
+                    // ตอนปิดกระเป๋า ห้ามลบปืนเดิมเด็ดขาด (ภาพเฟรมปิดอาจเริ่มจาง/โดนบัง)
+                    if (isClose) continue;
                     if (slotInfo[s] != null)
                     {
                         if (!isClose && !Confirmed(s, "empty", "gun", "empty")) continue;
@@ -1104,7 +1106,13 @@ namespace GunBeep
             lastScopeSeen = seen;
             if (!setChanged && !multChanged)
             {
-                if (scopeChanged && why == "scan")
+                if (why == "unholster" || why == "weapon key")
+                {
+                    string n = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
+                    PopOsd($"{n} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+                    PushMults();
+                }
+                else if (scopeChanged && why == "scan")
                     PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))} (ค่าเท่าเดิม)");
                 return;
             }
@@ -1284,9 +1292,9 @@ namespace GunBeep
             return new[] { GameSettings.Current.Crouch, GameSettings.Current.Prone };
         }
 
-        void HeldSlotTo(int s, string why)
+        void HeldSlotTo(int s, string why, bool force = false)
         {
-            if (heldSlot == s) return;
+            if (heldSlot == s && !force) return;
             heldSlot = s;
             ApplyScope(why);
         }
@@ -1597,7 +1605,7 @@ namespace GunBeep
                 bool toEmpty = WeaponSlotOf(vk) is int we and (1 or 2) && slotEmpty[we];
                 if (toEmpty) Log.Info($"weapon key to empty slot {WeaponSlotOf(vk)} → keep holding slot {magSlot}");
                 else if (WeaponSlotOf(vk) is int ws and >= 0) WeaponKey(vk, ws);   // ปุ่มอาวุธตามที่ตั้งในเกม: ปืน 1/2 = นับของช่องนั้นต่อ, ปืนพก/มีด/ระเบิด/เก็บปืน = 0
-                if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { if (!slotEmpty[si + 1]) HeldSlotTo(si + 1, "weapon key"); return; }
+                if (cfg.ScopeAuto && Array.IndexOf(SlotKeys, vk) is int si and >= 0) { if (!slotEmpty[si + 1]) HeldSlotTo(si + 1, "weapon key", force: true); return; }
                 if (!cfg.ScopeAuto && cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32) && Keyboard.FocusedElement is not TextBox) { SlotTo(vk - 0x30); return; }
             }
 

@@ -1263,7 +1263,24 @@ namespace GunBeep
         {
             var g = GameSettings.Current;
             if (slot > 0) lastGunSlot = slot;
-            if (vk == g.Holster && magSlot == 0 && !holdingThrowable) { MagSlotTo(lastGunSlot); return; }
+            if (vk == g.Holster)
+            {
+                if (magSlot == 0 && !holdingThrowable)
+                {
+                    // กด X ดึงปืนกลับมาถือ: สลับกลับช่องปืนเดิม บังคับ ApplyScope และโชว์ OSD
+                    int target = lastGunSlot is (1 or 2) ? lastGunSlot : 1;
+                    MagSlotTo(target);
+                    HeldSlotTo(target, "unholster", force: true);
+                    return;
+                }
+                else
+                {
+                    // กด X หุบปืน (Unarmed): พักการดึงเมาส์
+                    holdingThrowable = false;
+                    MagSlotTo(0);
+                    return;
+                }
+            }
             holdingThrowable = vk == g.Throwable;
             MagSlotTo(slot);
         }
