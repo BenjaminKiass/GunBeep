@@ -2441,20 +2441,35 @@ namespace GunBeep
             bool opened = false;
             if (!CursorShown())
             {
-                invKeyAt = DateTime.Now;                          // ให้ระบบตรวจปืนนับว่าเปิดกระเป๋าด้วย Tab
-                // กด Tab ค้าง 25ms เพื่อให้เกม PUBG รับคีย์แน่นอน แม้กำลังวิ่ง/กด Shift+W อยู่
-                KeyHook.Press(0x09, 0x0F, false, true);
-                await Task.Delay(25);
-                KeyHook.Press(0x09, 0x0F, false, false);
-                for (int i = 0; i < 25 && !CursorShown(); i++) await Task.Delay(25);
-                if (!CursorShown()) { Log.Info("loot: inventory did not open"); return; }
-                await Task.Delay(80);                             // รอหน้ากระเป๋าวาดเสร็จ
-                opened = true;
+                // ถ้าผู้ใช้ตั้ง "กด Tab เอง" (LootAutoTab = false) → ห้ามโปรแกรมกด Tab ให้เด็ดขาด!
+                if (!cfg.LootAutoTab)
+                {
+                    var now = DateTime.Now;
+                    // เผื่อผู้ใช้เพิ่งกด Tab เองไปหยกๆ รอเคอร์เซอร์โผล่แป๊บนึง (แต่ไม่กด Tab ซ้ำ)
+                    if (now - invKeyAt < TimeSpan.FromMilliseconds(500))
+                    {
+                        for (int i = 0; i < 10 && !CursorShown(); i++) await Task.Delay(25);
+                    }
+                    if (!CursorShown()) return; // ยังไม่เปิดกระเป๋าและตั้งให้กดเอง → ไม่ทำอะไรเลย
+                }
+                else
+                {
+                    invKeyAt = DateTime.Now;                          // ให้ระบบตรวจปืนนับว่าเปิดกระเป๋าด้วย Tab
+                    // กด Tab ค้าง 25ms เพื่อให้เกม PUBG รับคีย์แน่นอน แม้กำลังวิ่ง/กด Shift+W อยู่
+                    KeyHook.Press(0x09, 0x0F, false, true);
+                    await Task.Delay(25);
+                    KeyHook.Press(0x09, 0x0F, false, false);
+                    for (int i = 0; i < 25 && !CursorShown(); i++) await Task.Delay(25);
+                    if (!CursorShown()) { Log.Info("loot: inventory did not open"); return; }
+                    await Task.Delay(80);                             // รอหน้ากระเป๋าวาดเสร็จ
+                    opened = true;
+                }
             }
             Loot.Run(cfg, StillOk, moved => Dispatcher.BeginInvoke(new Action(async () =>
             {
                 Log.Info($"loot: {moved} slot(s)");
-                if (!opened) return;
+                // ถ้าผู้ใช้ตั้ง "กด Tab เอง" หรือไม่ได้สั่งเปิดกระเป๋าอัตโนมัติ → ห้ามกด Tab ปิดเด็ดขาด!
+                if (!opened || !cfg.LootAutoTab) return;
                 await Task.Delay(60);
                 if (GetForegroundWindow() == hwnd)
                 {
