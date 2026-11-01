@@ -712,7 +712,7 @@ namespace GunBeep
                 g.Children.Add(new Image
                 {
                     Source = pic, Stretch = Stretch.Uniform, Margin = new Thickness(10, 22, 10, 30), Opacity = 0.95,
-                    Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0xC9, 0xA5, 0x4A), BlurRadius = 18, ShadowDepth = 0, Opacity = 0.55 }
+                    Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = isNoPull ? Color.FromRgb(0xFA, 0xAF, 0x20) : Color.FromRgb(0xFF, 0xBD, 0x2E), BlurRadius = 16, ShadowDepth = 0, Opacity = 0.72 }
                 });
             var cap = new DockPanel { Margin = new Thickness(10, 7, 10, 0), VerticalAlignment = VerticalAlignment.Top };
             var r = T(gk == null ? "" : isNoPull ? "NO PULL" : "MUL " + mult.ToString("0.00"), 9, PFaint, FontWeights.Bold, Mono);
@@ -763,7 +763,7 @@ namespace GunBeep
             g.Children.Add(ready);
             return new Border
             {
-                CornerRadius = new CornerRadius(12), Background = PInner, BorderBrush = PLine, BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14), Background = new LinearGradientBrush(Color.FromArgb(0xFF, 0x0A, 0x10, 0x20), Color.FromArgb(0xFF, 0x05, 0x08, 0x12), 90), BorderBrush = new LinearGradientBrush(Color.FromArgb((byte)(isNoPull ? 0x30 : 0x75), 0x1D, 0x6B, 0xFF), Color.FromArgb((byte)(isNoPull ? 0x20 : 0x45), 0x5C, 0xE1, 0xFF), 0), BorderThickness = new Thickness(1.2),
                 Margin = new Thickness(0, 0, 0, 8), Child = g, MinHeight = 120
             };
         }

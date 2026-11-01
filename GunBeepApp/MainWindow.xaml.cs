@@ -81,7 +81,7 @@ namespace GunBeep
             Activated += (s, e) => UpdateAmbient();
             Deactivated += (s, e) => UpdateAmbient();
             IsVisibleChanged += (s, e) => UpdateAmbient();
-            StateChanged += (s, e) => UpdateAmbient();
+            StateChanged += (s, e) => { UpdateAmbient(); OnWindowStateChanged(); };
             Loaded += (s, e) => AnimateIn();
 
             if (cfg.Left.HasValue && cfg.Top.HasValue
@@ -3199,7 +3199,43 @@ namespace GunBeep
 
         void Title_Drag(object sender, MouseButtonEventArgs e)
         {
-            if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+            if (e.ClickCount == 2)
+            {
+                ToggleMaximize();
+                return;
+            }
+            if (e.ButtonState == MouseButtonState.Pressed)
+            {
+                if (WindowState == WindowState.Maximized)
+                {
+                    var p = PointToScreen(e.GetPosition(this));
+                    ToggleMaximize();
+                    Left = Math.Max(0, p.X - Width / 2);
+                    Top = Math.Max(0, p.Y - 20);
+                }
+                DragMove();
+            }
+        }
+
+        void Max_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+        void ToggleMaximize()
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        void OnWindowStateChanged()
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                if (MaxBtn != null) { MaxBtn.Content = "\uE923"; MaxBtn.ToolTip = "ย่อขนาดลง"; }
+                if (Root != null) Root.Margin = new Thickness(4);
+            }
+            else
+            {
+                if (MaxBtn != null) { MaxBtn.Content = "\uE922"; MaxBtn.ToolTip = "ขยายเต็มจอ"; }
+                if (Root != null) Root.Margin = new Thickness(22);
+            }
         }
 
         void Min_Click(object sender, RoutedEventArgs e)

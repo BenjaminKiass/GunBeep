@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="all@Ben-GunBeep" Width="1210" Height="800"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Leelawadee UI" UseLayoutRounding="True">
 
     <Window.Resources>
@@ -561,6 +561,7 @@
                         <Button x:Name="UpdateBtn" Style="{StaticResource KeyBtn}" Visibility="Collapsed" Margin="0,0,10,0"
                                 BorderBrush="#22C55E" Click="Update_Click" ToolTip="มีเวอร์ชันใหม่บน GitHub"/>
                         <Button Style="{StaticResource ChromeBtn}" Content="&#xE921;" Click="Min_Click" ToolTip="ซ่อนไปที่ถาดไอคอน"/>
+                        <Button x:Name="MaxBtn" Style="{StaticResource ChromeBtn}" Content="&#xE922;" Click="Max_Click" ToolTip="ขยายเต็มจอ / ย่อขนาด"/>
                         <Button Style="{StaticResource ChromeBtn}" Content="&#xE8BB;" Click="Close_Click" ToolTip="ปิดโปรแกรม"/>
                     </StackPanel>
                 </Grid>
