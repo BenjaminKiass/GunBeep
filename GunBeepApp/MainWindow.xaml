@@ -553,6 +553,12 @@
                                         <TextBlock x:Name="EngineBadge" Text="ENGINE ในตัว" FontSize="10" FontWeight="Bold" Foreground="#8FDBFF"/>
                                     </StackPanel>
                                 </Border>
+                                <Border x:Name="StreamBadge" Margin="8,2,0,0" CornerRadius="8" Padding="8,2" Background="#26143C" BorderBrush="#A855F7" BorderThickness="1" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="โหมดสตรีมเมอร์เปิดอยู่: ซ่อนหน้าต่างและป้ายบนจอจาก Discord / OBS / คลิปอัด">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#C084FC" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="โหมดสตรีม" FontSize="10" FontWeight="Bold" Foreground="#E9D5FF"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                             <TextBlock x:Name="SubTitle" Text="Recoil Control Panel" FontSize="10.5" Foreground="#C9A54A" Margin="1,0,0,0"/>
                         </StackPanel>
@@ -1259,6 +1265,16 @@
                                                     <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
                                                                VerticalAlignment="Center" Width="26"/>
                                                     <TextBlock Text="จอยืด" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                                <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                                <DockPanel Height="40" ToolTip="โหมดสตรีมเมอร์: ซ่อนหน้าต่าง GunBeep และป้ายบนจอไม่ให้ขึ้นใน Discord / OBS / คลิปที่อัด (เห็นเฉพาะหน้าจอคนเล่น)">
+                                                    <ToggleButton x:Name="StreamModeSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                                               VerticalAlignment="Center" Width="26"/>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="โหมดสตรีมเมอร์ (Stream Mode)" FontSize="13" Foreground="{StaticResource TextBrush}"/>
+                                                        <TextBlock Text="ซ่อนจากแชร์จอ Discord / OBS / อัดคลิป (เห็นคนเดียว)" FontSize="10.5" Foreground="{StaticResource MutedBrush}"/>
+                                                    </StackPanel>
                                                 </DockPanel>
                                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
                                                 <DockPanel Height="40">

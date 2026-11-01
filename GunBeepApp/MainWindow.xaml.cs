@@ -123,7 +123,11 @@ namespace GunBeep
             catch (Exception ex) { Log.Error("raw mouse", ex); }
 
             SoundSwitch.IsChecked = cfg.Sound;
-            TopSwitch.IsChecked = cfg.TopMost;
+                        StreamModeHelper.Init(cfg.StreamMode);
+            StreamModeSwitch.IsChecked = cfg.StreamMode;
+            if (StreamBadge != null) StreamBadge.Visibility = cfg.StreamMode ? Visibility.Visible : Visibility.Collapsed;
+            StreamModeSwitch.Click += (s, e) => SetStreamMode(StreamModeSwitch.IsChecked == true);
+TopSwitch.IsChecked = cfg.TopMost;
             Topmost = cfg.TopMost;
             SoundSwitch.Click += (s, e) => { cfg.Sound = SoundSwitch.IsChecked == true; cfg.Save(); };
             TopSwitch.Click += (s, e) => { cfg.TopMost = TopSwitch.IsChecked == true; Topmost = cfg.TopMost; cfg.Save(); };
@@ -3249,7 +3253,17 @@ namespace GunBeep
             }
         }
 
-        void Close_Click(object sender, RoutedEventArgs e) => Close();
+                void SetStreamMode(bool on)
+        {
+            cfg.StreamMode = on;
+            cfg.Save();
+            StreamModeHelper.SetMode(on);
+            if (StreamBadge != null)
+                StreamBadge.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            Log.Info("stream mode " + (on ? "ON (hidden from capture/stream)" : "OFF"));
+        }
+
+void Close_Click(object sender, RoutedEventArgs e) => Close();
 
         void Power_Down(object sender, MouseButtonEventArgs e) => AnimatePress(0.95);
         void Power_Leave(object sender, MouseEventArgs e) => AnimatePress(1);

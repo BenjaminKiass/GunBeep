@@ -116,6 +116,7 @@ namespace GunBeep
                 var h = new WindowInteropHelper(this).Handle;
                 int ex = GetWindowLong(h, GWL_EXSTYLE);
                 SetWindowLong(h, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED);
+                if (StreamModeHelper.Active) StreamModeHelper.Apply(h, true);
             };
         }
 

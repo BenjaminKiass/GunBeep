@@ -5,6 +5,8 @@ using System.Media;
 using System.Runtime.InteropServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Interop;
 using Microsoft.Win32;
 
 namespace GunBeep
@@ -74,6 +76,7 @@ namespace GunBeep
         public double? Left { get; set; }
         public double? Top { get; set; }
         public string[] Names { get; set; } = { "ปืน 1", "ปืน 2", "ปืน 3" };
+        public bool StreamMode { get; set; } = false; // โหมดสตรีมเมอร์: ซ่อนหน้าต่างและป้ายบนจอจาก Discord / OBS / อัดคลิป
 
         public static readonly string FilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GunBeepNative", "settings.json");
@@ -452,6 +455,79 @@ namespace GunBeep
                 h, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
             DestroyIcon(h);
             return icon;
+        }
+    }
+
+    // โหมดสตรีมเมอร์: ซ่อนหน้าต่างและป้ายบนจอจากโปรแกรมอัดคลิป/แชร์จอ (Discord, OBS, ShadowPlay) โดยผู้ใช้ยังเห็นหน้าจอตนเองปกติ
+    public static class StreamModeHelper
+    {
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        public const uint WDA_NONE = 0x00000000;
+        public const uint WDA_MONITOR = 0x00000001;
+        public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+        public static bool Active { get; private set; }
+
+        public static void Init(bool initialMode)
+        {
+            Active = initialMode;
+            try
+            {
+                EventManager.RegisterClassHandler(typeof(Window), Window.LoadedEvent, new RoutedEventHandler((s, e) =>
+                {
+                    if (s is Window w && Active)
+                    {
+                        Apply(w, true);
+                    }
+                }));
+            }
+            catch { }
+        }
+
+        public static void SetMode(bool enable)
+        {
+            Active = enable;
+            try
+            {
+                if (Application.Current != null)
+                {
+                    foreach (Window w in Application.Current.Windows)
+                    {
+                        Apply(w, enable);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public static bool Apply(Window w, bool enable)
+        {
+            if (w == null) return false;
+            try
+            {
+                var h = new WindowInteropHelper(w).Handle;
+                if (h != IntPtr.Zero) return Apply(h, enable);
+            }
+            catch { }
+            return false;
+        }
+
+        public static bool Apply(IntPtr hWnd, bool enable)
+        {
+            if (hWnd == IntPtr.Zero) return false;
+            try
+            {
+                uint affinity = enable ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
+                bool ok = SetWindowDisplayAffinity(hWnd, affinity);
+                if (!ok && enable)
+                {
+                    ok = SetWindowDisplayAffinity(hWnd, WDA_MONITOR);
+                }
+                return ok;
+            }
+            catch { return false; }
         }
     }
 }
