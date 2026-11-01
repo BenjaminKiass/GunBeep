@@ -1043,7 +1043,7 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <Border Style="{StaticResource Card}">
-                                        <StackPanel>
+                                        <StackPanel Grid.IsSharedSizeScope="True">
                                             <DockPanel Margin="0,0,0,14">
                                                 <TextBlock Text="&#xE8B0;" Style="{StaticResource Glyph}"/>
                                                 <StackPanel>
@@ -1060,12 +1060,12 @@
                                                 </StackPanel>
                                                 <StackPanel>
                                                     <TextBlock Text="ช่องบนพื้นต่อรอบ" FontSize="12.5" Foreground="{StaticResource TextBrush}"/>
-                                                    <TextBlock Text="ลากจากช่องล่างขึ้นบน" Style="{StaticResource CardSub}"/>
+                                                    <TextBlock x:Name="LootDirSubText" Text="ลากจากช่องล่างขึ้นบน" Style="{StaticResource CardSub}"/>
                                                 </StackPanel>
                                             </DockPanel>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LootLabel"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="*"/>
@@ -1077,7 +1077,17 @@
                                             </Grid>
                                             <Grid Margin="0,10,0,0">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LootLabel"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="ทิศทางเก็บ" FontSize="12.5" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                <RadioButton x:Name="LootDirBottom" Grid.Column="1" GroupName="lootdir" Style="{StaticResource SegRadio}" Tag="0" Checked="LootDir_Checked" Content="ล่างขึ้นบน"/>
+                                                <RadioButton x:Name="LootDirTop" Grid.Column="2" GroupName="lootdir" Style="{StaticResource SegRadio}" Tag="1" Checked="LootDir_Checked" Content="บนลงล่าง" Margin="6,0,0,0"/>
+                                            </Grid>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LootLabel"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>

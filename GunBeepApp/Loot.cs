@@ -41,17 +41,36 @@ namespace GunBeep
                 bool held = false;
                 try
                 {
-                    // ลากจากช่องล่างขึ้นบน: ของช่องบนไม่เลื่อนลงมาทับตำแหน่งเดิม
-                    for (int i = n - 1; i >= 0; i--)
+                    bool topDown = cfg.LootDirection == 1;
+                    if (topDown)
                     {
-                        if (cancel || !stillOk()) break;
-                        double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
-                        Move(x, y); Thread.Sleep(d[0]);
-                        Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
-                        Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);   // ขยับผ่านกลางทางให้เกมรู้ว่าลาก
-                        Move(drop[0], drop[1]); Thread.Sleep(d[0]);
-                        Send(LEFTUP); held = false; Thread.Sleep(d[1]);
-                        moved++;
+                        // ลากจากช่องบนลงล่าง: เน้นเก็บของชิ้นบนสุด (ปืน, เสื้อเกราะ, หมวก) ก่อน
+                        for (int i = 0; i < n; i++)
+                        {
+                            if (cancel || !stillOk()) break;
+                            double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
+                            Move(x, y); Thread.Sleep(d[0]);
+                            Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
+                            Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);
+                            Move(drop[0], drop[1]); Thread.Sleep(d[0]);
+                            Send(LEFTUP); held = false; Thread.Sleep(d[1]);
+                            moved++;
+                        }
+                    }
+                    else
+                    {
+                        // ลากจากช่องล่างขึ้นบน: ของช่องบนไม่เลื่อนลงมาทับตำแหน่งเดิม
+                        for (int i = n - 1; i >= 0; i--)
+                        {
+                            if (cancel || !stillOk()) break;
+                            double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
+                            Move(x, y); Thread.Sleep(d[0]);
+                            Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
+                            Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);   // ขยับผ่านกลางทางให้เกมรู้ว่าลาก
+                            Move(drop[0], drop[1]); Thread.Sleep(d[0]);
+                            Send(LEFTUP); held = false; Thread.Sleep(d[1]);
+                            moved++;
+                        }
                     }
                     // ลากช่อง 0 (ช่องบนสุด) ซ้ำอีก 1 รอบ เผื่อไอเท็มจากช่องถัดไปเลื่อนขึ้นมาแทนที่
                     if (!cancel && stillOk() && n >= 2)

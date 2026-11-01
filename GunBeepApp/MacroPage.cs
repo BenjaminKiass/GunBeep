@@ -891,6 +891,10 @@ namespace GunBeep
             LootSpeed2.IsChecked = cfg.LootSpeed == 2;
             LootTabAuto.IsChecked = cfg.LootAutoTab;
             LootTabSelf.IsChecked = !cfg.LootAutoTab;
+            LootDirBottom.IsChecked = cfg.LootDirection == 0;
+            LootDirTop.IsChecked = cfg.LootDirection == 1;
+            if (LootDirSubText != null)
+                LootDirSubText.Text = cfg.LootDirection == 1 ? "ลากจากช่องบนลงล่าง" : "ลากจากช่องล่างขึ้นบน";
             LootPosText.Text = File.Exists(LootWindow.RefImagePath) ? "ตั้งจากภาพในเกมแล้ว" : "ยังใช้ตำแหน่งเริ่มต้น — กด \"ตั้งตำแหน่ง\" ให้ตรงจอคุณ";
             lootUi = false;
         }
@@ -935,6 +939,16 @@ namespace GunBeep
             if (lootUi) return;
             cfg.LootSpeed = int.Parse((string)((FrameworkElement)sender).Tag);
             cfg.Save();
+        }
+
+        void LootDir_Checked(object sender, RoutedEventArgs e)
+        {
+            if (lootUi) return;
+            cfg.LootDirection = int.Parse((string)((FrameworkElement)sender).Tag);
+            cfg.Save();
+            if (LootDirSubText != null)
+                LootDirSubText.Text = cfg.LootDirection == 1 ? "ลากจากช่องบนลงล่าง" : "ลากจากช่องล่างขึ้นบน";
+            Flash(cfg.LootDirection == 1 ? "เก็บของเร็ว: ลากจากช่องบนลงล่าง (ชิ้นบน/ปืน/เกราะก่อน)" : "เก็บของเร็ว: ลากจากช่องล่างขึ้นบน (ตำแหน่งช่องไม่เลื่อน)");
         }
     }
 
