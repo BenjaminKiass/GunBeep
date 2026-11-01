@@ -99,7 +99,23 @@ namespace GunBeep
         }
 
         // กลับเป็นความละเอียดที่ตั้งไว้ใน Windows
-        public static void Restore() => ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+        public static void Restore()
+        {
+            var desk = Desktop();
+            var cur = Current();
+            if (desk.w > 0 && desk.h > 0 && (cur.w != desk.w || cur.h != desk.h))
+            {
+                var modes = Modes().Where(m => m.dmPelsWidth == desk.w && m.dmPelsHeight == desk.h).ToList();
+                if (modes.Count > 0)
+                {
+                    var dm = modes.FirstOrDefault(m => m.dmDisplayFrequency == cur.hz);
+                    if (dm.dmPelsWidth == 0) dm = modes.OrderByDescending(m => m.dmDisplayFrequency).First();
+                    dm.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+                    ChangeDisplaySettingsEx(null, ref dm, IntPtr.Zero, CDS_FULLSCREEN, IntPtr.Zero);
+                }
+            }
+            ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+        }
 
         // ---------------------------------------------------------------- หน้าต่างเกม
         // เปลี่ยนจอตอนเกมเปิดอยู่: หน้าต่าง Borderless ของเกมยังค้างขนาดเดิม (ล้น/ไม่เต็มจอ)
@@ -110,6 +126,7 @@ namespace GunBeep
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+        [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
         [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
         const uint SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20, SWP_NOOWNERZORDER = 0x200;
 
@@ -134,6 +151,9 @@ namespace GunBeep
             var skip = System.Diagnostics.Process.GetProcessesByName(skipProcess).Select(p => { int id = p.Id; p.Dispose(); return (uint)id; }).ToHashSet();
             skip.Add((uint)Environment.ProcessId);
             var list = new List<Saved>();
+            int primW = Math.Max(100, GetSystemMetrics(0));
+            int primH = Math.Max(100, GetSystemMetrics(1));
+
             EnumWindows((hw, l) =>
             {
                 GetWindowThreadProcessId(hw, out uint pid);
@@ -143,6 +163,10 @@ namespace GunBeep
                 var p = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
                 if (!GetWindowPlacement(hw, ref p) || !GetWindowRect(hw, out var r)) return true;
                 if (r.R - r.L < 50 || r.B - r.T < 50) return true;
+
+                // ไม่ยุ่งกับหน้าต่างบนจอเสริม (เช่น จอแนวตั้งฝั่งซ้าย X < 0 หรืออยู่นอกจอหลัก) เด็ดขาด
+                if (r.R <= 0 || r.L >= primW || r.B <= 0 || r.T >= primH) return true;
+
                 list.Add(new Saved { H = hw, P = p, R = r });
                 return true;
             }, IntPtr.Zero);
@@ -150,24 +174,26 @@ namespace GunBeep
             return list.Count;
         }
 
-        // วางกลับที่เดิม (เรียกได้หลายรอบ: Windows อาจจัดหน้าต่างซ้ำอีกทีหลังเปลี่ยนจอ)
+        // วางกลับที่เดิม (เฉพาะหน้าต่างบนจอหลัก)
         public static int RestoreLayout()
         {
             if (layout == null) return 0;
             int n = 0;
+            int primW = Math.Max(100, GetSystemMetrics(0));
+
             foreach (var s in layout)
             {
                 if (!IsWindow(s.H)) continue;
                 var p = s.P;
-                if (p.showCmd == SW_SHOWMINIMIZED) continue;           // ย่อลงทาสก์บาร์อยู่ ไม่ต้องยุ่ง
+                if (p.showCmd == SW_SHOWMINIMIZED) continue;
                 if (p.showCmd == SW_SHOWMAXIMIZED) { SetWindowPlacement(s.H, ref p); n++; continue; }
-                // แบ่งจอ (Snap) ใช้ตำแหน่งจริงบนจอ ไม่ใช่ตำแหน่ง "ปกติ" ใน placement
-                var cur = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
-                if (GetWindowPlacement(s.H, ref cur) && cur.showCmd == SW_SHOWMAXIMIZED)
+
+                if (GetWindowRect(s.H, out var curR))
                 {
-                    cur.showCmd = 1;                                  // SW_SHOWNORMAL — เลิกเต็มจอก่อน
-                    SetWindowPlacement(s.H, ref cur);
+                    // ถ้าหลุดไปอยู่จอเสริม ไม่ดึงกลับข้ามจอ
+                    if (curR.R <= 0 || curR.L >= primW) continue;
                 }
+
                 SetWindowPos(s.H, IntPtr.Zero, s.R.L, s.R.T, s.R.R - s.R.L, s.R.B - s.R.T, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                 n++;
             }

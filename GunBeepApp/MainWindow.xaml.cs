@@ -1062,6 +1062,18 @@ namespace GunBeep
                     if (magSlot == s && !slotEmpty[o] && slotInfo[o] != null) { Log.Info($"slot {s} empty → holding slot {o}"); MagSlotTo(o); }
                     if (heldSlot == s && !slotEmpty[o] && slotInfo[o] != null) heldSlot = o;
                 }
+                // ถ้าเดิมไม่มีปืน / เก็บปืนอยู่ (magSlot == 0 หรือช่องที่ถือว่าง) แล้วเพิ่งเก็บปืนเข้ามา
+                // → ในเกม PUBG จะควักปืนขึ้นมาถือให้อัตโนมัติทันที ต้องเปิดระบบดึงและสลับช่องให้เลยโดยไม่ต้องกดเลข
+                if (magSlot == 0 || slotEmpty[magSlot] || slotInfo[magSlot] == null)
+                {
+                    int autoSlot = (slotInfo[1] != null && !slotEmpty[1]) ? 1 : (slotInfo[2] != null && !slotEmpty[2]) ? 2 : 0;
+                    if (autoSlot != 0)
+                    {
+                        Log.Info($"gun acquired while holstered/empty → auto holding slot {autoSlot} ({slotInfo[autoSlot].Name})");
+                        MagSlotTo(autoSlot);
+                        HeldSlotTo(autoSlot, "auto pickup", force: true);
+                    }
+                }
                 ApplyScope(trigger);
             }
             catch (Exception ex) { Log.Error("scope scan", ex); }
