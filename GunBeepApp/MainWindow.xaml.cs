@@ -795,7 +795,7 @@ namespace GunBeep
                 // กด Tab/I ภายใน 1.5 วิ และก่อนกดเพิ่งเห็นว่ากำลังเล่น (ไม่มีเคอร์เซอร์) — ล็อบบี้ไม่เคยซ่อนเคอร์เซอร์ = ไม่นับ
                 //   (ไม่ใช้ "เคอร์เซอร์เพิ่งโผล่" แล้ว: กด Tab ปิด-เปิดรัวๆ เคอร์เซอร์อาจหายแค่เฟรมเดียว ตัวจับเวลา 30 ms มองไม่ทัน)
                 if (!invSession && now - invKeyAt < TimeSpan.FromSeconds(1.5) && invKeyAt - lastHiddenAt < TimeSpan.FromSeconds(1.5))
-                { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; }
+                { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; firstOpenScanDone = false; }
                 hiddenIdleSince = now;
             }
             else if (invSession)
@@ -807,6 +807,9 @@ namespace GunBeep
             cursorPrev = front && cursor;
         }
         DateTime invOpenedAt, lastScan;
+        bool firstOpenScanDone;
+        volatile bool closeScanPending;
+        long scanSeq;
 
         void UpdateScopeAutoBtn() =>
             ScopeAutoBtn.Content = cfg.ScopeAuto ? "เปิด" : "ปิด";
@@ -834,22 +837,52 @@ namespace GunBeep
         bool locating;
         DateTime lastLocate;
 
+        void TriggerCloseScan()
+        {
+            try
+            {
+                // สแกนตอนปิดกระเป๋า: จับภาพหน้าจอทันที ณ เสี้ยววินาทีที่กดปุ่มปิด (< 1ms) ก่อนที่เกมจะปิดหน้ากระเป๋าลง
+                var shot = ScopeDetect.CaptureArea(cfg, out var origin);
+                if (shot != null)
+                {
+                    closeScanPending = true;
+                    _ = ScanScopesAsync(shot, origin, "tab close");
+                }
+            }
+            catch (Exception ex) { Log.Error("trigger close scan", ex); }
+        }
+
         void WatchScope(bool front, bool cursor)
         {
             if (!cfg.ScopeAuto) return;
-            // อ่านได้ตอนอยู่ในกระเป๋าและไม่ได้กดเมาส์ค้าง (ลาก/คลิกขวาใส่ของ) — ปล่อยปุ่มปุ๊บอ่านใหม่ใน 0.08 วิ
-            //   แม้เคอร์เซอร์ยังไม่กลับมาหลังวางของ → ใส่ของแล้วกด Tab ปิดเร็วๆ ก็ยังทัน
-            // เช็คเฉพาะคลิกซ้ายลากของ (0x01) ไม่บล็อคคลิกขวาใส่ของ (0x02) เพื่อให้กด Tab สลับสโคปแล้วสแกนติดทันที
+            // อ่านได้ตอนอยู่ในกระเป๋าและไม่ได้กดเมาส์ค้าง (ลากของ)
             bool btn = KeyHook.GetAsyncKeyState(0x01) < 0;
             bool inv = front && invSession && !btn;
             var now = DateTime.Now;
-            if (inv && !invWas && (now - sessionStartAt < TimeSpan.FromMilliseconds(200))) invOpenedAt = now;
-            if (!invSession && sessionWas) ApplyScope("inventory closed");
+            if (inv && !invWas && (now - sessionStartAt < TimeSpan.FromMilliseconds(200)))
+            {
+                invOpenedAt = now;
+                firstOpenScanDone = false;
+            }
+            if (!invSession && sessionWas && !closeScanPending) ApplyScope("inventory closed");
             invWas = inv;
             sessionWas = invSession;
-            // ปรับ Latency ให้ตอบสนองไว: เริ่มสแกนที่ 60ms หลังเปิดกระเป๋า และรอบถัดไปทุก 90ms (เดิม 150/160ms)
-            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(60) || now - invOpenedAt < TimeSpan.FromMilliseconds(60)
-                || now - lastScan < TimeSpan.FromMilliseconds(90)) return;
+
+            if (!inv || locating) return;
+
+            // สแกนรอบแรกทันทีตอนเปิดกระเป๋า: รอ 35ms ให้เกมวาดแผงไอเท็มครบ แล้วสแกนทันที
+            if (!firstOpenScanDone)
+            {
+                if (now - invOpenedAt < TimeSpan.FromMilliseconds(35)) return;
+                firstOpenScanDone = true;
+                lastScan = now;
+                scanBusy = true;
+                _ = ScanScopesAsync(null, null, "tab open");
+                return;
+            }
+
+            if (scanBusy || now - lastScan < TimeSpan.FromMilliseconds(90)) return;
+
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
             if (cfg.ScopeCalib != $"{size.Width}x{size.Height}")
@@ -862,7 +895,7 @@ namespace GunBeep
             }
             lastScan = now;
             scanBusy = true;
-            _ = ScanScopesAsync();
+            _ = ScanScopesAsync(null, null, "scan");
         }
 
         async Task LocateAsync()
@@ -892,48 +925,63 @@ namespace GunBeep
             PopOsd($"จำแล้ว: สโคปนี้ = {cfg.Names[set - 1]}");
         }
 
-        async Task ScanScopesAsync()
+        async Task ScanScopesAsync(System.Drawing.Bitmap preShot = null, System.Drawing.Point? preOrigin = null, string trigger = "scan")
         {
+            long seq = ++scanSeq;
             try
             {
                 var panels = await Task.Run(async () =>
                 {
                     int w = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width, h = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
-                    using var shot = ScopeDetect.CaptureArea(cfg, out var origin);
-                    if (shot == null) return null;
-                    var res = ScopeDetect.Read(cfg, shot, origin, w, h);
-                    var boxes = ScopeDetect.Boxes(cfg, w, h);
-                    for (int i = 0; i < 2; i++)
+                    System.Drawing.Bitmap shot;
+                    System.Drawing.Point origin;
+                    if (preShot != null && preOrigin.HasValue)
                     {
-                        var p = res[i];
-                        if (p.Slot == 0)
-                        {
-                            // ป้ายเลขโดนบัง แต่รูปปืนตรงกับปืนที่จำไว้ → ยังเป็นช่องนี้ ปืนนี้
-                            if (p.Pic != null && p.PicSharp >= ScopeDetect.GunArtSharp && ScopeDetect.MatchGunPic(p.Pic) is string pk)
-                            {
-                                p.Slot = i + 1;
-                                p.Name = RecoilCalc.GunNames.First(g => g.key == pk).name;
-                            }
-                            continue;
-                        }
-                        var nb = boxes[i].name;
-                        nb.Offset(-origin.X, -origin.Y);
-                        using var crop = ScopeDetect.Crop(shot, nb);
-                        var (gunKey, gunName, raw) = await ScopeDetect.ReadGun(crop);
-                        p.Name = gunName ?? "";                                          // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
-                        if (gunKey != null && !(raw ?? "").EndsWith("(shape)")) ScopeDetect.LearnGunPic(p.Pic, gunKey);   // อ่านชื่อออกจริง → จำรูปปืน
-                        else if (gunKey == null && ScopeDetect.MatchGunPic(p.Pic) is string pk2)
-                        {
-                            p.Name = RecoilCalc.GunNames.First(g => g.key == pk2).name;   // ชื่อโดนบัง (ชื่อคนฆ่ากัน ฯลฯ) → รู้จากรูปปืน
-                            raw += " (picture)";
-                        }
-                        if (p.Name == "" && !string.IsNullOrEmpty(raw) && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
+                        shot = preShot;
+                        origin = preOrigin.Value;
                     }
-                    return res;
+                    else
+                    {
+                        shot = ScopeDetect.CaptureArea(cfg, out origin);
+                    }
+                    using (shot)
+                    {
+                        if (shot == null) return null;
+                        var res = ScopeDetect.Read(cfg, shot, origin, w, h);
+                        var boxes = ScopeDetect.Boxes(cfg, w, h);
+                        for (int i = 0; i < 2; i++)
+                        {
+                            var p = res[i];
+                            if (p.Slot == 0)
+                            {
+                                // ป้ายเลขโดนบัง แต่รูปปืนตรงกับปืนที่จำไว้ → ยังเป็นช่องนี้ ปืนนี้
+                                if (p.Pic != null && p.PicSharp >= ScopeDetect.GunArtSharp && ScopeDetect.MatchGunPic(p.Pic) is string pk)
+                                {
+                                    p.Slot = i + 1;
+                                    p.Name = RecoilCalc.GunNames.First(g => g.key == pk).name;
+                                }
+                                continue;
+                            }
+                            var nb = boxes[i].name;
+                            nb.Offset(-origin.X, -origin.Y);
+                            using var crop = ScopeDetect.Crop(shot, nb);
+                            var (gunKey, gunName, raw) = await ScopeDetect.ReadGun(crop);
+                            p.Name = gunName ?? "";                                          // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
+                            if (gunKey != null && !(raw ?? "").EndsWith("(shape)")) ScopeDetect.LearnGunPic(p.Pic, gunKey);   // อ่านชื่อออกจริง → จำรูปปืน
+                            else if (gunKey == null && ScopeDetect.MatchGunPic(p.Pic) is string pk2)
+                            {
+                                p.Name = RecoilCalc.GunNames.First(g => g.key == pk2).name;   // ชื่อโดนบัง (ชื่อคนฆ่ากัน ฯลฯ) → รู้จากรูปปืน
+                                raw += " (picture)";
+                            }
+                            if (p.Name == "" && !string.IsNullOrEmpty(raw) && raw != lastBadOcr[i]) { lastBadOcr[i] = raw; Log.Info($"scope scan: panel {i + 1} name unreadable '{raw}'"); }
+                        }
+                        return res;
+                    }
                 });
-                if (panels == null) return;
+                if (panels == null || seq < scanSeq) return;
                 // แผงไหนไม่มีป้ายเลข = ช่องปืนนั้นว่าง (อ่านก่อนกันหลอนเปลี่ยน Slot)
                 var hadBadge = panels.Select(x => x.Slot != 0).ToArray();
+                bool isClose = trigger == "tab close";
                 foreach (var p in panels)
                 {
                     if (p.Slot is not (1 or 2)) continue;
@@ -960,31 +1008,33 @@ namespace GunBeep
                     if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
                         for (int k = 0; k < 4; k++)
                             if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
-                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (แยกชื่อปืน / สโคป / ของแต่งแต่ละช่อง)
-                    //   ภาพที่เก็บไว้ 720 จังหวะ: 11–14% ของการเปลี่ยนเป็นการอ่านแวบรอบเดียวแล้วกลับ (เกมวาดแผงใหม่/ลากของ)
+                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (เว้นแต่ตอนปิดกระเป๋า หรือสโคปมั่นใจ ให้เชื่อทันที)
                     if (old != null)
                     {
-                        if (!Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) ให้เชื่อทันทีตั้งแต่รอบแรก ไม่ต้องรอยืนยันรอบ 2
-                        bool scopeSure = p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0);
+                        if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
+                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก
+                        bool scopeSure = isClose || (p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0));
                         if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
                         { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
-                        else if (scopeSure)
+                        else
                         {
                             pendingRead.Remove(p.Slot + ":scope");
                         }
                         if (p.Att != null && old.Att != null)
                             for (int k = 0; k < 4; k++)
                             {
-                                bool attSure = p.AttId?[k] != null;
-                                if (!attSure && !Confirmed(p.Slot, "att" + k, $"{old.Att[k]}|{old.AttId?[k]}", $"{p.Att[k]}|{p.AttId?[k]}"))
+                                bool attSure = isClose || (p.AttId?[k] != null);
+                                if (!attSure && !Confirmed(p.Slot, "att" + k, old.Att[k] ? old.AttId?[k] ?? "1" : "0", p.Att[k] ? p.AttId?[k] ?? "1" : "0"))
                                 { p.Att[k] = old.Att[k]; if (p.AttId != null) p.AttId[k] = old.AttId?[k]; }
-                                else if (attSure) pendingRead.Remove(p.Slot + ":att" + k);
+                                else
+                                {
+                                    pendingRead.Remove(p.Slot + ":att" + k);
+                                }
                             }
                     }
                     string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
-                    if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p + " att " + attSig(p));
-                    else if (attSig(old) != attSig(p)) Log.Info($"scope scan: slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
+                    if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info($"scope scan ({trigger}): " + p + " att " + attSig(p));
+                    else if (attSig(old) != attSig(p)) Log.Info($"scope scan ({trigger}): slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
                     old?.Icon?.Dispose();
                     if (old?.AttIcons != null) foreach (var ai in old.AttIcons) ai?.Dispose();
                     slotInfo[p.Slot] = p;
@@ -995,11 +1045,11 @@ namespace GunBeep
                 {
                     int s = i + 1;
                     if (hadBadge[i]) { slotEmpty[s] = false; continue; }
-                    if (panels[i].PicSharp >= ScopeDetect.GunArtSharp || panels[i].Obscured) continue;   // ป้ายเลขโดนบังแต่ยังเห็นรูปปืน หรือแผงโดนบัง → ไม่ใช่ช่องว่าง
+                    if (panels[i].PicSharp >= ScopeDetect.GunArtSharp || panels[i].Obscured) continue;
                     if (slotInfo[s] != null)
                     {
-                        if (!Confirmed(s, "empty", "gun", "empty")) continue;
-                        Log.Info($"scope scan: slot {s} empty (was {slotInfo[s].Name})");
+                        if (!isClose && !Confirmed(s, "empty", "gun", "empty")) continue;
+                        Log.Info($"scope scan ({trigger}): slot {s} empty (was {slotInfo[s].Name})");
                         slotInfo[s].Icon?.Dispose();
                         if (slotInfo[s].AttIcons != null) foreach (var ai in slotInfo[s].AttIcons) ai?.Dispose();
                         slotInfo[s] = null;
@@ -1010,10 +1060,17 @@ namespace GunBeep
                     if (magSlot == s && !slotEmpty[o] && slotInfo[o] != null) { Log.Info($"slot {s} empty → holding slot {o}"); MagSlotTo(o); }
                     if (heldSlot == s && !slotEmpty[o] && slotInfo[o] != null) heldSlot = o;
                 }
-                ApplyScope("scan");
+                ApplyScope(trigger);
             }
             catch (Exception ex) { Log.Error("scope scan", ex); }
-            finally { scanBusy = false; }
+            finally
+            {
+                if (seq == scanSeq)
+                {
+                    scanBusy = false;
+                    closeScanPending = false;
+                }
+            }
         }
 
         string lastScopeSeen;
@@ -1520,7 +1577,11 @@ namespace GunBeep
             if (game && (vk == 0x09 || vk == 0x49 || vk == 0x1B))   // Tab / I / Esc
             {
                 if (Loot.Busy) Loot.Cancel();
-                if (invSession) invCloseKeyAt = DateTime.Now;      // ปิดกระเป๋า
+                if (invSession)
+                {
+                    invCloseKeyAt = DateTime.Now;      // ปิดกระเป๋า
+                    if (cfg.ScopeAuto) TriggerCloseScan();
+                }
                 else if (vk != 0x1B) invKeyAt = DateTime.Now;      // เปิด — นับเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
             }
             if (vk == cfg.HotKey) { ToggleOn(); return; }
