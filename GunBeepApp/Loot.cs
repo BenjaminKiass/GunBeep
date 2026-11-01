@@ -20,7 +20,7 @@ namespace GunBeep
         const long MAGIC_v1 = 0x47424545;               // ลายเซ็นเดิม v1 ("GBEE")
         const long MAGIC = 0;                           // v2: Stealth - ล้าง extra info เป็น 0
 
-        static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 18, 12 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
+        static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 20, 16 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
 
         static int busy;
         public static bool Busy => busy != 0;
@@ -71,17 +71,6 @@ namespace GunBeep
                             Send(LEFTUP); held = false; Thread.Sleep(d[1]);
                             moved++;
                         }
-                    }
-                    // ลากช่อง 0 (ช่องบนสุด) ซ้ำอีก 1 รอบ เผื่อไอเท็มจากช่องถัดไปเลื่อนขึ้นมาแทนที่
-                    if (!cancel && stillOk() && n >= 2)
-                    {
-                        double x0 = a[0], y0 = a[1];
-                        Move(x0, y0); Thread.Sleep(d[0]);
-                        Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
-                        Move((x0 * 2 + drop[0]) / 3, (y0 * 2 + drop[1]) / 3); Thread.Sleep(d[1]);
-                        Move(drop[0], drop[1]); Thread.Sleep(d[0]);
-                        Send(LEFTUP); held = false; Thread.Sleep(d[1]);
-                        moved++;
                     }
                     if (stillOk()) Move(center[0], center[1]);
                 }

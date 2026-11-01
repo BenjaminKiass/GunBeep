@@ -53,8 +53,8 @@ namespace GunBeep
         public int LootSpeed { get; set; } = 1;                // 0 ช้า, 1 กลาง, 2 เร็ว
         public bool LootAutoTab { get; set; } = true;          // กดปุ่มเก็บตอนกำลังเล่น: true = โปรแกรมกด Tab เปิด/ปิดให้, false = ต้องเปิดกระเป๋าเอง
         public int LootDirection { get; set; } = 0;            // ทิศทางเก็บ: 0 ล่างขึ้นบน (ค่าเดิม), 1 บนลงล่าง
-        public double[] LootStart { get; set; } = { 0.110, 0.147 };
-        public double[] LootStep { get; set; } = { 0.110, 0.204 };
+        public double[] LootStart { get; set; } = { 0.110, 0.135 };
+        public double[] LootStep { get; set; } = { 0.110, 0.191 };
         public double[] LootDrop { get; set; } = { 0.750, 0.233 };
         public double[] LootCenter { get; set; } = { 0.480, 0.500 };
         public bool AutoEnglish { get; set; } = true;   // เข้าเกม = สลับคีย์บอร์ดเป็นภาษาอังกฤษ (ภาษาไทยแล้วปุ่ม 1/2/3 ฯลฯ ในเกมไม่ทำงาน), ออกเกม = คืนภาษาเดิม
