@@ -17,7 +17,8 @@ namespace GunBeep
     public static class ScopeDetect
     {
         // ขนาดกล่อง (สัดส่วนของความสูงจอ — UI ของ PUBG ขยายตามความสูง)
-        public const double BadgeSize = 0.028, IconSize = 0.048, NameW = 0.20, NameH = 0.034;
+        // NameW = 0.12 (ลดจาก 0.20 กันกรอบ OCR ชื่อปืนยื่นไปทับชื่อคนใน Killfeed)
+        public const double BadgeSize = 0.028, IconSize = 0.048, NameW = 0.12, NameH = 0.034;
         const int F = 40;                             // ภาพสโคปย่อเหลือ 40x40 ก่อนเทียบ
 
         public sealed class Template
@@ -666,11 +667,11 @@ namespace GunBeep
             return false;
         }
 
-        // ช่องโดนบัง: เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อน > 30%) หรือ ไอคอน/ป้าย Killfeed บัง (> 2.5%)
-        public static bool Obscured(Bitmap c)
+        // เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อนสว่าง > 35%)
+        public static bool IsHovered(Bitmap c)
         {
             if (c == null || c.Width < 4 || c.Height < 4) return false;
-            int n = 0, whiteHover = 0, kf = 0;
+            int n = 0, whiteHover = 0;
             for (int y = 0; y < c.Height; y += 2)
                 for (int x = 0; x < c.Width; x += 2)
                 {
@@ -678,15 +679,70 @@ namespace GunBeep
                     n++;
                     int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
                     if (mn > 150 && mx - mn < 30) whiteHover++;
+                }
+            return n > 0 && (double)whiteHover / n > 0.35;
+        }
 
-                    // แถบ Killfeed: ไอคอนปืน/X สี Cyan, ป้ายเลขทีมสีน้ำเงินสด, ป้ายศัตรูสีแดงสด
-                    bool isCyan = p.G > 160 && p.B > 160 && p.R < 115;
-                    bool isBlue = p.B > 170 && p.B > p.R + 70 && p.G < 160;
-                    bool isRed = p.R > 180 && p.R > p.B + 70 && p.G < 120;
+        // ตรวจว่าช่องนี้มีพิกเซลสี Killfeed ปนอยู่ไหม (Cyan, น้ำเงินสด, แดงสด)
+        public static bool HasKillfeedColors(Bitmap c)
+        {
+            if (c == null || c.Width < 4 || c.Height < 4) return false;
+            int n = 0, kf = 0;
+            for (int y = 0; y < c.Height; y += 2)
+                for (int x = 0; x < c.Width; x += 2)
+                {
+                    var p = c.GetPixel(x, y);
+                    n++;
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
                     if (isCyan || isBlue || isRed) kf++;
                 }
-            return n > 0 && ((double)whiteHover / n > 0.30 || (double)kf / n > 0.025);
+            return n > 0 && (double)kf / n > 0.012;
         }
+
+        // ลบพิกเซลสี Killfeed และตัวหนังสือทับออก ให้เป็นสีพื้นหลังมืด เพื่อให้เทียบ Template สโคปได้
+        public static Bitmap CleanKillfeed(Bitmap src)
+        {
+            if (src == null) return null;
+            var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
+            bool[] kfRow = new bool[src.Height];
+            for (int y = 0; y < src.Height; y++)
+            {
+                int kfCount = 0;
+                for (int x = 0; x < src.Width; x++)
+                {
+                    var p = src.GetPixel(x, y);
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    if (isCyan || isBlue || isRed) kfCount++;
+                }
+                if (kfCount >= 2) kfRow[y] = true;
+            }
+
+            var bg = Color.FromArgb(32, 34, 38);
+            for (int y = 0; y < src.Height; y++)
+            {
+                bool nearKf = (y > 0 && kfRow[y - 1]) || kfRow[y] || (y + 1 < src.Height && kfRow[y + 1]);
+                for (int x = 0; x < src.Width; x++)
+                {
+                    var p = src.GetPixel(x, y);
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    int mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                    if (isCyan || isBlue || isRed || (nearKf && mn > 165))
+                        dst.SetPixel(x, y, bg);
+                    else
+                        dst.SetPixel(x, y, p);
+                }
+            }
+            return dst;
+        }
+
+        // ช่องโดนบัง: เมาส์ชี้ หรือมี Killfeed บัง
+        public static bool Obscured(Bitmap c) => IsHovered(c) || HasKillfeedColors(c);
 
         // ความต่างของความสว่าง (sd 0–255) ในแถบแนวนอนของช่อง (y0–y1 เป็นสัดส่วนความสูง, เว้นขอบซ้ายขวา 8%)
         public static double BandSd(Bitmap c, double y0, double y1)
@@ -746,9 +802,17 @@ namespace GunBeep
                 }
                 using (var ic = Crop(shot, icon))
                 {
-                    bool icObs = Obscured(ic) || panelKf;
-                    if (icObs) p.Obscured = true;
-                    if (Detail(ic) < 0.035 && !icObs) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
+                    bool hovered = IsHovered(ic);
+                    bool kfOnSlot = HasKillfeedColors(ic);
+                    if (hovered) p.Obscured = true;
+
+                    using var cleanIc = kfOnSlot ? CleanKillfeed(ic) : null;
+                    var targetIc = cleanIc ?? ic;
+
+                    if (!hovered && Detail(targetIc) < 0.035)
+                    {
+                        p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
+                    }
                     else
                     {
                         // ลองเลื่อนกรอบ ±2–4 px เผื่อตั้งจุดเพี้ยนนิดหน่อย เอาตำแหน่งที่ตรงที่สุด
@@ -760,16 +824,30 @@ namespace GunBeep
                                 var r = icon;
                                 r.Offset(ox, oy);
                                 using var c = (ox | oy) == 0 ? null : Crop(shot, r);
-                                var m = Match(c ?? ic, cfg.Names);
+                                var active = c ?? ic;
+                                var m = Match(active, cfg.Names);
                                 if (m.score > best.s) best = m;
+
+                                if (kfOnSlot)
+                                {
+                                    using var cClean = CleanKillfeed(active);
+                                    var mClean = Match(cClean, cfg.Names);
+                                    if (mClean.score > best.s) best = mClean;
+                                }
                             }
                         p.Score = best.s;
-                        // ต้องเหมือน ≥ 0.62 และชนะสโคปอื่น ≥ 0.06 (เคยรับ 0.58 → Micro UZI ที่ไม่มีราวสโคปถูกอ่านเป็น Holo)
-                        if (best.t != null && best.s >= 0.62 && best.margin >= 0.06) { p.Set = best.t.Set; p.ScopeLabel = best.t.Label; }
-                        // ไม่รู้จัก + ส่วนบนของช่องเรียบ = ช่องว่างที่รูปปืนทับแค่ด้านล่าง (รูปปืนเข้ามาจากล่าง, ไอคอนสโคปอยู่กลางช่อง)
-                        //   วัดจากภาพจริง: ช่องว่าง sd 0–6, สโคปทุกแบบรวม 3x sd 21–31 (3x/2x ไม่มีสีฟ้า เลยใช้สีแยกไม่ได้)
-                        //   เว้นช่องที่โดนบัง (เมาส์ชี้ = พื้นขาว, ป้ายรายละเอียดของ = เทาอ่อน) → ไม่แน่ใจ ใช้ค่าเดิม
-                        else if (BandSd(ic, 0.06, 0.40) < 12 && !icObs) { p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1; }
+
+                        // ถ้ามี Killfeed พาดผ่าน เกณฑ์ผ่อนคลายลงเหลือ 0.56 ชนะสโคปอื่น 0.05
+                        double threshold = (kfOnSlot || panelKf) ? 0.56 : 0.62;
+                        if (best.t != null && best.s >= threshold && best.margin >= 0.05)
+                        {
+                            p.Set = best.t.Set;
+                            p.ScopeLabel = best.t.Label;
+                        }
+                        else if (!hovered && BandSd(targetIc, 0.06, 0.40) < 13)
+                        {
+                            p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
+                        }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }

@@ -832,15 +832,17 @@ namespace GunBeep
             if (!cfg.ScopeAuto) return;
             // อ่านได้ตอนอยู่ในกระเป๋าและไม่ได้กดเมาส์ค้าง (ลาก/คลิกขวาใส่ของ) — ปล่อยปุ่มปุ๊บอ่านใหม่ใน 0.08 วิ
             //   แม้เคอร์เซอร์ยังไม่กลับมาหลังวางของ → ใส่ของแล้วกด Tab ปิดเร็วๆ ก็ยังทัน
-            bool btn = KeyHook.GetAsyncKeyState(0x01) < 0 || KeyHook.GetAsyncKeyState(0x02) < 0;
+            // เช็คเฉพาะคลิกซ้ายลากของ (0x01) ไม่บล็อคคลิกขวาใส่ของ (0x02) เพื่อให้กด Tab สลับสโคปแล้วสแกนติดทันที
+            bool btn = KeyHook.GetAsyncKeyState(0x01) < 0;
             bool inv = front && invSession && !btn;
             var now = DateTime.Now;
-            if (inv && !invWas) invOpenedAt = now;
+            if (inv && !invWas && (now - sessionStartAt < TimeSpan.FromMilliseconds(200))) invOpenedAt = now;
             if (!invSession && sessionWas) ApplyScope("inventory closed");
             invWas = inv;
             sessionWas = invSession;
-            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(150) || now - invOpenedAt < TimeSpan.FromMilliseconds(160)
-                || now - lastScan < TimeSpan.FromMilliseconds(150)) return;
+            // ปรับ Latency ให้ตอบสนองไว: เริ่มสแกนที่ 60ms หลังเปิดกระเป๋า และรอบถัดไปทุก 90ms (เดิม 150/160ms)
+            if (!inv || scanBusy || locating || now - sessionStartAt < TimeSpan.FromMilliseconds(60) || now - invOpenedAt < TimeSpan.FromMilliseconds(60)
+                || now - lastScan < TimeSpan.FromMilliseconds(90)) return;
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
             if (cfg.ScopeCalib != $"{size.Width}x{size.Height}")
@@ -956,12 +958,22 @@ namespace GunBeep
                     if (old != null)
                     {
                         if (!Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        if (!Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) ให้เชื่อทันทีตั้งแต่รอบแรก ไม่ต้องรอยืนยันรอบ 2
+                        bool scopeSure = p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0);
+                        if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
                         { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
+                        else if (scopeSure)
+                        {
+                            pendingRead.Remove(p.Slot + ":scope");
+                        }
                         if (p.Att != null && old.Att != null)
                             for (int k = 0; k < 4; k++)
-                                if (!Confirmed(p.Slot, "att" + k, $"{old.Att[k]}|{old.AttId?[k]}", $"{p.Att[k]}|{p.AttId?[k]}"))
+                            {
+                                bool attSure = p.AttId?[k] != null;
+                                if (!attSure && !Confirmed(p.Slot, "att" + k, $"{old.Att[k]}|{old.AttId?[k]}", $"{p.Att[k]}|{p.AttId?[k]}"))
                                 { p.Att[k] = old.Att[k]; if (p.AttId != null) p.AttId[k] = old.AttId?[k]; }
+                                else if (attSure) pendingRead.Remove(p.Slot + ":att" + k);
+                            }
                     }
                     string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info("scope scan: " + p + " att " + attSig(p));
@@ -1118,6 +1130,40 @@ namespace GunBeep
         int stance;                                   // 0 ยืน, 1 ย่อ, 2 หมอบ
         int[] stanceKeys;
 
+        static DateTime lastVehicleCheck;
+        static bool lastInVehicle;
+
+        // ตรวจสอบว่าผู้เล่นอยู่ในยานพาหนะหรือไม่ (ตรวจ UI ผังที่นั่ง/เกจ์ความเร็วเหนือมินิแมพ)
+        static bool InVehicle()
+        {
+            var now = DateTime.Now;
+            if (now - lastVehicleCheck < TimeSpan.FromMilliseconds(250)) return lastInVehicle;
+            lastVehicleCheck = now;
+            try
+            {
+                var bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+                int w = bounds.Width, h = bounds.Height;
+                // บริเวณ HUD พาหนะ (ผังที่นั่ง/เกจ์) เหนือมินิแมพมุมขวาล่าง
+                int vx = w - (int)(0.22 * h), vy = h - (int)(0.30 * h), vw = (int)(0.16 * h), vh = (int)(0.08 * h);
+                if (vx < 0 || vy < 0 || vx + vw > w || vy + vh > h) return false;
+                using var bmp = new System.Drawing.Bitmap(vw, vh, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                using (var g = System.Drawing.Graphics.FromImage(bmp))
+                    g.CopyFromScreen(new System.Drawing.Point(vx, vy), System.Drawing.Point.Empty, new System.Drawing.Size(vw, vh));
+
+                int whiteUi = 0;
+                for (int y = 0; y < vh; y += 2)
+                    for (int x = 0; x < vw; x += 2)
+                    {
+                        var p = bmp.GetPixel(x, y);
+                        int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                        if (mn > 170 && mx - mn < 25) whiteUi++;
+                    }
+                lastInVehicle = whiteUi > 35;
+                return lastInVehicle;
+            }
+            catch { return false; }
+        }
+
         void StanceKey(int vk)
         {
             var c = cfg.Calc;
@@ -1126,6 +1172,23 @@ namespace GunBeep
             stanceKeys ??= ReadStanceKeys();
             int was = stance;
             bool Held(int k) => KeyHook.GetAsyncKeyState(k) < 0;
+
+            // ถ้ากดปุ่ม Ctrl ค้างอยู่ (เช่น Ctrl+1..4 เปลี่ยนที่นั่งในรถ หรือเดินย่อง) → ไม่เปลี่ยน Stance
+            if (Held(0x11) || Held(0xA2) || Held(0xA3)) return;
+
+            // ถ้าอยู่ในรถ: ท่าเป็นยืน (neutral x1.00) เสมอ และไม่รับปุ่ม C (เปลี่ยนที่นั่ง) หรือ Space (เบรกมือ) มาเป็นท่าย่อ
+            if (InVehicle())
+            {
+                if (stance != 0)
+                {
+                    stance = 0;
+                    multWant[1] = 1.0;
+                    Log.Info("stance vehicle (neutral x1.00)");
+                    if (on) PushMults();
+                }
+                return;
+            }
+
             if (vk == stanceKeys[0]) stance = stance == 1 ? 0 : 1;
             else if (vk == stanceKeys[1]) stance = stance == 2 ? 0 : 2;
             else if (vk == 0x20) stance = 0;        // Space: กระโดด = ยืนเสมอ (ทั้งจากย่อและหมอบ)
