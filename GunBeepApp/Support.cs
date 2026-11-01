@@ -476,6 +476,21 @@ namespace GunBeep
         [DllImport("dwmapi.dll")]
         public static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset);
 
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        public static void ApplyDarkMode(IntPtr hWnd)
+        {
+            if (hWnd == IntPtr.Zero) return;
+            try
+            {
+                int dark = 1;
+                DwmSetWindowAttribute(hWnd, 20, ref dark, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE Win11/Win10 20H1+
+                DwmSetWindowAttribute(hWnd, 19, ref dark, sizeof(int)); // Win10 older builds
+            }
+            catch { }
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct MARGINS { public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight; }
 
@@ -533,10 +548,9 @@ namespace GunBeep
                 var h = new WindowInteropHelper(w).Handle;
                 if (h != IntPtr.Zero)
                 {
-                    Apply(h, enable);
+                    bool ok = Apply(h, enable);
                     SetAltTabHidden(h, enable);
-                    w.ShowInTaskbar = !enable;
-                    return true;
+                    return ok;
                 }
             }
             catch { }

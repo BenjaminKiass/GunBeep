@@ -85,6 +85,8 @@ namespace GunBeep
             StateChanged += (s, e) => { UpdateAmbient(); OnWindowStateChanged(); };
                         SourceInitialized += (s, e) =>
             {
+                var h = new WindowInteropHelper(this).Handle;
+                StreamModeHelper.ApplyDarkMode(h);
                 if (cfg.StreamMode)
                 {
                     StreamModeHelper.Apply(this, true);
@@ -3266,6 +3268,7 @@ TopSwitch.IsChecked = cfg.TopMost;
             cfg.StreamMode = on;
             cfg.Save();
             StreamModeHelper.SetMode(on);
+            StreamModeHelper.Apply(this, on);
             if (StreamBadge != null)
                 StreamBadge.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
             Log.Info("stream mode " + (on ? "ON (hidden from capture/stream)" : "OFF"));

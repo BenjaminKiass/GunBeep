@@ -6,6 +6,14 @@
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Leelawadee UI" UseLayoutRounding="True">
 
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="4"
+                      CornerRadius="0"
+                      GlassFrameThickness="0,0,0,1"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
     <Window.Resources>
         <SolidColorBrush x:Key="TextBrush" Color="#EAF2FF"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#8094BC"/>
@@ -471,7 +479,7 @@
         </Grid.RenderTransform>
 
         <!-- ขอบไฟฟ้าวิ่งรอบหน้าต่าง -->
-        <Border CornerRadius="0" BorderThickness="1.5" ClipToBounds="True">
+        <Border CornerRadius="0" BorderThickness="1" ClipToBounds="True">
             <Border.BorderBrush>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                     <LinearGradientBrush.RelativeTransform>
