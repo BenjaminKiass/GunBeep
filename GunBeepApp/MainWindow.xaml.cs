@@ -85,14 +85,6 @@ namespace GunBeep
             StateChanged += (s, e) => { UpdateAmbient(); OnWindowStateChanged(); };
                         SourceInitialized += (s, e) =>
             {
-                var h = new WindowInteropHelper(this).Handle;
-                var src = HwndSource.FromHwnd(h);
-                if (src?.CompositionTarget != null)
-                    src.CompositionTarget.BackgroundColor = Colors.Transparent;
-
-                var m = new StreamModeHelper.MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
-                StreamModeHelper.DwmExtendFrameIntoClientArea(h, ref m);
-
                 if (cfg.StreamMode)
                 {
                     StreamModeHelper.Apply(this, true);
@@ -3249,12 +3241,12 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (WindowState == WindowState.Maximized)
             {
                 if (MaxBtn != null) { MaxBtn.Content = "\uE923"; MaxBtn.ToolTip = "ย่อขนาดลง"; }
-                if (Root != null) Root.Margin = new Thickness(4);
+                if (Root != null) Root.Margin = new Thickness(0);
             }
             else
             {
                 if (MaxBtn != null) { MaxBtn.Content = "\uE922"; MaxBtn.ToolTip = "ขยายเต็มจอ"; }
-                if (Root != null) Root.Margin = new Thickness(22);
+                if (Root != null) Root.Margin = new Thickness(0);
             }
         }
 
