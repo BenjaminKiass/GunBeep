@@ -405,6 +405,13 @@ namespace GunBeep
             vt.Vertical = GameSettings.Current.Vertical;
             WatchLanguage(front, front && !cursor && !invSession);
             WatchScope(front, cursor);
+            if (stance != 0 && front && !cursor && !invSession && InVehicle())
+            {
+                stance = 0;
+                multWant[1] = 1.0;
+                Log.Info("stance vehicle (neutral x1.00)");
+                if (on) PushMults();
+            }
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
             // (ไม่นับกระสุนข้ามชุดแล้ว: แต่ละครั้งที่กดยิงค้าง ตัวยิงหยุดดึงเองเมื่อครบขนาดแม็กของปืน + 2 นัด — แม็กหมดในเกมก็หยุดยิงเอง)
             bool want = false;
@@ -1143,8 +1150,8 @@ namespace GunBeep
             {
                 var bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
                 int w = bounds.Width, h = bounds.Height;
-                // บริเวณ HUD พาหนะ (ผังที่นั่ง/เกจ์) เหนือมินิแมพมุมขวาล่าง
-                int vx = w - (int)(0.22 * h), vy = h - (int)(0.30 * h), vw = (int)(0.16 * h), vh = (int)(0.08 * h);
+                // บริเวณ HUD พาหนะ (ผังที่นั่ง/เกจ์ความเร็ว/น้ำมัน) อยู่ทางซ้ายของมินิแมพมุมขวาล่าง
+                int vx = w - (int)(0.45 * h), vy = h - (int)(0.17 * h), vw = (int)(0.18 * h), vh = (int)(0.13 * h);
                 if (vx < 0 || vy < 0 || vx + vw > w || vy + vh > h) return false;
                 using var bmp = new System.Drawing.Bitmap(vw, vh, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                 using (var g = System.Drawing.Graphics.FromImage(bmp))
@@ -1158,7 +1165,7 @@ namespace GunBeep
                         int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
                         if (mn > 170 && mx - mn < 25) whiteUi++;
                     }
-                lastInVehicle = whiteUi > 35;
+                lastInVehicle = whiteUi > 30;
                 return lastInVehicle;
             }
             catch { return false; }
