@@ -24,6 +24,7 @@ namespace GunBeep
         public int OsdCorner { get; set; }          // 0 ซ้ายบน, 1 ขวาบน, 2 ซ้ายล่าง, 3 ขวาล่าง
         public string Preset { get; set; }         // โปรไฟล์ค่าปืนที่โหลด/บันทึกล่าสุด
         public int PresetKey { get; set; } = 0x78;  // ปุ่มวนโปรไฟล์ในเกม (F9), 0 = ไม่ใช้
+        public int ToggleMenuKey { get; set; } = 0x2D; // ปุ่มลัดเปิด/ปิดหน้าต่างเมนู (Insert), 0 = ไม่ใช้
         public bool AutoRes { get; set; }           // เปิด PUBG แล้วเปลี่ยนความละเอียด Windows ให้เอง
         public int GameResW { get; set; } = 1728;
         public int GameResH { get; set; } = 1080;

@@ -1614,6 +1614,7 @@ TopSwitch.IsChecked = cfg.TopMost;
 
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
             if (cfg.LootKey != 0 && vk == cfg.LootKey) { LootKeyPressed(); return; }
+            if (cfg.ToggleMenuKey != 0 && vk == cfg.ToggleMenuKey) { ToggleWindowVisibility(); return; }
             // ปุ่มในเกม (เลขปืน รีโหลด ย่อ/หมอบ Tab) นับเฉพาะตอนเกมอยู่หน้าจอ — พิมพ์เลขในแอปอื่นแล้วค่าเปลี่ยน = บัค
             bool game = GameInFront();
             // แป้นภาษาไทยในเกม: PUBG อ่านปุ่มตามตัวอักษร → เลข/ตัวอักษร (1 2 3, C, Z, B, I …) ไม่ทำงานในเกม
@@ -2680,6 +2681,8 @@ TopSwitch.IsChecked = cfg.TopMost;
             HotkeyBtn.ClearValue(BorderBrushProperty);
             PresetKeyBtn.Content = cfg.PresetKey == 0 ? "ไม่ใช้" : KeyName(cfg.PresetKey);
             PresetKeyBtn.ClearValue(BorderBrushProperty);
+            MenuKeyBtn.Content = cfg.ToggleMenuKey == 0 ? "ไม่ใช้" : KeyName(cfg.ToggleMenuKey);
+            MenuKeyBtn.ClearValue(BorderBrushProperty);
             PowerHint.Text = "คลิกปุ่ม หรือกด " + KeyName(cfg.HotKey);
             for (int i = 0; i < 3; i++)
             {
@@ -2713,6 +2716,7 @@ TopSwitch.IsChecked = cfg.TopMost;
             return true;
         }
         void PresetKey_Click(object sender, RoutedEventArgs e) => BeginCapture(1);
+        void MenuKey_Click(object sender, RoutedEventArgs e) => BeginCapture(7);
 
         void BeginCapture(int target)
         {
@@ -2723,8 +2727,8 @@ TopSwitch.IsChecked = cfg.TopMost;
             capturing = true;
             captureFor = target;
             if (target == 6) { UpdateLootPage(); return; }
-            var btn = target >= 3 ? ScopeBtn(target - 3) : target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : HotkeyBtn;
-            btn.Content = target >= 3 ? "กดปุ่ม..." : target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
+            var btn = target >= 3 && target <= 5 ? ScopeBtn(target - 3) : target == 1 ? PresetKeyBtn : target == 2 ? CycleBtn : target == 7 ? MenuKeyBtn : HotkeyBtn;
+            btn.Content = target >= 3 && target <= 5 ? "กดปุ่ม..." : target == 0 ? "กดปุ่ม / ปุ่มเมาส์..." : target == 1 || target == 7 ? "กดปุ่ม... (Del = ไม่ใช้)" : "ในเกม: กดปุ่มคีย์บอร์ด... (Esc = ยกเลิก)";
             btn.BorderBrush = accent;
         }
 
@@ -2750,8 +2754,17 @@ TopSwitch.IsChecked = cfg.TopMost;
                 Flash("ปิดปุ่มลัดสลับโปรไฟล์แล้ว");
                 return;
             }
+            if (captureFor == 7 && (vk == VK_DELETE || vk == VK_BACK))
+            {
+                capturing = false;
+                cfg.ToggleMenuKey = 0;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash("ปิดปุ่มเปิด/ปิดเมนูแล้ว");
+                return;
+            }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(captureFor == 6 ? 0 : cfg.LootKey).Where(k => k != 0);
+            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, cfg.ToggleMenuKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(captureFor == 6 ? 0 : cfg.LootKey).Where(k => k != 0);
             if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
@@ -2779,6 +2792,15 @@ TopSwitch.IsChecked = cfg.TopMost;
                 cfg.Save();
                 UpdateHotkeyText();
                 Flash($"ปุ่ม {KeyName(vk)} = ชุด {captureFor - 2} ({cfg.Names[captureFor - 3]})");
+                Sfx.Play(Sfx.Pick, cfg.Sound);
+                return;
+            }
+            if (captureFor == 7)
+            {
+                cfg.ToggleMenuKey = vk;
+                cfg.Save();
+                UpdateHotkeyText();
+                Flash("ปุ่มเปิด/ปิดเมนู = " + KeyName(vk));
                 Sfx.Play(Sfx.Pick, cfg.Sound);
                 return;
             }

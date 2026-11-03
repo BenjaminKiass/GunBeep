@@ -1226,6 +1226,14 @@
                                                     <TextBlock Text="ปุ่มสลับโปรไฟล์" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                                 </DockPanel>
                                                 <Border Height="1" Background="{StaticResource LineBrush}"/>
+                                                <DockPanel Height="40" ToolTip="ปุ่มเปิด/ปิดหน้าต่างเมนู GunBeep (กดเพื่อซ่อนหรือแสดงหน้าต่าง, Del = ไม่ใช้)">
+                                                    <Button x:Name="MenuKeyBtn" DockPanel.Dock="Right" Style="{StaticResource KeyBtn}"
+                                                            VerticalAlignment="Center" Click="MenuKey_Click"/>
+                                                    <TextBlock Text="&#xE700;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                                                               VerticalAlignment="Center" Width="26"/>
+                                                    <TextBlock Text="ปุ่มเปิด/ปิดเมนู" FontSize="13" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                                <Border Height="1" Background="{StaticResource LineBrush}"/>
                                                 <DockPanel Height="40">
                                                     <ToggleButton x:Name="SoundSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center"/>
                                                     <TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource MutedBrush}"
