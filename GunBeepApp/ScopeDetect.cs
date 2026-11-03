@@ -288,7 +288,10 @@ namespace GunBeep
                 ras.Seek(0);
                 var dec = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ras);
                 using var sb = await dec.GetSoftwareBitmapAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
-                var r = await ocr.RecognizeAsync(sb);
+                await ocrGate.WaitAsync();
+                Windows.Media.Ocr.OcrResult r;
+                try { r = await ocr.RecognizeAsync(sb); }
+                finally { ocrGate.Release(); }
                 foreach (var line in r.Lines)
                 {
                     var word = line.Words.FirstOrDefault(x => IsGunWord(x.Text));
@@ -353,6 +356,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- ชื่อปืน (Windows OCR ภาษาอังกฤษ)
         static Windows.Media.Ocr.OcrEngine ocr;
         static bool ocrTried;
+        static readonly System.Threading.SemaphoreSlim ocrGate = new(1, 1);
 
         static Windows.Media.Ocr.OcrEngine Ocr()
         {
@@ -394,7 +398,10 @@ namespace GunBeep
                 ras.Seek(0);
                 var dec = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ras);
                 using var sb = await dec.GetSoftwareBitmapAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
-                var r = await ocr.RecognizeAsync(sb);
+                await ocrGate.WaitAsync();
+                Windows.Media.Ocr.OcrResult r;
+                try { r = await ocr.RecognizeAsync(sb); }
+                finally { ocrGate.Release(); }
                 return r.Text.Trim();
             }
             catch (Exception ex) { Log.Error("ocr read", ex); return ""; }
@@ -831,9 +838,9 @@ namespace GunBeep
                             }
                         p.Score = best.s;
 
-                        // ถ้ามี Killfeed พาดผ่าน เกณฑ์ผ่อนคลายลงเหลือ 0.50 ชนะสโคปอื่น 0.03
-                        double threshold = (kfOnSlot || panelKf || p.Obscured) ? 0.50 : 0.60;
-                        if (best.t != null && best.s >= threshold && best.margin >= 0.03)
+                        // เกณฑ์คะแนนเทียบสโคป: ถ้ามี Killfeed ผ่อนปรน 0.50 ชนะสโคปอื่น 0.02
+                        double threshold = (kfOnSlot || panelKf || p.Obscured) ? 0.50 : 0.54;
+                        if (best.t != null && best.s >= threshold && (best.margin >= 0.02 || best.s >= 0.60))
                         {
                             p.Set = best.t.Set;
                             p.ScopeLabel = best.t.Label;

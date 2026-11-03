@@ -942,6 +942,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         async Task ScanScopesAsync(System.Drawing.Bitmap preShot = null, System.Drawing.Point? preOrigin = null, string trigger = "scan")
         {
             long seq = ++scanSeq;
+            bool bothWereEmpty = (slotInfo[1] == null || slotEmpty[1]) && (slotInfo[2] == null || slotEmpty[2]);
             try
             {
                 var panels = await Task.Run(async () =>
@@ -1081,8 +1082,8 @@ TopSwitch.IsChecked = cfg.TopMost;
                     int s = i + 1;
                     if (hadBadge[i]) { slotEmpty[s] = false; continue; }
                     if (panels[i].PicSharp >= ScopeDetect.GunArtSharp || panels[i].Obscured) continue;
-                    // ตอนปิดกระเป๋า ห้ามลบปืนเดิมเด็ดขาด (ภาพเฟรมปิดอาจเริ่มจาง/โดนบัง)
-                    if (isClose) continue;
+                    // ตอนเปิด/ปิดกระเป๋า ห้ามลบปืนเดิมเด็ดขาด (ภาพเฟรมเปิดอาจกำลัง fade-in / เฟรมปิดอาจเริ่มจางหรือโดนบัง)
+                    if (isClose || trigger == "tab open") continue;
                     if (slotInfo[s] != null)
                     {
                         if (!isClose && !Confirmed(s, "empty", "gun", "empty")) continue;
@@ -1097,9 +1098,9 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (magSlot == s && !slotEmpty[o] && slotInfo[o] != null) { Log.Info($"slot {s} empty → holding slot {o}"); MagSlotTo(o); }
                     if (heldSlot == s && !slotEmpty[o] && slotInfo[o] != null) heldSlot = o;
                 }
-                // ถ้าเดิมไม่มีปืน / เก็บปืนอยู่ (magSlot == 0 หรือช่องที่ถือว่าง) แล้วเพิ่งเก็บปืนเข้ามา
+                // ถ้าเดิมไม่มีปืนเลยทั้งสองช่อง (ทั้งตัวว่างเปล่า) แล้วเพิ่งเก็บปืนแรกเข้ามา
                 // → ในเกม PUBG จะควักปืนขึ้นมาถือให้อัตโนมัติทันที ต้องเปิดระบบดึงและสลับช่องให้เลยโดยไม่ต้องกดเลข
-                if (magSlot == 0 || slotEmpty[magSlot] || slotInfo[magSlot] == null)
+                if (bothWereEmpty && (slotInfo[1] != null || slotInfo[2] != null))
                 {
                     int autoSlot = (slotInfo[1] != null && !slotEmpty[1]) ? 1 : (slotInfo[2] != null && !slotEmpty[2]) ? 2 : 0;
                     if (autoSlot != 0)
@@ -1159,7 +1160,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                     PopOsd($"{n} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
                     PushMults();
                 }
-                else if (scopeChanged || why == "scan" || why == "tab open" || why == "tab close" || why == "inventory closed")
+                else if (scopeChanged)
                 {
                     PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}");
                 }
