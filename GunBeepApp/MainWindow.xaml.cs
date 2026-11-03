@@ -1015,10 +1015,10 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
 
-                    // Scope Retention Lock: ถ้าเดิมมีสโคปอยู่แล้ว (old.Set > 0)
-                    // แล้วเฟรมปัจจุบันมีคิวฟีดพาดทับ หรือตรวจได้คะแนนต่ำ (p.Set == -1) หรืออ่านเป็นไม่มีสโคปทั้งที่ช่องโดนบัง
+                    // Scope Retention Lock: ถ้าเดิมมีสโคปอยู่แล้ว (old.Set > 0 หรือ old.Set == -2 เช่น 3x, 2x, 8x)
+                    // แล้วเฟรมปัจจุบันมีคิวฟีดพาดทับ หรือตรวจได้คะแนนต่ำ (p.Set == -1) หรืออ่านเป็นไม่มีสโคปทั้งที่ช่องโดนบัง (p.Set == 0)
                     // มันจะล็อกจำสโคปเดิมไว้ทันที ไม่มียอมให้หลุดเป็น "ไม่มีสโคป" เด็ดขาด
-                    if (old != null && old.Set > 0 && (p.Set == -1 || (p.Set <= 0 && (p.Obscured || p.PanelKf))))
+                    if (old != null && (old.Set > 0 || old.Set == -2) && (p.Set == -1 || (p.Set == 0 && (p.Obscured || p.PanelKf))))
                     {
                         p.Set = old.Set;
                         p.ScopeLabel = old.ScopeLabel;
@@ -1040,14 +1040,14 @@ TopSwitch.IsChecked = cfg.TopMost;
 
                         // ปลดสโคปเป็น "ไม่มีสโคป" (Set == 0): ไม่ยอมให้หลุดเด็ดขาด จนกว่าจะเปิดกระเป๋าเห็นช่องว่างจริงแบบโล่งๆ 2 เฟรมติด
                         bool emptyConfirmed = p.Set == 0 && Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0");
-                        // สโคปใหม่: คะแนนมั่นใจ (Score >= 0.58) หรือตอนปิดกระเป๋า ให้เชื่อทันที
-                        bool newScopeSure = p.Set > 0 && (isClose || (p.Score >= 0.58 && !p.Obscured));
+                        // สโคปใหม่ (Set > 0 หรือ Set == -2 เช่น 3x): คะแนนมั่นใจ (Score >= 0.58) หรือตอนปิดกระเป๋า ให้เชื่อทันที
+                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= 0.58 && !p.Obscured));
 
-                        if (old.Set > 0 && p.Set == 0 && !emptyConfirmed)
+                        if ((old.Set > 0 || old.Set == -2) && p.Set == 0 && !emptyConfirmed)
                         {
                             p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         }
-                        else if (!newScopeSure && p.Set > 0 && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        else if (!newScopeSure && (p.Set > 0 || p.Set == -2) && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
                         {
                             p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         }
