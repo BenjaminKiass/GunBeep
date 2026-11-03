@@ -1138,8 +1138,11 @@ TopSwitch.IsChecked = cfg.TopMost;
                     PopOsd($"{n} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
                     PushMults();
                 }
-                else if (scopeChanged && why == "scan")
-                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))} (ค่าเท่าเดิม)");
+                else if (scopeChanged || why == "scan" || why == "tab open" || why == "tab close" || why == "inventory closed")
+                {
+                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}");
+                }
+                UpdateTray();
                 return;
             }
             Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
@@ -1147,6 +1150,7 @@ TopSwitch.IsChecked = cfg.TopMost;
             PushMults();
             string name = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
             PopOsd($"{name} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+            UpdateTray();
         }
 
         CalcWindow calcWin;
@@ -3159,11 +3163,91 @@ TopSwitch.IsChecked = cfg.TopMost;
         void SetupTray()
         {
             tray = new System.Windows.Forms.NotifyIcon { Visible = true, Text = "GunBeep" };
+            // คลิกซ้ายที่ไอคอนถาด = เปิด/ปิด (สลับ ย่อไป/กลับมา)
+            tray.MouseClick += (s, e) =>
+            {
+                if (e.Button == System.Windows.Forms.MouseButtons.Left)
+                {
+                    ToggleWindowVisibility();
+                }
+            };
             tray.DoubleClick += (s, e) => ShowFromTray();
+
             var menu = new System.Windows.Forms.ContextMenuStrip();
-            menu.Items.Add("เปิดหน้าต่าง", null, (s, e) => ShowFromTray());
-            menu.Items.Add("ออกจากโปรแกรม", null, (s, e) => Close());
+            menu.Opening += (s, e) => BuildTrayMenu(menu);
             tray.ContextMenuStrip = menu;
+        }
+
+        public void ToggleWindowVisibility()
+        {
+            if (IsVisible && WindowState != WindowState.Minimized && Opacity > 0.5)
+            {
+                AnimateOut(Hide);
+            }
+            else
+            {
+                ShowFromTray();
+            }
+        }
+
+        void BuildTrayMenu(System.Windows.Forms.ContextMenuStrip menu)
+        {
+            menu.Items.Clear();
+
+            // หัวเมนู
+            var header = new System.Windows.Forms.ToolStripMenuItem("all@Ben-GunBeep (v2.0.90)") { Enabled = false };
+            header.Font = new System.Drawing.Font(header.Font, System.Drawing.FontStyle.Bold);
+            menu.Items.Add(header);
+
+            // ข้อมูลสถานะมาโคร
+            string statusStr = on ? (paused ? "● หยุดชั่วคราว" : "● พร้อมยิง [ON]") : "○ มาโครปิด [OFF]";
+            menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem(statusStr) { Enabled = false });
+
+            // ข้อมูลตรวจจับปืน
+            if (cfg.ScopeAuto)
+            {
+                var p1 = slotInfo[1];
+                var p2 = slotInfo[2];
+                string s1 = p1 != null && !string.IsNullOrEmpty(p1.Name)
+                    ? $"ช่อง 1: {p1.Name} ({ScopeName(p1.ScopeLabel)})"
+                    : "ช่อง 1: ว่าง";
+                string s2 = p2 != null && !string.IsNullOrEmpty(p2.Name)
+                    ? $"ช่อง 2: {p2.Name} ({ScopeName(p2.ScopeLabel)})"
+                    : "ช่อง 2: ว่าง";
+
+                if (p1 == null && p2 == null)
+                {
+                    menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("👁 รอตรวจจับ (กด Tab ในเกม)") { Enabled = false });
+                }
+                else
+                {
+                    menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem(s1) { Enabled = false });
+                    menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem(s2) { Enabled = false });
+                }
+            }
+            else
+            {
+                menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem($"ชุด {gun}: {cfg.Names[gun - 1]}") { Enabled = false });
+            }
+
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+
+            // ปุ่มเปิด/ซ่อนหน้าต่าง
+            bool isOpen = IsVisible && WindowState != WindowState.Minimized && Opacity > 0.5;
+            var toggleItem = new System.Windows.Forms.ToolStripMenuItem(isOpen ? "ย่อหน้าต่างลงถาด" : "เปิดหน้าต่าง GunBeep", null, (s, e) => ToggleWindowVisibility());
+            toggleItem.Font = new System.Drawing.Font(toggleItem.Font, System.Drawing.FontStyle.Bold);
+            menu.Items.Add(toggleItem);
+
+            // สลับ Stream Mode
+            var streamItem = new System.Windows.Forms.ToolStripMenuItem("โหมดสตรีมเมอร์: " + (cfg.StreamMode ? "เปิดอยู่ [ON]" : "ปิดอยู่ [OFF]"), null, (s, e) =>
+            {
+                SetStreamMode(!cfg.StreamMode);
+                StreamModeSwitch.IsChecked = cfg.StreamMode;
+            });
+            menu.Items.Add(streamItem);
+
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add("ออกจากโปรแกรม", null, (s, e) => Close());
         }
 
         void UpdateTray()
@@ -3173,16 +3257,46 @@ TopSwitch.IsChecked = cfg.TopMost;
             tray.Icon = TrayArt.Make(on, gun, out var winIcon);
             Icon = winIcon;
             old?.Dispose();
-            string t = "all@Ben-GunBeep · " + (on ? "ON" : "OFF") + " · " + cfg.Names[gun - 1];
-            tray.Text = t.Length > 63 ? t.Substring(0, 63) : t;
+
+            string stateStr = on ? "ON" : "OFF";
+            string t;
+            if (cfg.ScopeAuto)
+            {
+                var p1 = slotInfo[1];
+                var p2 = slotInfo[2];
+                string s1 = p1 != null && !string.IsNullOrEmpty(p1.Name)
+                    ? $"{p1.Name}({ScopeName(p1.ScopeLabel)})"
+                    : "-";
+                string s2 = p2 != null && !string.IsNullOrEmpty(p2.Name)
+                    ? $"{p2.Name}({ScopeName(p2.ScopeLabel)})"
+                    : "-";
+
+                if (p1 == null && p2 == null)
+                {
+                    t = $"GunBeep [{stateStr}] รอตรวจจับ (กด Tab)";
+                }
+                else
+                {
+                    t = $"GunBeep [{stateStr}] 1:{s1} | 2:{s2}";
+                }
+            }
+            else
+            {
+                t = $"GunBeep [{stateStr}] ชุด {gun}: {cfg.Names[gun - 1]}";
+            }
+            if (t.Length > 63) t = t.Substring(0, 63);
+            tray.Text = t;
         }
 
         public void ShowFromTray()
         {
-            bool wasHidden = !IsVisible;
+            bool wasHidden = !IsVisible || Opacity < 0.1 || WindowState == WindowState.Minimized;
             Show();
             WindowState = WindowState.Normal;
             Activate();
+            LiveDirty();
+            try { UpdateLive(); } catch { }
+            UpdateAmbient();
             if (wasHidden) AnimateIn();
         }
 
@@ -3258,12 +3372,12 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (!hintShown)
             {
                 hintShown = true;
-                tray.ShowBalloonTip(2500, "GunBeep ยังทำงานอยู่", "ดับเบิลคลิกไอคอนที่ถาดเพื่อเปิดหน้าต่าง",
+                tray?.ShowBalloonTip(2000, "GunBeep ยังทำงานอยู่", "คลิกไอคอนที่ถาดเพื่อเปิดหน้าต่าง",
                                     System.Windows.Forms.ToolTipIcon.None);
             }
         }
 
-                void SetStreamMode(bool on)
+        void SetStreamMode(bool on)
         {
             cfg.StreamMode = on;
             cfg.Save();
@@ -3274,7 +3388,23 @@ TopSwitch.IsChecked = cfg.TopMost;
             Log.Info("stream mode " + (on ? "ON (hidden from capture/stream)" : "OFF"));
         }
 
-void Close_Click(object sender, RoutedEventArgs e) => Close();
+        void Close_Click(object sender, RoutedEventArgs e)
+        {
+            // ถ้าเปิด Stream Mode: กดปิด [X] ก็ย่อไปถาดระบบ ไม่ทำลายโปรแกรม
+            if (cfg.StreamMode)
+            {
+                AnimateOut(Hide);
+                if (!hintShown)
+                {
+                    hintShown = true;
+                    tray?.ShowBalloonTip(2000, "GunBeep (Stream Mode)",
+                        "หน้าต่างถูกย่อไปที่ถาดระบบ คลิกที่ไอคอนเพื่อเปิดกลับมา",
+                        System.Windows.Forms.ToolTipIcon.Info);
+                }
+                return;
+            }
+            Close();
+        }
 
         void Power_Down(object sender, MouseButtonEventArgs e) => AnimatePress(0.95);
         void Power_Leave(object sender, MouseEventArgs e) => AnimatePress(1);

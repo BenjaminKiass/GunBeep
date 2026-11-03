@@ -300,6 +300,7 @@ namespace GunBeep
                 HeroHint.Text = cfg.ScopeAuto ? " ในเกม — ดูปืน สโคป ของแต่งให้เอง" : " (เปิดได้ในหน้าตั้งค่า)";
                 HeroSet.Text = "ตอนนี้ใช้ " + HeldScopeText() + (Native ? " · ตัวขยับเมาส์ในตัว" : " · ผ่าน G Hub");
                 liveSig = null;
+                UpdateTray();
                 return;
             }
             var c = cfg.Calc ??= new CalcSettings();
@@ -308,10 +309,11 @@ namespace GunBeep
             string sig = $"{string.Join(",", c.LearnN.Select(kv => kv.Key + kv.Value))}#{Sig(slotInfo[1])}#{Sig(slotInfo[2])}#{heldSlot}#{on}#{stance}#{c.On}#{c.MuzzlePct}#{c.GripPct}#{c.StockPct}#{c.CrouchPct}#{c.PronePct}#{c.RefGun}" +
                          $"#{string.Join(",", c.Guns.Select(kv => kv.Key + kv.Value))}#{string.Join(",", cfg.Names)}" +
                          $"#{(vals == null ? "" : string.Join(",", vals.Select(v => v.Base + "/" + (v.Steps?.Length ?? 0))))}";
-            if (sig == liveSig) return;
+            if (sig == liveSig) { UpdateTray(); return; }
             liveSig = sig;
             SlotHost1.Child = SlotPanel(1);
             SlotHost2.Child = SlotPanel(2);
+            UpdateTray();
         }
 
         static string PauseText(string why) => why switch
