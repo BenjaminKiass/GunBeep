@@ -48,8 +48,9 @@ namespace GunBeep
         // ---------------------------------------------------------------- สโคป
         public static readonly (string label, double mag, string sensName)[] Scopes =
         {
-            ("reddot", 1, "Scoping"), ("holo", 1, "Scoping"), ("2x", 2, "Scope2X"), ("3x", 3, "Scope3X"),
-            ("4x", 4, "Scope4X"), ("hybrid", 1, "Scoping"),     // ไฮบริด = ใช้แบบเรดดอท (ผู้ใช้บอก) ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
+            ("reddot", 1, "Scoping"), ("holo", 1, "Scoping"), ("hybrid", 1, "Scoping"),
+            ("2x", 2, "Scope2X"), ("3x", 3, "Scope3X"), ("4x", 4, "Scope4X"),
+            ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
         };
 
         // ความไวที่แต่ละสโคปใช้จริง จากการตั้งค่าเกม (ความไวเดียวทุกสโคป = ทุกสโคปขยายใช้ค่าเล็งขยาย)

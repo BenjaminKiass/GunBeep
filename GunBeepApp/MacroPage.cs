@@ -1179,8 +1179,11 @@ namespace GunBeep
         {
             var p = SlotPanelOf(slot);
             if (p != null && RecoilCalc.GunKey(p.Name) is string gk && RecoilCalc.GunInfo.TryGetValue(gk, out var gi))
-                return p.ExtMag ? gi.ext : gi.mag;
-            return cfg.MaxShots;
+            {
+                // ถ้าตรวจพบแม็กขยาย หรือสถานะของแต่งยังไม่ชัวร์/เพิ่งถือปืน → ให้ความจุกระสุนเต็มที่ไว้ก่อน ไม่ให้มาโครหยุดดึงกลางคัน
+                return (p.ExtMag || p.Att == null || !p.Att[2] || p.AttUnsure?[2] == true) ? gi.ext : gi.mag;
+            }
+            return cfg.MaxShots > 0 ? cfg.MaxShots : 45;
         }
 
         // ช่องปืนที่เห็นว่าว่างจากหน้ากระเป๋า (ยังไม่เคยเปิดกระเป๋า = ไม่รู้ = ไม่ถือว่าว่าง)

@@ -1,14 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace GunBeep
 {
     // อ่านการตั้งค่าของ PUBG จากไฟล์บนดิสก์ (GameUserSettings.ini) — อ่านอย่างเดียว ไม่แก้ไฟล์เกม ไม่แตะตัวเกม
     //   ความไว (ทั่วไป / เล็ง / แต่ละสโคป), ความไวเดียวทุกสโคป, ตัวคูณแนวตั้ง, โหมดเล็ง, ปุ่มเลือกอาวุธ / ย่อ / หมอบ
-    //   ไฟล์มีค่าซ้ำหลายก้อน (ก้อนเก่าใน TslPersistantData) → ใช้ก้อนที่มี SensitiveMap=((Mouse และค่าที่อยู่ท้ายสุด
+    //   ตรวจจับการเปลี่ยนแปลงแบบ Real-time ด้วย FileSystemWatcher ทันทีที่กด Apply ในเกม PUBG
     public sealed class GameSettings
     {
         public bool Found;
@@ -23,17 +24,57 @@ namespace GunBeep
                                                       "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
 
         static GameSettings cache;
-        static DateTime cacheFile, cacheCheck;
+        static DateTime cacheFile;
+        static FileSystemWatcher watcher;
+        static Timer watcherDebounce;
+        static readonly object syncLock = new();
 
-        // อ่านใหม่เมื่อไฟล์เปลี่ยน (เกมเขียนไฟล์ตอนกด "ใช้" ในหน้าตั้งค่า)
+        static void InitWatcher()
+        {
+            if (watcher != null) return;
+            lock (syncLock)
+            {
+                if (watcher != null) return;
+                try
+                {
+                    string dir = Path.GetDirectoryName(FilePath);
+                    if (!Directory.Exists(dir)) return;
+                    watcher = new FileSystemWatcher(dir, Path.GetFileName(FilePath))
+                    {
+                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                        EnableRaisingEvents = true
+                    };
+                    void OnFileChanged(object s, FileSystemEventArgs e)
+                    {
+                        lock (syncLock)
+                        {
+                            watcherDebounce?.Dispose();
+                            watcherDebounce = new Timer(_ =>
+                            {
+                                try
+                                {
+                                    Reload();
+                                    Log.Info("pubg settings: reloaded in real time via FileSystemWatcher");
+                                }
+                                catch (Exception ex) { Log.Error("watcher reload", ex); }
+                            }, null, 60, Timeout.Infinite);
+                        }
+                    }
+                    watcher.Changed += OnFileChanged;
+                    watcher.Created += OnFileChanged;
+                    watcher.Renamed += (s, e) => OnFileChanged(s, e);
+                }
+                catch (Exception ex) { Log.Error("init pubg settings watcher", ex); }
+            }
+        }
+
+        // อ่านใหม่เมื่อไฟล์เปลี่ยน (เกมเขียนไฟล์ตอนกด "ใช้" ในหน้าตั้งค่า) — Real-time ไม่หน่วง 3 วิ
         public static GameSettings Current
         {
             get
             {
-                var now = DateTime.Now;
-                if (cache != null && now - cacheCheck < TimeSpan.FromSeconds(3)) return cache;
-                cacheCheck = now;
-                DateTime t = File.Exists(FilePath) ? File.GetLastWriteTime(FilePath) : DateTime.MinValue;
+                InitWatcher();
+                DateTime t = File.Exists(FilePath) ? File.GetLastWriteTimeUtc(FilePath) : DateTime.MinValue;
                 if (cache != null && t == cacheFile) return cache;
                 cacheFile = t;
                 cache = Load();
@@ -43,7 +84,12 @@ namespace GunBeep
         }
 
         public static event Action Changed;
-        public static void Reload() { cache = null; cacheCheck = DateTime.MinValue; _ = Current; }
+        public static void Reload()
+        {
+            cache = null;
+            cacheFile = DateTime.MinValue;
+            _ = Current;
+        }
 
         // ความไวที่สโคปนี้ใช้จริง ("Scoping" = เล็ง 1x/Red/Holo, "Scope4X" …)
         public double SensFor(string sensName)

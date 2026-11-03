@@ -1013,8 +1013,16 @@ TopSwitch.IsChecked = cfg.TopMost;
                     // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
-                    // อ่านสโคปไม่ชัดรอบนี้ (เช่นเมาส์ชี้ช่องสโคปอยู่ พื้นเป็นสีขาว) → ใช้สโคปเดิม แต่ของแต่ง/ภาพปืนใช้ของรอบนี้
-                    if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
+                    // อ่านสโคปไม่ชัดรอบนี้ หรือโดนบัง (เมาส์ชี้ช่องสโคป หรือมี Killfeed ลอยทับ) หรือแผงโดนบังแล้วผลอ่านเป็นไม่มีสโคป
+                    // แต่เดิมมีสโคปอยู่แล้ว → ล็อกใช้สโคปเดิม 100% ไม่รีเซ็ต ไม่หลุดเด็ดขาด
+                    if (old != null && old.Set > 0 && (p.Set <= 0 || p.Obscured))
+                    {
+                        p.Set = old.Set;
+                        p.ScopeLabel = old.ScopeLabel;
+                        p.Score = old.Score;
+                        if (p.Name == "") p.Name = old.Name;
+                    }
+                    else if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
                     {
                         p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         if (p.Name == "") p.Name = old.Name;
@@ -1026,8 +1034,8 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (old != null)
                     {
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก
-                        bool scopeSure = isClose || (p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0));
+                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก (ต้องไม่โดนบัง)
+                        bool scopeSure = isClose || (!p.Obscured && p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0));
                         if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
                         { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
                         else
