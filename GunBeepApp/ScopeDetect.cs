@@ -692,7 +692,7 @@ namespace GunBeep
         }
 
         // ตรวจว่าช่องนี้มีพิกเซลสี Killfeed ปนอยู่ไหม (Cyan, น้ำเงิน, แดง, เหลือง/ส้ม, ขาวสว่างขอบเงา)
-        public static bool HasKillfeedColors(Bitmap c)
+                public static bool HasKillfeedColors(Bitmap c)
         {
             if (c == null || c.Width < 4 || c.Height < 4) return false;
             int n = 0, kf = 0;
@@ -701,37 +701,46 @@ namespace GunBeep
                 {
                     var p = c.GetPixel(x, y);
                     n++;
-                    bool isCyan = p.G > 140 && p.B > 140 && p.R < 130;
-                    bool isBlue = p.B > 155 && p.B > p.R + 40 && p.G < 165;
-                    bool isRed = p.R > 165 && p.R > p.B + 40 && p.G < 140;
-                    bool isYellow = p.R > 175 && p.G > 130 && p.B < 100;
-                    int mn = Math.Min(p.R, Math.Min(p.G, p.B));
-                    bool isWhiteText = mn > 195;
-                    if (isCyan || isBlue || isRed || isYellow || isWhiteText) kf++;
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    if (isCyan || isBlue || isRed) kf++;
                 }
-            return n > 0 && (double)kf / n > 0.010;
+            return n > 0 && (double)kf / n > 0.012;
         }
 
-        // Smart Pixel Inpainting: ลบเฉพาะพิกเซลที่เป็นตัวหนังสือ (ขาวจัด, สีทีม, ขอบเงาดำ) ทีละจุด ไม่ถมแถวแนวนอนทั้งแถบ โครงร่างสโคปอยู่ครบ 85%+
+        // ลบพิกเซลสี Killfeed และตัวหนังสือทับออก ให้เป็นสีพื้นหลังมืด เพื่อให้เทียบ Template สโคปได้
         public static Bitmap CleanKillfeed(Bitmap src)
         {
             if (src == null) return null;
             var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
-            var bg = Color.FromArgb(32, 34, 38);
+            bool[] kfRow = new bool[src.Height];
             for (int y = 0; y < src.Height; y++)
             {
+                int kfCount = 0;
                 for (int x = 0; x < src.Width; x++)
                 {
                     var p = src.GetPixel(x, y);
-                    bool isCyan = p.G > 140 && p.B > 140 && p.R < 130;
-                    bool isBlue = p.B > 155 && p.B > p.R + 40 && p.G < 165;
-                    bool isRed = p.R > 165 && p.R > p.B + 40 && p.G < 140;
-                    bool isYellow = p.R > 175 && p.G > 130 && p.B < 100;
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    if (isCyan || isBlue || isRed) kfCount++;
+                }
+                if (kfCount >= 2) kfRow[y] = true;
+            }
+
+            var bg = Color.FromArgb(32, 34, 38);
+            for (int y = 0; y < src.Height; y++)
+            {
+                bool nearKf = (y > 0 && kfRow[y - 1]) || kfRow[y] || (y + 1 < src.Height && kfRow[y + 1]);
+                for (int x = 0; x < src.Width; x++)
+                {
+                    var p = src.GetPixel(x, y);
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
                     int mn = Math.Min(p.R, Math.Min(p.G, p.B));
-                    int mx = Math.Max(p.R, Math.Max(p.G, p.B));
-                    bool isWhiteText = mn > 185;
-                    bool isBlackShadow = mx < 22;
-                    if (isCyan || isBlue || isRed || isYellow || isWhiteText || isBlackShadow)
+                    if (isCyan || isBlue || isRed || (nearKf && mn > 165))
                         dst.SetPixel(x, y, bg);
                     else
                         dst.SetPixel(x, y, p);
@@ -790,33 +799,31 @@ namespace GunBeep
                 int py0 = i == 0 ? Math.Max(0, (int)(0.015 * screenH)) : ySplit;
                 int py1 = i == 0 ? ySplit : shot.Height;
                 bool panelKf = PanelHasKillfeed(shot, py0, py1);
-                p.PanelKf = panelKf;
 
-                // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เช่น 3 กับ 2) ป้ายตัวมันเองมีเลขสีขาว
-                //   ตรวจโดนบังเฉพาะตอนเมาส์ชี้ หรือมี Killfeed พาดบนแถบแผงปืนจริง (panelKf)
+                // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
+                //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
                 using (var b = Crop(shot, badge))
                 {
-                    bool obs = IsHovered(b) || (panelKf && HasKillfeedColors(b));
+                    bool obs = Obscured(b) || panelKf;
                     p.Slot = ReadSlot(b) != 0 ? i + 1 : (obs ? i + 1 : 0);
                     if (obs) p.Obscured = true;
                 }
                 using (var ic = Crop(shot, icon))
                 {
                     bool hovered = IsHovered(ic);
-                    // ตรวจ Killfeed บนช่องสโคป: เฉพาะเมื่อแผงปืนนี้มีแถบ Killfeed พาดผ่านจริง
-                    bool kfOnSlot = panelKf && HasKillfeedColors(ic);
-                    if (hovered || kfOnSlot) p.Obscured = true;
+                    bool kfOnSlot = HasKillfeedColors(ic);
+                    if (hovered) p.Obscured = true;
 
                     using var cleanIc = kfOnSlot ? CleanKillfeed(ic) : null;
                     var targetIc = cleanIc ?? ic;
 
-                    // Strict Zero-Reset Gate: ห้ามตัดสินว่า "ไม่มีสโคป" เด็ดขาดถ้ามีคิวฟีดหรืออะไรบดบังอยู่บนช่องหรือบนแผงปืน (kfOnSlot || panelKf || p.Obscured)
-                    if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && Detail(targetIc) < 0.035)
+                    if (!hovered && Detail(targetIc) < 0.035)
                     {
                         p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
                     }
                     else
                     {
+                        // ลองเลื่อนกรอบ ±2–4 px เผื่อตั้งจุดเพี้ยนนิดหน่อย เอาตำแหน่งที่ตรงที่สุด
                         int d = Math.Max(2, icon.Width / 14);
                         (Template t, double s, double margin) best = (null, -1, 0);
                         foreach (int ox in new[] { 0, -d, d })
@@ -838,23 +845,16 @@ namespace GunBeep
                             }
                         p.Score = best.s;
 
-                        // เกณฑ์คะแนนเทียบสโคป: ถ้ามี Killfeed ผ่อนปรน 0.50 ชนะสโคปอื่น 0.02
-                        double threshold = (kfOnSlot || panelKf || p.Obscured) ? 0.50 : 0.54;
-                        if (best.t != null && best.s >= threshold && (best.margin >= 0.02 || best.s >= 0.60))
+                        // ถ้ามี Killfeed พาดผ่าน เกณฑ์ผ่อนคลายลงเหลือ 0.56 ชนะสโคปอื่น 0.05
+                        double threshold = (kfOnSlot || panelKf) ? 0.56 : 0.62;
+                        if (best.t != null && best.s >= threshold && best.margin >= 0.05)
                         {
                             p.Set = best.t.Set;
                             p.ScopeLabel = best.t.Label;
                         }
-                        // Strict Zero-Reset Gate: ช่องว่างต้องโล่งจริง 100% ไม่มีคิวฟีดหรือเมาส์บัง
-                        else if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && BandSd(targetIc, 0.06, 0.40) < 13)
+                        else if (!hovered && BandSd(targetIc, 0.06, 0.40) < 13)
                         {
                             p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
-                        }
-                        else
-                        {
-                            p.Set = -1;
-                            p.ScopeLabel = "?";
-                            if (hovered || kfOnSlot || panelKf) p.Obscured = true;
                         }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
@@ -891,9 +891,7 @@ namespace GunBeep
             Sample(shot, origin, screenW, screenH, res);
             return res;
         }
-// ---------------------------------------------------------------- เก็บภาพแผงปืนไว้สอนสโคป/ของแต่งที่ยังไม่รู้จัก
-        //   เฉพาะภาพบริเวณแผงปืนในหน้ากระเป๋า เก็บในเครื่อง (saved\samples) เมื่อชุดสโคป/ของแต่งเปลี่ยน ไม่เกิน 300 ภาพ
-        static string lastSample;
+static string lastSample;
         public static readonly string SampleDir = Path.Combine(Settings.KitDir, "samples");
 
         static void Sample(Bitmap shot, Point origin, int w, int h, Panel[] res)
