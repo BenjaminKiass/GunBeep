@@ -1013,8 +1013,10 @@ TopSwitch.IsChecked = cfg.TopMost;
                     // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
-                    // อ่านสโคปไม่ชัดรอบนี้ (p.Set == -1) หรือรอบนี้อ่านเป็นไม่มีสโคป (p.Set <= 0) แต่ช่อง/แผงโดนบัง (เมาส์ชี้ หรือ Killfeed ลอยทับ)
-                    // และเดิมมีสโคปอยู่แล้ว (old.Set > 0) → ล็อกใช้สโคปเดิม 100% ไม่รีเซ็ต ไม่หลุดเด็ดขาด
+
+                    // Scope Retention Lock: ถ้าเดิมมีสโคปอยู่แล้ว (old.Set > 0)
+                    // แล้วเฟรมปัจจุบันมีคิวฟีดพาดทับ หรือตรวจได้คะแนนต่ำ (p.Set == -1) หรืออ่านเป็นไม่มีสโคปทั้งที่ช่องโดนบัง
+                    // มันจะล็อกจำสโคปเดิมไว้ทันที ไม่มียอมให้หลุดเป็น "ไม่มีสโคป" เด็ดขาด
                     if (old != null && old.Set > 0 && (p.Set == -1 || (p.Set <= 0 && (p.Obscured || p.PanelKf))))
                     {
                         p.Set = old.Set;
@@ -1030,17 +1032,28 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
                         for (int k = 0; k < 4; k++)
                             if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
-                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (เว้นแต่ตอนปิดกระเป๋า หรือสโคปมั่นใจ ให้เชื่อทันที)
+
                     if (old != null)
                     {
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.58 หรือ Set == 0 ถอดสโคปโดยไม่โดนบัง) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก
-                        bool scopeSure = isClose || (!p.Obscured && !p.PanelKf && p.Set >= 0 && (p.Score >= 0.58 || p.Set == 0));
-                        if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
-                        { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
+
+                        // ปลดสโคปเป็น "ไม่มีสโคป" (Set == 0): ไม่ยอมให้หลุดเด็ดขาด จนกว่าจะเปิดกระเป๋าเห็นช่องว่างจริงแบบโล่งๆ 2 เฟรมติด
+                        bool emptyConfirmed = p.Set == 0 && Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0");
+                        // สโคปใหม่: คะแนนมั่นใจ (Score >= 0.58) หรือตอนปิดกระเป๋า ให้เชื่อทันที
+                        bool newScopeSure = p.Set > 0 && (isClose || (p.Score >= 0.58 && !p.Obscured));
+
+                        if (old.Set > 0 && p.Set == 0 && !emptyConfirmed)
+                        {
+                            p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
+                        }
+                        else if (!newScopeSure && p.Set > 0 && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        {
+                            p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
+                        }
                         else
                         {
                             pendingRead.Remove(p.Slot + ":scope");
+                            pendingRead.Remove(p.Slot + ":scope_empty");
                         }
                         if (p.Att != null && old.Att != null)
                             for (int k = 0; k < 4; k++)
