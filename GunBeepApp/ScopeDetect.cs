@@ -46,6 +46,7 @@ namespace GunBeep
             public string ScopeLabel = "?";
             public string Name = "";
             public bool Obscured;                                     // แผงโดนบัง (เมาส์ชี้ หรือ Killfeed ลอยทับ)
+            public bool PanelKf;                                      // แผงนี้มีแถบ Killfeed พาดผ่าน
             public override string ToString() => $"slot {Slot} {Name} scope {ScopeLabel} ({Score:0.00}) set {Set}";
         }
 
@@ -683,7 +684,7 @@ namespace GunBeep
             return n > 0 && (double)whiteHover / n > 0.35;
         }
 
-        // ตรวจว่าช่องนี้มีพิกเซลสี Killfeed ปนอยู่ไหม (Cyan, น้ำเงิน, แดง, เหลือง, ขาวสว่างขอบเงา)
+        // ตรวจว่าช่องนี้มีพิกเซลสี Killfeed ปนอยู่ไหม (Cyan, น้ำเงินสด, แดงสด, เหลืองสด)
         public static bool HasKillfeedColors(Bitmap c)
         {
             if (c == null || c.Width < 4 || c.Height < 4) return false;
@@ -693,15 +694,13 @@ namespace GunBeep
                 {
                     var p = c.GetPixel(x, y);
                     n++;
-                    bool isCyan = p.G > 140 && p.B > 140 && p.R < 130;
-                    bool isBlue = p.B > 155 && p.B > p.R + 40 && p.G < 165;
-                    bool isRed = p.R > 165 && p.R > p.B + 40 && p.G < 140;
-                    bool isYellow = p.R > 175 && p.G > 130 && p.B < 100;
-                    int mn = Math.Min(p.R, Math.Min(p.G, p.B));
-                    bool isWhiteText = mn > 195;
-                    if (isCyan || isBlue || isRed || isYellow || isWhiteText) kf++;
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    bool isYellow = p.R > 190 && p.G > 160 && p.B < 100;
+                    if (isCyan || isBlue || isRed || isYellow) kf++;
                 }
-            return n > 0 && (double)kf / n > 0.010;
+            return n > 0 && (double)kf / n > 0.012;
         }
 
         // ลบพิกเซลสี Killfeed และตัวหนังสือทับออก ให้เป็นสีพื้นหลังมืด โดยเก็บเส้นสายสโคปเดิมไว้มากที่สุด
@@ -709,21 +708,35 @@ namespace GunBeep
         {
             if (src == null) return null;
             var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
-            var bg = Color.FromArgb(32, 34, 38);
+            bool[] kfRow = new bool[src.Height];
             for (int y = 0; y < src.Height; y++)
             {
+                int kfCount = 0;
                 for (int x = 0; x < src.Width; x++)
                 {
                     var p = src.GetPixel(x, y);
-                    bool isCyan = p.G > 140 && p.B > 140 && p.R < 130;
-                    bool isBlue = p.B > 155 && p.B > p.R + 40 && p.G < 165;
-                    bool isRed = p.R > 165 && p.R > p.B + 40 && p.G < 140;
-                    bool isYellow = p.R > 175 && p.G > 130 && p.B < 100;
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    bool isYellow = p.R > 190 && p.G > 160 && p.B < 100;
+                    if (isCyan || isBlue || isRed || isYellow) kfCount++;
+                }
+                if (kfCount >= 2) kfRow[y] = true;
+            }
+
+            var bg = Color.FromArgb(32, 34, 38);
+            for (int y = 0; y < src.Height; y++)
+            {
+                bool nearKf = (y > 0 && kfRow[y - 1]) || kfRow[y] || (y + 1 < src.Height && kfRow[y + 1]);
+                for (int x = 0; x < src.Width; x++)
+                {
+                    var p = src.GetPixel(x, y);
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    bool isYellow = p.R > 190 && p.G > 160 && p.B < 100;
                     int mn = Math.Min(p.R, Math.Min(p.G, p.B));
-                    int mx = Math.Max(p.R, Math.Max(p.G, p.B));
-                    bool isWhiteText = mn > 185;
-                    bool isBlackShadow = mx < 22;
-                    if (isCyan || isBlue || isRed || isYellow || isWhiteText || isBlackShadow)
+                    if (isCyan || isBlue || isRed || isYellow || (nearKf && mn > 165))
                         dst.SetPixel(x, y, bg);
                     else
                         dst.SetPixel(x, y, p);
@@ -782,6 +795,7 @@ namespace GunBeep
                 int py0 = i == 0 ? Math.Max(0, (int)(0.015 * screenH)) : ySplit;
                 int py1 = i == 0 ? ySplit : shot.Height;
                 bool panelKf = PanelHasKillfeed(shot, py0, py1);
+                p.PanelKf = panelKf;
 
                 // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
                 //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
@@ -794,8 +808,8 @@ namespace GunBeep
                 using (var ic = Crop(shot, icon))
                 {
                     bool hovered = IsHovered(ic);
-                    bool kfOnSlot = HasKillfeedColors(ic);
-                    if (hovered || kfOnSlot) p.Obscured = true;
+                    bool kfOnSlot = panelKf && HasKillfeedColors(ic);
+                    if (hovered) p.Obscured = true;
 
                     using var cleanIc = kfOnSlot ? CleanKillfeed(ic) : null;
                     var targetIc = cleanIc ?? ic;
@@ -829,8 +843,8 @@ namespace GunBeep
                             }
                         p.Score = best.s;
 
-                        // ถ้ามี Killfeed พาดผ่าน เกณฑ์ผ่อนคลายลงเหลือ 0.50 ชนะสโคปอื่น 0.03
-                        double threshold = (kfOnSlot || panelKf || p.Obscured) ? 0.50 : 0.60;
+                        // เกณฑ์คะแนนเทียบสโคป: ถ้ามี Killfeed ผ่อนปรน 0.52 ชนะสโคปอื่น 0.03
+                        double threshold = (kfOnSlot || panelKf) ? 0.52 : 0.58;
                         if (best.t != null && best.s >= threshold && best.margin >= 0.03)
                         {
                             p.Set = best.t.Set;
@@ -839,6 +853,12 @@ namespace GunBeep
                         else if (!hovered && !kfOnSlot && !panelKf && BandSd(targetIc, 0.06, 0.40) < 13)
                         {
                             p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
+                        }
+                        else
+                        {
+                            p.Set = -1;
+                            p.ScopeLabel = "?";
+                            if (hovered || kfOnSlot || panelKf) p.Obscured = true;
                         }
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง

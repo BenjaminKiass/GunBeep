@@ -1013,9 +1013,9 @@ TopSwitch.IsChecked = cfg.TopMost;
                     // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
-                    // อ่านสโคปไม่ชัดรอบนี้ หรือโดนบัง (เมาส์ชี้ช่องสโคป หรือมี Killfeed ลอยทับ) หรือแผงโดนบังแล้วผลอ่านเป็นไม่มีสโคป
-                    // แต่เดิมมีสโคปอยู่แล้ว → ล็อกใช้สโคปเดิม 100% ไม่รีเซ็ต ไม่หลุดเด็ดขาด
-                    if (old != null && old.Set > 0 && (p.Set <= 0 || p.Obscured))
+                    // อ่านสโคปไม่ชัดรอบนี้ (p.Set == -1) หรือรอบนี้อ่านเป็นไม่มีสโคป (p.Set <= 0) แต่ช่อง/แผงโดนบัง (เมาส์ชี้ หรือ Killfeed ลอยทับ)
+                    // และเดิมมีสโคปอยู่แล้ว (old.Set > 0) → ล็อกใช้สโคปเดิม 100% ไม่รีเซ็ต ไม่หลุดเด็ดขาด
+                    if (old != null && old.Set > 0 && (p.Set == -1 || (p.Set <= 0 && (p.Obscured || p.PanelKf))))
                     {
                         p.Set = old.Set;
                         p.ScopeLabel = old.ScopeLabel;
@@ -1034,8 +1034,8 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (old != null)
                     {
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก (ต้องไม่โดนบัง)
-                        bool scopeSure = isClose || (!p.Obscured && p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0));
+                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.58 หรือ Set == 0 ถอดสโคปโดยไม่โดนบัง) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก
+                        bool scopeSure = isClose || (!p.Obscured && !p.PanelKf && p.Set >= 0 && (p.Score >= 0.58 || p.Set == 0));
                         if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
                         { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
                         else
