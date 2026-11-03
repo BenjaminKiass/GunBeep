@@ -186,7 +186,7 @@ namespace GunBeep
 
         // สโคปที่ใช้คำนวณ/เรียนรู้: ศูนย์เหล็ก = "iron", ไฮบริด = เรดดอท, ไม่รู้จัก = null
         static string ScopeKey(ScopeDetect.Panel p) =>
-            p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? "4x" : p.ScopeLabel;
+            p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? "reddot" : p.ScopeLabel;
 
         // กด Shift (กลั้นหายใจ / ซูมศูนย์ 1x) ของสโคปนี้ คูณแรงดึงเพิ่มเท่าไหร่ (เรียนรู้จากชุดที่กด Shift ตลอด)
         double BreathOf(ScopeDetect.Panel p)
@@ -445,7 +445,7 @@ namespace GunBeep
                 PopOsd("ภาพช่องสโคปไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องสโคป แล้วกดเลือกอีกครั้ง");
                 return;
             }
-            if (label == "hybrid") label = "4x";            // ศูนย์เล็งไฮบริดใน PUBG คือ Dual Optic 4x/1x ใช้ค่า 4x
+            if (label == "hybrid") label = "reddot";        // ไฮบริดใช้ค่าเดียวกับเรดดอท
             int set = ScopeDetect.SetFor(label, cfg.Names);
             ScopeDetect.Teach(p.Icon, set, label);
             p.Set = set;
@@ -508,7 +508,7 @@ namespace GunBeep
             double scopeAll = scopeMult * ScopeLearned(p);
             string scopeNm = p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel);
             string scopeSub = p.Set == -1 ? "ยังใช้ค่าเดิมไปก่อน" : !setOk ? "ใช้ค่าที่เลือกอยู่"
-                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {scopeNm} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "")
+                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {(p.ScopeLabel == "hybrid" ? "Red Dot" : scopeNm)} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "")
                   + (Math.Abs(BreathOf(p) - 1) > 0.005 ? $" · กด Shift ×{BreathOf(p):0.00}" : "");
             root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeAll, PBlue, null, null, p.Set == -1, p.Set > 0 || p.Set == -2 ? ArtOf("att", ScopeKey(p) == "reddot" && p.ScopeLabel == "hybrid" ? "hybrid" : p.ScopeLabel) : null));
             root.Children.Add(ScopeTeachRow(s, p));
