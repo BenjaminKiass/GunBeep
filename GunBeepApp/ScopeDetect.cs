@@ -184,6 +184,7 @@ namespace GunBeep
                 string n = (names[i] ?? "").ToLowerInvariant().Replace(" ", "");
                 if (n.Split('/', ',', '+', '|', '·').Any(p => p == l || p == l.Replace("x", "")) || n.Contains(l)) return i + 1;
                 if ((l == "reddot" && n.Contains("red")) || (l == "holo" && n.Contains("holo"))) return i + 1;
+                if (l == "hybrid" && (n.Contains("4x") || n.Contains("hybrid"))) return i + 1;
             }
             return -2;
         }

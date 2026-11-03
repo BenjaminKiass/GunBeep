@@ -48,7 +48,7 @@ namespace GunBeep
         // ---------------------------------------------------------------- สโคป
         public static readonly (string label, double mag, string sensName)[] Scopes =
         {
-            ("reddot", 1, "Scoping"), ("holo", 1, "Scoping"), ("hybrid", 1, "Scoping"),
+            ("reddot", 1, "Scoping"), ("holo", 1, "Scoping"), ("hybrid", 4, "Scope4X"),
             ("2x", 2, "Scope2X"), ("3x", 3, "Scope3X"), ("4x", 4, "Scope4X"),
             ("6x", 6, "Scope6X"), ("8x", 8, "Scope8X"), ("15x", 15, "Scope15X"),
         };
