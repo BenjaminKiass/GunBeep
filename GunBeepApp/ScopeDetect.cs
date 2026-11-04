@@ -818,7 +818,7 @@ namespace GunBeep
                     using var cleanIc = kfOnSlot ? CleanKillfeed(ic) : null;
                     var targetIc = cleanIc ?? ic;
 
-                    if (!hovered && Detail(targetIc) < 0.035)
+                    if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && Detail(targetIc) < 0.035)
                     {
                         p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
                     }
@@ -853,7 +853,7 @@ namespace GunBeep
                             p.Set = best.t.Set;
                             p.ScopeLabel = best.t.Label;
                         }
-                        else if (!hovered && BandSd(targetIc, 0.06, 0.40) < 13)
+                        else if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && BandSd(targetIc, 0.06, 0.40) < 13)
                         {
                             p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
                         }

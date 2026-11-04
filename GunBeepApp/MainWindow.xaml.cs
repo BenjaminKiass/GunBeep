@@ -1014,8 +1014,21 @@ TopSwitch.IsChecked = cfg.TopMost;
                     // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
-                    // อ่านสโคปไม่ชัดรอบนี้ (เช่นเมาส์ชี้ช่องสโคปอยู่ พื้นเป็นสีขาว) → ใช้สโคปเดิม แต่ของแต่ง/ภาพปืนใช้ของรอบนี้
-                    if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
+                    // ถ้าเดิมมีสโคปอยู่แล้ว (old.Set > 0 หรือ old.Set == -2 เช่น 6x, 4x, 3x)
+                    // แล้วเฟรมปัจจุบันกำลังเปิด/ปิดกระเป๋า (tab open / tab close) หรือช่องโดนบัง (คิวฟีด) หรืออ่านไม่ชัด (p.Set == -1)
+                    // หรืออ่านเป็น "ไม่มีสโคป" (p.Set == 0) ระหว่างอนิเมชันเปิด/ปิดกระเป๋า:
+                    // ห้ามล้างสโคปเด็ดขาด! ให้จำสโคปเดิมไว้ทันที ป้องกันแรงดึงตกวูบไปเป็น Red Dot/ศูนย์เหล็ก
+                    if (old != null && (old.Set > 0 || old.Set == -2))
+                    {
+                        if (p.Set == -1 || ((isClose || trigger == "tab open" || p.Obscured || p.PanelKf) && p.Set == 0))
+                        {
+                            p.Set = old.Set;
+                            p.ScopeLabel = old.ScopeLabel;
+                            p.Score = old.Score;
+                            if (p.Name == "") p.Name = old.Name;
+                        }
+                    }
+                    else if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
                     {
                         p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         if (p.Name == "") p.Name = old.Name;
@@ -1023,22 +1036,34 @@ TopSwitch.IsChecked = cfg.TopMost;
                     if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
                         for (int k = 0; k < 4; k++)
                             if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
-                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (เว้นแต่ตอนปิดกระเป๋า หรือสโคปมั่นใจ ให้เชื่อทันที)
+                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (เว้นแต่สโคปมั่นใจ ให้เชื่อทันทีแบบ Zero-Latency)
                     if (old != null)
                     {
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
-                        // Zero-Latency: ถ้าสโคปมั่นใจ (Score >= 0.60 หรือ Set == 0 ไม่มีสโคป) หรือตอนปิดกระเป๋า ให้เชื่อทันทีตั้งแต่รอบแรก
-                        bool scopeSure = isClose || (p.Set >= 0 && (p.Score >= 0.60 || p.Set == 0));
-                        if (!scopeSure && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
-                        { p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score; }
+
+                        // สโคปจริงใหม่ (Set > 0 หรือ Set == -2 เช่น 3x, 6x): ถ้าคะแนนมั่นใจ (Score >= 0.58 และไม่โดนบัง) หรือตอนปิดกระเป๋า ให้เชื่อทันที Zero-Latency
+                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= 0.58 && !p.Obscured));
+
+                        // ปลดเป็น "ไม่มีสโคป" (Set == 0): ถ้าเดิมมีสโคปอยู่ ต้องเห็นช่องว่างจริง 2 รอบติด (ห้ามปลดตอนปิด/เปิดกระเป๋าหรือคิวฟีดบัง)
+                        bool emptyConfirmed = p.Set == 0 && !isClose && trigger != "tab open" && !p.Obscured && !p.PanelKf && Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0");
+
+                        if ((old.Set > 0 || old.Set == -2) && p.Set == 0 && !emptyConfirmed)
+                        {
+                            p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
+                        }
+                        else if (!newScopeSure && (p.Set > 0 || p.Set == -2) && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        {
+                            p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
+                        }
                         else
                         {
                             pendingRead.Remove(p.Slot + ":scope");
+                            pendingRead.Remove(p.Slot + ":scope_empty");
                         }
                         if (p.Att != null && old.Att != null)
                             for (int k = 0; k < 4; k++)
                             {
-                                bool attSure = isClose || (p.AttId?[k] != null);
+                                bool attSure = !isClose && trigger != "tab open" && (p.AttId?[k] != null);
                                 if (!attSure && !Confirmed(p.Slot, "att" + k, old.Att[k] ? old.AttId?[k] ?? "1" : "0", p.Att[k] ? p.AttId?[k] ?? "1" : "0"))
                                 { p.Att[k] = old.Att[k]; if (p.AttId != null) p.AttId[k] = old.AttId?[k]; }
                                 else
@@ -1079,7 +1104,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                 }
                 // ถ้าเดิมไม่มีปืนเลยทั้งสองช่อง (ทั้งตัวว่างเปล่า) แล้วเพิ่งเก็บปืนแรกเข้ามา
                 // → ในเกม PUBG จะควักปืนขึ้นมาถือให้อัตโนมัติทันที ต้องเปิดระบบดึงและสลับช่องให้เลยโดยไม่ต้องกดเลข
-                if (bothWereEmpty && (slotInfo[1] != null || slotInfo[2] != null))
+                if (bothWereEmpty && (slotInfo[1] != null || slotInfo[2] != null) && heldSlot == 0)
                 {
                     int autoSlot = (slotInfo[1] != null && !slotEmpty[1]) ? 1 : (slotInfo[2] != null && !slotEmpty[2]) ? 2 : 0;
                     if (autoSlot != 0)
@@ -1306,20 +1331,6 @@ TopSwitch.IsChecked = cfg.TopMost;
 
         static int[] ReadStanceKeys()
         {
-            int Key(string action, int def)
-            {
-                try
-                {
-                    string f = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                                                      "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
-                    string s;
-                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    using (var r = new StreamReader(fs)) s = r.ReadToEnd();
-                    var m = System.Text.RegularExpressions.Regex.Match(s, $@"ActionName=""{action}"",Keys=\(\(Key=([A-Z])\)");
-                    return m.Success ? m.Groups[1].Value[0] : def;
-                }
-                catch { return def; }
-            }
             return new[] { GameSettings.Current.Crouch, GameSettings.Current.Prone };
         }
 
