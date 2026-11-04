@@ -445,8 +445,8 @@ namespace GunBeep
                 PopOsd("ภาพช่องสโคปไม่ชัด — เปิดกระเป๋าใหม่โดยไม่ชี้เมาส์ที่ช่องสโคป แล้วกดเลือกอีกครั้ง");
                 return;
             }
-            if (label == "hybrid") label = "reddot";        // ไฮบริดใช้ค่าเดียวกับเรดดอท
             int set = ScopeDetect.SetFor(label, cfg.Names);
+            if (set <= 0 && label == "hybrid") set = ScopeDetect.SetFor("reddot", cfg.Names);
             ScopeDetect.Teach(p.Icon, set, label);
             p.Set = set;
             p.ScopeLabel = label;

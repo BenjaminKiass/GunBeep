@@ -186,6 +186,7 @@ namespace GunBeep
                 if ((l == "reddot" && n.Contains("red")) || (l == "holo" && n.Contains("holo"))) return i + 1;
                 if (l == "hybrid" && (n.Contains("red") || n.Contains("dot") || n.Contains("hybrid"))) return i + 1;
             }
+            if (l == "hybrid") return SetFor("reddot", names);
             return -2;
         }
 
