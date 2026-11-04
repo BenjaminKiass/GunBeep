@@ -2768,7 +2768,8 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var taken = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, cfg.ToggleMenuKey }.Concat(ScopeKeys).Where((k, i) => i != captureFor && k != 0).Append(captureFor == 6 ? 0 : cfg.LootKey).Where(k => k != 0);
+            var allKeys = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, ScopeKeys.ElementAtOrDefault(0), ScopeKeys.ElementAtOrDefault(1), ScopeKeys.ElementAtOrDefault(2), cfg.LootKey, cfg.ToggleMenuKey };
+            var taken = allKeys.Where((k, i) => i != captureFor && k != 0);
             if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
             {
                 Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
