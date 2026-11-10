@@ -951,7 +951,8 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
 
-            if (scanBusy || now - lastScan < TimeSpan.FromMilliseconds(280)) return;
+            // สแกนต่อเนื่องเกือบทันที (เดิมเว้น 280 ms + สแกนละ ~250 ms → เปลี่ยนของแต่งต้องรอ ~1 วิ ผู้ใช้: "ช้า เล่นจริงโดนยิงตาย")
+            if (scanBusy || now - lastScan < TimeSpan.FromMilliseconds(80)) return;
 
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
@@ -1029,7 +1030,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                             {
                                 var hoverZone = boxes[i].icon;
                                 hoverZone.Inflate(24, 24);
-                                if (hoverZone.Contains(cursorPos.Value)) p.Obscured = true;
+                                if (hoverZone.Contains(cursorPos.Value)) { p.Obscured = true; p.ScopeOk = false; }
 
                                 for (int k = 0; k < 4; k++)
                                 {
@@ -1046,6 +1047,13 @@ TopSwitch.IsChecked = cfg.TopMost;
                                     p.Slot = i + 1;
                                     p.Name = RecoilCalc.GunNames.First(g => g.key == pk).name;
                                 }
+                                continue;
+                            }
+                            // รูปปืนตรงกับปืนที่รู้อยู่แล้วของช่องนี้ → ใช้ชื่อเดิม ไม่ต้อง OCR (OCR ~50 ms/แผง ทำให้สแกนช้า)
+                            if (slotInfo[i + 1] is ScopeDetect.Panel kp && RecoilCalc.GunKey(kp.Name) is string kk && p.Pic != null
+                                && p.PicSharp >= ScopeDetect.GunArtSharp && ScopeDetect.MatchGunPic(p.Pic) == kk)
+                            {
+                                p.Name = kp.Name;
                                 continue;
                             }
                             var nb = boxes[i].name;
@@ -1119,9 +1127,12 @@ TopSwitch.IsChecked = cfg.TopMost;
                     {
                         if (p.Obscured)
                         {
-                            p.Set = old.Set;
-                            p.ScopeLabel = old.ScopeLabel;
-                            p.Score = old.Score;
+                            if (!p.ScopeOk)          // คิลฟีดทับแต่อ่านสโคปจากส่วนที่เหลือได้ชัด → ใช้ค่าใหม่ (ของแต่ง/ชื่อยังใช้ค่าเดิม)
+                            {
+                                p.Set = old.Set;
+                                p.ScopeLabel = old.ScopeLabel;
+                                p.Score = old.Score;
+                            }
                             if (p.Name == "") p.Name = old.Name;
                             if (p.Att != null && old.Att != null)
                                 for (int k = 0; k < 4; k++)
@@ -1159,7 +1170,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                         // สโคปจริงใหม่ (Set > 0 หรือ Set == -2 เช่น 3x, 6x, Holo): ถ้าตอนปิดกระเป๋า หรือคะแนน >= 0.50 และไม่โดนบัง ให้เชื่อทันที
                         //   ภาพแรกหลังเปิดกระเป๋า (แผงยังเฟดเข้า) เชื่อทันทีเฉพาะคะแนนสูง (≥ 0.75) ไม่งั้นรอยืนยันรอบถัดไป (~0.3 วิ)
                         double sureScore = trigger == "tab open" ? 0.75 : 0.50;
-                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= sureScore && !p.Obscured));
+                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= sureScore && (!p.Obscured || p.ScopeOk)));
 
                         // ปลดเป็น "ไม่มีสโคป" (Set == 0): ตอนปิดกระเป๋าเชื่อทันที (isClose), หรือถ้าเปิดกระเป๋าอยู่ให้ยืนยัน 3 รอบติด (~1 วินาที)
                         bool emptyConfirmed = p.Set == 0 && !p.Obscured && (isClose || Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0", requiredRounds: 3));

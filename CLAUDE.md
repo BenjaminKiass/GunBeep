@@ -467,3 +467,12 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   saved\attachments.json. Tilted Grip matches the old "angled" templates at 0.99. RefineAttachmentsForGun: sharp but
   unidentified = unsure (was "not fitted"). saved\samples was full (1500) → moved to saved\samples_old_20261031 so new
   panels are recorded again.
+- 2026-11-11 later (user: attachments too slow, kill feed over the top panel blocks scope reading): ScopeDetect.MatchMasked compares
+  only the icon rows the kill feed does not cover (KillfeedRows, >= 45 % rows kept). Accepted at score >= 0.70, margin >= 0.15 →
+  Panel.ScopeOk = true, MainWindow then trusts that scope even though the panel is Obscured. Old matcher on those frames 0.13–0.17,
+  masked 0.78–0.97; full replay (2715 panels): only 6 scope changes, all kill-feed frames, all correct (checked against the next
+  unobscured frame). Speed: scan gap 280 → 80 ms, shift search stops at 0.92, OCR skipped when the gun picture already matches the
+  known gun, Sharpness via LockBits → Read 161 → 78 ms/frame. QBZ alias "UBZ" (OCR). P90 has no scope slot, O12 has a mag slot.
+  Known: G36C/O12 empty mag slot reads "extended" (gun art) — UI only, MagCap already uses the extended size.
+  Training ground has no Vector compensator / Micro UZI folding stock → those templates need real matches (panels are
+  auto-saved to saved\samples). Deployed 01:00 (old DLL = GunBeep.dll.bak_20261111_kf).

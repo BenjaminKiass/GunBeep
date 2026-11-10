@@ -231,7 +231,7 @@ namespace GunBeep
         public static readonly (string key, string name, string[] alias)[] GunNames =
         {
             ("AKM", "AKM", null), ("M416", "M416", null), ("BERYL", "Beryl M762", new[] { "Beryl" }), ("MK12", "Mk12", null),
-            ("SCAR", "SCAR-L", new[] { "SCAR" }), ("AUG", "AUG", null), ("ACE32", "ACE32", null), ("QBZ", "QBZ", new[] { "QBZ95" }),
+            ("SCAR", "SCAR-L", new[] { "SCAR" }), ("AUG", "AUG", null), ("ACE32", "ACE32", null), ("QBZ", "QBZ", new[] { "QBZ95", "UBZ", "OBZ" }),   // Windows OCR อ่าน "QBZ" เป็น "UBZ" ทุกครั้ง (log 2026-11-11)
             ("G36C", "G36C", null), ("K2", "K2", null), ("FAMAS", "FAMAS", null), ("M16A4", "M16A4", null), ("GROZA", "Groza", null),
             ("MK47", "Mk47 Mutant", new[] { "Mk47" }), ("SLR", "SLR", null), ("SKS", "SKS", null), ("MINI14", "Mini14", null),
             ("MK14", "Mk14", new[] { "Mk14 EBR" }), ("QBU", "QBU", null), ("VSS", "VSS", null), ("UMP", "UMP45", new[] { "UMP" }),
@@ -357,7 +357,8 @@ namespace GunBeep
         {
             if (string.IsNullOrEmpty(key)) return true;
             string k = key.ToUpperInvariant();
-            return k is not ("PANZERFAUST" or "MORTAR" or "M79" or "MGL" or "S686" or "S1897" or "SAWED" or "VSS" or "WIN94" or "LYNX");
+            // P90 = ศูนย์ในตัว ไม่มีช่องสโคป (ภาพจากเกมของผู้ใช้ 2026-11-11) → นับเป็น "ไม่มีสโคป" ใช้ชุดเดียวกับ Red Dot
+            return k is not ("PANZERFAUST" or "MORTAR" or "M79" or "MGL" or "S686" or "S1897" or "SAWED" or "VSS" or "WIN94" or "LYNX" or "P90");
         }
 
         public static bool CanEquipScope(string key, string scopeLabel)
@@ -381,7 +382,7 @@ namespace GunBeep
 
         // RPD มีช่องแม็ก + พานท้าย (Update 42.3: แม็ก 50 ขยายได้ 110, ใส่ปาก/กริปไม่ได้)
         public static bool HasMagSlot(string key) =>
-            key is not ("DP28" or "MG3" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW" or "P90");
+            key is not ("DP28" or "MG3" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW" or "P90" or "O12");
 
         public static bool HasStockSlot(string key) =>
             key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "RPD" or "M24" or "AWM" or "KAR98K" or "MOSIN" or "WIN94" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
@@ -432,6 +433,7 @@ namespace GunBeep
                 foreach (int ox in new[] { 0, -d, d })
                     foreach (int oy in new[] { 0, -d, d })
                     {
+                        if (best.score >= 0.92) break;                     // ตรงชัดแล้ว ไม่ต้องลองเลื่อน
                         var rr = r;
                         rr.Offset(ox, oy);
                         using var cc = (ox | oy) == 0 ? null : ScopeDetect.Crop(shot, rr);
@@ -571,16 +573,30 @@ namespace GunBeep
         }
 
         // ความคม: ค่าเฉลี่ย |ความสว่างต่างกับพิกเซลขวา/ล่าง| เว้นขอบ 10% (พื้นหลังในหน้ากระเป๋าเบลอ ไอคอนคม)
+        // อ่านหน่วยความจำภาพตรงๆ (เดิม GetPixel ทีละจุด ~20 ms ต่อรูปปืน ทำให้สแกนกระเป๋าช้า) — สูตรเดิมทุกอย่าง
         public static double Sharpness(Bitmap c)
         {
-            double s = 0; int n = 0;
-            int m = Math.Max(2, c.Width / 10);
-            for (int y = m; y < c.Height - m; y++)
-                for (int x = m; x < c.Width - m - 1; x++)
+            int W = c.Width, H = c.Height;
+            int m = Math.Max(2, W / 10);
+            if (H - m <= m || W - m - 1 <= m) return 0;
+            var lum = new double[W * H];
+            var data = c.LockBits(new Rectangle(0, 0, W, H), System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            try
+            {
+                var row = new byte[data.Stride];
+                for (int y = 0; y < H; y++)
                 {
-                    Color a = c.GetPixel(x, y), b = c.GetPixel(x + 1, y), d = c.GetPixel(x, y + 1);
-                    double la = 0.3 * a.R + 0.59 * a.G + 0.11 * a.B;
-                    s += Math.Abs(la - (0.3 * b.R + 0.59 * b.G + 0.11 * b.B)) + Math.Abs(la - (0.3 * d.R + 0.59 * d.G + 0.11 * d.B));
+                    System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, row, 0, data.Stride);
+                    for (int x = 0; x < W; x++) lum[y * W + x] = 0.3 * row[x * 3 + 2] + 0.59 * row[x * 3 + 1] + 0.11 * row[x * 3];
+                }
+            }
+            finally { c.UnlockBits(data); }
+            double s = 0; int n = 0;
+            for (int y = m; y < H - m; y++)
+                for (int x = m; x < W - m - 1; x++)
+                {
+                    double la = lum[y * W + x];
+                    s += Math.Abs(la - lum[y * W + x + 1]) + Math.Abs(la - lum[(y + 1) * W + x]);
                     n++;
                 }
             return n == 0 ? 0 : s / n;

@@ -47,6 +47,7 @@ namespace GunBeep
             public string Name = "";
             public bool Obscured;                                     // แผงโดนบัง (เมาส์ชี้ หรือ Killfeed ลอยทับ)
             public bool PanelKf;                                      // แผงนี้มีแถบ Killfeed พาดผ่าน
+            public bool ScopeOk;                                      // คิลฟีดทับช่องสโคปแต่เทียบส่วนที่เหลือได้ชัด → ใช้ค่าสโคปได้
             public override string ToString() => $"slot {Slot} {Name} scope {ScopeLabel} ({Score:0.00}) set {Set}";
         }
 
@@ -202,6 +203,77 @@ namespace GunBeep
             if (user.best != null && (user.score >= 0.52 || (user.score >= 0.48 && user.margin >= 0.03))) return user;
             var bi = Best(f, Builtins.Select(b => new Template { Label = b.Label, Feature = b.Feature, Set = SetFor(b.Label, names) }).ToList());
             return bi.best != null && bi.score > user.score ? bi : user;
+        }
+
+        // ---------------------------------------------------------------- คิลฟีดทับช่องสโคป: เทียบเฉพาะแถวที่ไม่โดนทับ
+        //   ตัวหนังสือคิลฟีด = แถวบางๆ สีฟ้า/น้ำเงิน/แดง หรือขาวล้วน → แถวที่โดนทับ (ขยาย ±2 px) ไม่เอามาเทียบ
+        public static bool[] KillfeedRows(Bitmap c)
+        {
+            var rows = new bool[c.Height];
+            for (int y = 0; y < c.Height; y++)
+            {
+                int col = 0, white = 0;
+                for (int x = 0; x < c.Width; x++)
+                {
+                    var p = c.GetPixel(x, y);
+                    int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
+                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
+                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
+                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
+                    if (isCyan || isBlue || isRed) col++;
+                    if (mn > 205 && mx - mn < 25) white++;
+                }
+                rows[y] = col >= 2 || white >= 3;
+            }
+            var d = new bool[c.Height];
+            for (int y = 0; y < c.Height; y++)
+                for (int k = -2; k <= 2; k++)
+                    if (y + k >= 0 && y + k < c.Height && rows[y + k]) { d[y] = true; break; }
+            return d;
+        }
+
+        // NCC ของลักษณะ 40x40 เฉพาะช่องที่ keep (ทั้งสองฝั่งลบค่าเฉลี่ย/ปรับขนาดใหม่บนช่องที่เหลือ)
+        static double MaskedDot(float[] f, float[] t, bool[] keep)
+        {
+            int n = 0; double mf = 0, mt = 0;
+            for (int i = 0; i < f.Length && i < t.Length; i++) if (keep[i]) { mf += f[i]; mt += t[i]; n++; }
+            if (n == 0) return 0;
+            mf /= n; mt /= n;
+            double s = 0, nf = 0, nt = 0;
+            for (int i = 0; i < f.Length && i < t.Length; i++)
+                if (keep[i]) { double a = f[i] - mf, b = t[i] - mt; s += a * b; nf += a * a; nt += b * b; }
+            return nf < 1e-9 || nt < 1e-9 ? 0 : s / Math.Sqrt(nf * nt);
+        }
+
+        // เทียบสโคปโดยไม่นับแถวที่คิลฟีดทับ (rowMask = แถวของภาพ icon ที่โดนทับ) — เหลือไม่ถึง 45% = ไม่เทียบ
+        public static (Template best, double score, double margin, double kept) MatchMasked(Bitmap icon, bool[] rowMask, string[] names = null)
+        {
+            var f = Feature(icon);
+            const int G = 40;
+            var keep = new bool[G * G];
+            int kept = 0, H = icon.Height;
+            for (int r = 0; r < G; r++)
+            {
+                // Feature ย่อเป็น 42x42 แล้วใช้แถว 1..40 (gradient ใช้แถวบน/ล่างด้วย) → แถว r ≈ ช่วง y ของภาพจริง
+                int y0 = Math.Max(0, (int)(r * H / 42.0)), y1 = Math.Min(H - 1, (int)Math.Ceiling((r + 3) * H / 42.0));
+                bool cov = false;
+                for (int y = y0; y <= y1 && !cov; y++) cov = rowMask[y];
+                for (int x = 0; x < G; x++) keep[r * G + x] = !cov;
+                if (!cov) kept += G;
+            }
+            double keptShare = kept / (double)(G * G);
+            if (keptShare < 0.45) return (null, 0, 0, keptShare);
+            List<Template> all;
+            lock (gate) all = Templates.ToList();
+            all.AddRange(Builtins.Select(b => new Template { Label = b.Label, Feature = b.Feature, Set = SetFor(b.Label, names) }));
+            Template best = null; double bs = -1, other = -1;
+            foreach (var t in all)
+            {
+                double s = MaskedDot(f, t.Feature, keep);
+                if (s > bs) { if (best != null && best.Label != t.Label) other = Math.Max(other, bs); best = t; bs = s; }
+                else if (best != null && t.Label != best.Label) other = Math.Max(other, s);
+            }
+            return (best, bs, other < 0 ? bs : bs - other, keptShare);
         }
 
         static (Template best, double score, double margin) Best(float[] f, List<Template> list)
@@ -863,6 +935,7 @@ namespace GunBeep
                     foreach (int ox in new[] { 0, -d, d })
                         foreach (int oy in new[] { 0, -d, d })
                         {
+                            if (best.s >= 0.92 && !kfOnSlot) break;     // ตรงชัดแล้วที่ตำแหน่งกลาง ไม่ต้องลองเลื่อน (เร็วขึ้น)
                             var r = icon;
                             r.Offset(ox, oy);
                             using var c = (ox | oy) == 0 ? null : Crop(shot, r);
@@ -877,6 +950,17 @@ namespace GunBeep
                                 if (mClean.score > best.s) best = mClean;
                             }
                         }
+                    // คิลฟีดทับช่องสโคป: เทียบเฉพาะแถวที่ไม่โดนทับ — ภาพจริง: แบบเดิมได้ 0.13–0.17 (อ่านไม่ออก ต้องรอคิลฟีดหาย
+                    //   แล้วกด Tab ใหม่) แบบนี้ได้ 0.78–0.97 ตรงกับรูปปืน → เชื่อได้แม้แผงจะนับว่าโดนบัง (ScopeOk)
+                    if (kfOnSlot && !hovered)
+                    {
+                        var mm = MatchMasked(ic, KillfeedRows(ic), cfg.Names);
+                        if (mm.best != null && mm.score >= 0.70 && mm.margin >= 0.15)
+                        {
+                            best = (mm.best, mm.score, mm.margin);
+                            p.ScopeOk = true;
+                        }
+                    }
                     p.Score = best.s;
 
                     // ตรวจจับสโคปอัตโนมัติ: คะแนนสูงเด่น (>=0.58) หรือชนะสโคปอื่นชัดเจน (>=0.52 margin>=0.08 หรือ >=0.50 margin>=0.12)
