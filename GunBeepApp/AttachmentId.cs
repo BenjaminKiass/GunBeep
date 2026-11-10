@@ -45,7 +45,9 @@ namespace GunBeep
             new("comp_dmr", "ตัวชดเชย (DMR)", "muzzle", 20), new("flash_dmr", "ตัวลดแสง (DMR)", "muzzle", 10),
             new("supp_dmr", "ตัวเก็บเสียง (DMR)", "muzzle", 0), new("comp_smg", "ตัวชดเชย (SMG)", "muzzle", 25),
             new("flash_smg", "ตัวลดแสง (SMG)", "muzzle", 10), new("supp_smg", "ตัวเก็บเสียง (SMG)", "muzzle", 0),
-            new("vertical", "กริปแนวตั้ง", "grip", 15), new("angled", "กริปแบบเอียง", "grip", 12),
+            // "angled" = กริปเอียง: Update 41.1 (เม.ย. 2026) เอา Angled Foregrip ออกจากของเกิดในแมพ แล้วเพิ่ม Tilted Grip (แนวตั้ง +12%)
+            //   ของที่เจอในแมพตอนนี้คือ Tilted Grip → ใช้ id เดิม (ต้นแบบที่ผู้ใช้สอนไว้ยังใช้ได้) ค่าแนวตั้ง 12 ตรงกับ Tilted Grip
+            new("vertical", "กริปแนวตั้ง", "grip", 15), new("angled", "กริปเอียง (Tilted)", "grip", 12),
             new("half", "กริปแบบครึ่ง", "grip", 8), new("thumb", "กริปหัวแม่มือ", "grip", 10),
             new("light", "กริปน้ำหนักเบา", "grip", 10), new("laser", "เลเซอร์", "grip", 0),
             new("tactical", "พานท้ายยุทธวิธี", "stock", 10), new("heavy", "พานท้ายขนาดใหญ่", "stock", 10),
@@ -135,7 +137,9 @@ namespace GunBeep
             {
                 if (!RecoilCalc.HasGripSlot(gunKey)) return false;
                 if (gunKey == "TOMMY") return itemId == "vertical"; // ทอมมี่ใส่ได้เฉพาะกริปแนวตั้ง
-                if (gunKey == "VECTOR") return itemId != "angled";  // เวกเตอร์ใส่ได้ทุกกริปยกเว้นกริปแบบเอียง (angled)
+                // จาก pubg.wiki.gg (ข้อมูลปืน patch 22.2): Vector = half/laser/light/vertical, G36C = angled/laser/light/vertical
+                if (gunKey == "VECTOR") return itemId is not ("angled" or "thumb");
+                if (gunKey == "G36C") return itemId is not ("half" or "thumb");
                 return true;
             }
 
@@ -157,7 +161,8 @@ namespace GunBeep
                 // MP5K ใส่ได้ทั้ง tactical, heavy, folding
                 if (gunKey == "MP5K") return itemId is "tactical" or "heavy" or "folding";
                 // M416, ACE32, M16A4, Mk47, Vector, M249 ใส่พานท้ายยุทธวิธี หรือพานท้ายขนาดใหญ่
-                if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "M249") return itemId is "tactical" or "heavy";
+                // RPD (Update 42.3, ส.ค. 2026): ใส่พานท้าย AR/LMG ได้ทุกแบบ
+                if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "M249" or "RPD") return itemId is "tactical" or "heavy";
                 return false;
             }
 

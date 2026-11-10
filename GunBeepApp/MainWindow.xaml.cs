@@ -1987,6 +1987,11 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (cfg.CycleKey != 0 && vk == cfg.CycleKey) { CycleKeyPressed(); return; }
             if (game)
             {
+                // F (เก็บของ) ขณะเล่น: อาจเก็บปืนเข้าช่องที่เคยว่าง โดยไม่ได้เปิดกระเป๋า → ช่องนั้นไม่แน่ใจแล้วว่าว่าง
+                //   เดิมช่องนั้นค้าง "ว่าง" จนกว่าจะเปิด Tab → กดปุ่มช่องนั้นแล้วโปรแกรมไม่สลับ/ไม่ดึง ใช้ค่าปืนเดิมไปก่อน
+                if (vk == 0x46 && !CursorShown())
+                    for (int s = 1; s <= 2; s++)
+                        if (slotEmpty[s]) { slotEmpty[s] = false; Log.Info($"pickup key → slot {s} may have a gun now (unknown until Tab)"); }
                 if (ScopeKeyPressed(vk)) return;
                 if (vk == 0x42 && !CursorShown()) FireModeKey();                         // B = เปลี่ยนโหมดยิง
                 // กดปุ่มช่องปืนที่ว่าง = ในเกมไม่เปลี่ยนอาวุธ (ยังถือปืนเดิม) → โปรแกรมก็ไม่เปลี่ยน

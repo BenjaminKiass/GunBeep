@@ -165,8 +165,9 @@ namespace GunBeep
             ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.02, ["GROZA"] = 1.10,
             ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
-            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.36, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
-            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
+            // ปรับตาม patch notes PC: VSS แนวตั้ง +10% (39.1, ธ.ค. 2025), SLR −5% (39.1), Dragunov −20% (41.1, เม.ย. 2026)
+            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.36, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.06,
+            ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.66, ["MK14"] = 1.30, ["DRAGUNOV"] = 0.96,
         };
 
         // แม็กปกติ, แม็กขยาย, เวลาต่อนัด (ms) ตอนยิงออโต้ — ค่าที่ผู้เล่นรู้กันทั่วไป (ไม่ใช่ข้อมูลทางการ อาจต่างตามแพตช์)
@@ -179,7 +180,8 @@ namespace GunBeep
             ["MK47"] = (20, 30, 100), ["UMP"] = (25, 35, 90), ["VECTOR"] = (19, 33, 55), ["MICRO"] = (25, 35, 48),
             ["UZI"] = (25, 35, 48), ["TOMMY"] = (30, 50, 80), ["MP5K"] = (30, 40, 67), ["PP19"] = (53, 53, 86),
             ["BIZON"] = (53, 53, 86), ["P90"] = (50, 50, 60), ["JS9"] = (30, 40, 67), ["MP9"] = (30, 40, 60),
-            ["DP28"] = (47, 47, 109), ["RPD"] = (50, 50, 80), ["M249"] = (75, 100, 75), ["MG3"] = (75, 100, 91), ["MINI14"] = (20, 30, 100),
+            // RPD แม็กขยาย 110 (Update 42.3), M249 แม็กขยาย 150 (pubg.wiki.gg) — เดิม 50 / 100 ทำให้หยุดดึงก่อนกระสุนหมด
+            ["DP28"] = (47, 47, 109), ["RPD"] = (50, 110, 80), ["M249"] = (75, 150, 75), ["MG3"] = (75, 100, 91), ["MINI14"] = (20, 30, 100),
             ["SKS"] = (10, 20, 100), ["SLR"] = (10, 20, 100), ["MK12"] = (20, 30, 100), ["QBU"] = (10, 20, 100),
             ["VSS"] = (10, 20, 86), ["MK14"] = (10, 20, 90), ["DRAGUNOV"] = (10, 20, 100),
         };
@@ -187,7 +189,7 @@ namespace GunBeep
         // ปืนเคาะ (ยิงทีละนัด): ดึงลงหนึ่งจังหวะต่อคลิก แรงต่อนัด = แรงต่อนัดของตาราง AUG × ค่านี้ (ประมาณ, เรียนรู้ต่อเอง)
         public static readonly Dictionary<string, double> SemiKick = new()
         {
-            ["MINI14"] = 0.95, ["MK12"] = 1.05, ["QBU"] = 1.05, ["SKS"] = 1.45, ["SLR"] = 1.7, ["DRAGUNOV"] = 1.7,
+            ["MINI14"] = 0.95, ["MK12"] = 1.05, ["QBU"] = 1.05, ["SKS"] = 1.45, ["SLR"] = 1.6, ["DRAGUNOV"] = 1.36,
             ["M16A4"] = 0.75, ["MK47"] = 0.95,
         };
 
@@ -196,7 +198,7 @@ namespace GunBeep
         {
             ["AKM"] = "SA", ["BERYL"] = "SBA", ["G36C"] = "SA", ["M416"] = "SA", ["M16A4"] = "SB", ["SCAR"] = "SA", ["MK47"] = "SB",
             ["QBZ"] = "SA", ["AUG"] = "SA", ["GROZA"] = "SA", ["K2"] = "SBA", ["ACE32"] = "SA", ["FAMAS"] = "SBA",
-            ["TOMMY"] = "SA", ["UMP"] = "SBA", ["MICRO"] = "SA", ["VECTOR"] = "SBA", ["MP5K"] = "SBA", ["P90"] = "SA", ["MP9"] = "SA", ["JS9"] = "SA",
+            ["TOMMY"] = "SA", ["UMP"] = "SBA", ["MICRO"] = "SA", ["VECTOR"] = "SBA", ["MP5K"] = "SBA", ["P90"] = "SA", ["MP9"] = "SA", ["JS9"] = "SA", ["PP19"] = "SA",
             ["VSS"] = "SA", ["MK14"] = "SA", ["M249"] = "A", ["MG3"] = "AF", ["RPD"] = "A", ["DP28"] = "A",
             ["MINI14"] = "S", ["SKS"] = "S", ["SLR"] = "S", ["MK12"] = "S", ["QBU"] = "S", ["DRAGUNOV"] = "S",
         };
@@ -377,11 +379,12 @@ namespace GunBeep
         public static bool HasGripSlot(string key) =>
             key is "M416" or "BERYL" or "AUG" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "O12";
 
+        // RPD มีช่องแม็ก + พานท้าย (Update 42.3: แม็ก 50 ขยายได้ 110, ใส่ปาก/กริปไม่ได้)
         public static bool HasMagSlot(string key) =>
-            key is not ("DP28" or "MG3" or "RPD" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW" or "P90");
+            key is not ("DP28" or "MG3" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW" or "P90");
 
         public static bool HasStockSlot(string key) =>
-            key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "M24" or "AWM" or "KAR98K" or "MOSIN" or "WIN94" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
+            key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "RPD" or "M24" or "AWM" or "KAR98K" or "MOSIN" or "WIN94" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
 
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
