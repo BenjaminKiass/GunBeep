@@ -429,3 +429,19 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - 2026-10-31: Display & AutoRes bug fix in `Display.cs` and `MainWindow.xaml.cs`. Handled `Display.Result.Already` as success (`resSwitched = true`), added fallback flags, and suppressed startup false-alarm balloon toast notifications (`เปลี่ยนความละเอียดจอไม่สำเร็จ`) and redundant `window not found` logs when PUBG window is already fitted. Preserved `Switch_v1`.
 - 2026-10-31: Sample cache cleanup. Pruned `saved\samples\` (was hitting the 1,500 file ceiling at 1,549 PNGs), preserving the 50 newest samples and updating `saved\samples\index.txt` accordingly so `ScopeDetect` can resume recording debug samples.
 - 2026-10-31: Humanizer & Micro-Variance anti-cheat evasion. Added symmetrical zero-mean pseudo-random jitter (`±2%` default, configurable via `Settings.Humanize` and `Settings.HumanizePct`) to continuous spray and semi-auto DMR pulls in `NativeRecoil.cs`. Simulates physiological human micro-tremor to eliminate robotic mathematical repeatability in server/client-side mouse telemetry without drifting the calibrated recoil center. Backups preserved in `.bak` files.
+- 2026-10-31: Fixed attachment cross-category misdetection, ADS mouse wheel zoom glitch, and stance desync.
+  1. Weapon compatibility filter (AttachmentId.IsCompatible & RecoilCalc.RefineAttachmentsForGun): M24/SRs strictly match only _dmr muzzles and cheek pad; ARs match only _ar muzzles and tactical/heavy stocks; SMGs match _smg muzzles. Guns lacking grip/stock slots (AKM, AUG, SCAR, M24) automatically clear invalid slots to prevent weapon art false positives.
+  2. Real attachment templates: Added Real=true templates for flash_dmr and half grip (Half Grip) to attachments-builtin.json and saved\attachments.json.
+  3. ADS wheel zoom guard: In MainWindow.xaml.cs OnWheel(), guarded with GetAsyncKeyState(0x02) < 0 and cfg.SlotSwitch == 2 so variable zoom (6x/8x/15x) while aiming down sights never erroneously triggers weapon/slot switching or changes recoil multipliers.
+  4. Stance reset: Space (jump) and Shift+W (sprint) now universally force stance = 0 (standing) from both crouch and prone.
+
+## Gun detection fixes (2026-11-10) — source is in the sibling folder `..\GunBeep\GunBeepApp` (this folder = installed copy)
+- Log 11-09/11-10 showed gun names flipping within 0.3 s (Mini14 → Mk14 → Mini14, mostly on the "tab open" scan while the panel
+  fades in). Causes: (1) `Confirmed(slot,"name")` sat inside `if (isSameGun)` so it never ran — one misread replaced the gun and
+  dropped its scope/attachments; (2) MatchGun accepted 4-char names at 75 % ("Mi14"/"Mm14" → MK14); (3) every fuzzy match was
+  learned (names.json / gunpics.json had MK14 templates identical to MINI14 ones, dot 0.999 / 0.907).
+- Fix: gun change needs 2 identical reads in a row (`Confirmed(slot,"gun")`, old panel kept meanwhile); names ≤ 4 chars must
+  match exactly; `RecoilCalc.ExactGun` gates LearnNameShape / LearnGunPic. Deployed 2026-11-10 21:30 (old DLL = GunBeep.dll.bak_20261110_gunname), starts fine, NOT yet tried in game; removed 3 MK14 name shapes + 2 MK14 gun pics that matched MINI14 (backups saved\*.json.bak_20261110_mk14)
+  .
+- Known limit: a gun picked up with F (inventory never opened) leaves `slotEmpty` stale → "weapon key to empty slot" → no pull
+  until Tab is opened once.

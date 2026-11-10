@@ -117,13 +117,33 @@ namespace GunBeep
                             Spraying = true;
                             if (Semi)
                             {
-                                // เคาะเร็วกว่า 70 ms ต่อนัด: คลิกใหม่ที่มาระหว่างดึงนัดเดิมนับไว้ แล้วดึงต่อทันทีทีละนัด (ไม่ยิงเอง)
+                                // เคาะเร็วกว่า cooldown ปืนในเกม: รอให้ครบช่วงยิงต่อนัดของปืนก่อน (เช่น DMR 100ms)
+                                double minInterval = Volatile.Read(ref shotMs);
+                                if (KickTs > 0)
+                                {
+                                    while (!stop && Ready)
+                                    {
+                                        double elapsedMs = (Stopwatch.GetTimestamp() - KickTs) * 1000.0 / Stopwatch.Frequency;
+                                        if (elapsedMs >= minInterval) break;
+                                        Thread.Sleep(1);
+                                    }
+                                }
                                 int pending = 1;
                                 bool wasDown = true;
                                 while (pending > 0 && !stop && Ready)
                                 {
                                     pending--;
                                     Kick(ref wasDown, ref pending);
+                                    // ถ้ายิงนัดถัดไปตามคิว (เคาะรัว): รอ cooldown ของปืนในเกมก่อนดึงนัดต่อไป
+                                    if (pending > 0 && !stop && Ready)
+                                    {
+                                        while (!stop && Ready)
+                                        {
+                                            double elapsedMs = (Stopwatch.GetTimestamp() - KickTs) * 1000.0 / Stopwatch.Frequency;
+                                            if (elapsedMs >= minInterval) break;
+                                            Thread.Sleep(1);
+                                        }
+                                    }
                                 }
                             }
                             else Spray();
@@ -159,7 +179,7 @@ namespace GunBeep
                 int want = (int)Math.Round(total * Math.Min(1, t / dur));
                 if (want > moved) { Move(0, want - moved); moved = want; }
                 bool d = Down(VK_LBUTTON);
-                if (d && !wasDown) pending++;
+                if (d && !wasDown) pending = Math.Min(pending + 1, 1);
                 wasDown = d;
                 if (t >= dur) break;
                 Thread.Sleep(1);

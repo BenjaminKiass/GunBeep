@@ -52,7 +52,11 @@ namespace GunBeep
         readonly TextBlock[] valTexts = new TextBlock[GUNS];
         int agentPid;
         bool on, scroll, num, capturing, firstPower = true, hintShown, setupBusy;
+        DateTime lastCapturedKeyAt;
+        int lastCapturedVk;
         int gun = 1;
+        readonly bool[] hybridIs4x = new bool[3] { false, false, false }; // ช่อง 1, ช่อง 2: ค่าเริ่มต้น = โหมด Red Dot (โหมด 1 ตอนหยิบสโคปไฮบริดใน PUBG)
+        DateTime lastHybridToggle = DateTime.MinValue;
         NativeRecoil engine;                      // ตัวขยับเมาส์ในตัว (รุ่นไม่ใช้ G Hub)
         bool Native => cfg.Engine == 0;
 
@@ -126,9 +130,14 @@ Loaded += (s, e) => AnimateIn();
             // ปุ่มเมาส์ (กลาง/Back/Forward) ใช้เป็นปุ่มลัดได้เหมือนคีย์บอร์ด + ลูกกลิ้งไว้สลับช่องปืน
             try
             {
-                RawMouse.Shared.Button += vk => OnKey(vk);
+                RawMouse.Shared.Button += vk => Dispatcher.BeginInvoke(new Action(() => OnKey(vk)));
                 RawMouse.Shared.Wheel += OnWheel;
-            RawMouse.Shared.Input += (dev, dx, dy, left) => { if (left != 0) { MagFire(left > 0); if (left < 0) ThrowReleased(); } };
+                RawMouse.Shared.Input += (dev, dx, dy, left) => { if (left != 0) { MagFire(left > 0); if (left < 0) ThrowReleased(); } };
+                RawMouse.Shared.RightDown += () => Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (capturing) { CaptureKey(2); return; }
+                    OnRightDown();
+                }));
             }
             catch (Exception ex) { Log.Error("raw mouse", ex); }
 
@@ -153,6 +162,34 @@ TopSwitch.IsChecked = cfg.TopMost;
 
 
             SetupTray();
+            PreviewKeyDown += (s, e) =>
+            {
+                if (!capturing) return;
+                var k = e.Key == Key.System ? e.SystemKey : e.Key;
+                int vk = KeyInterop.VirtualKeyFromKey(k);
+                if (vk != 0)
+                {
+                    e.Handled = true;
+                    CaptureKey(vk);
+                }
+            };
+            PreviewMouseDown += (s, e) =>
+            {
+                if (!capturing) return;
+                int vk = e.ChangedButton switch
+                {
+                    MouseButton.Right => 2,
+                    MouseButton.Middle => 4,
+                    MouseButton.XButton1 => 5,
+                    MouseButton.XButton2 => 6,
+                    _ => 0
+                };
+                if (vk != 0)
+                {
+                    e.Handled = true;
+                    CaptureKey(vk);
+                }
+            };
             osd = new Overlay();
             UpdateOsdButtons();
 
@@ -422,9 +459,25 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (stance != 0 && front && !cursor && !invSession && InVehicle())
             {
                 stance = 0;
+                isSlideActive = false;
                 multWant[1] = 1.0;
                 Log.Info("stance vehicle (neutral x1.00)");
                 if (on) PushMults();
+            }
+            if (isSlideActive && (DateTime.Now - lastCrouchAt).TotalMilliseconds > 1300)
+            {
+                isSlideActive = false;
+                // ถ้าสไลด์จบแล้วยังกด Shift + เดินค้างอยู่ (และไม่ได้เล็ง) ในเกม PUBG ตัวละครจะลุกยืนวิ่งต่ออัตโนมัติ
+                bool s_shift = KeyHook.GetAsyncKeyState(0x10) < 0 || KeyHook.GetAsyncKeyState(0xA0) < 0 || KeyHook.GetAsyncKeyState(0xA1) < 0;
+                bool s_moving = KeyHook.GetAsyncKeyState(0x57) < 0 || KeyHook.GetAsyncKeyState(0x41) < 0 || KeyHook.GetAsyncKeyState(0x53) < 0 || KeyHook.GetAsyncKeyState(0x44) < 0;
+                bool s_aiming = KeyHook.GetAsyncKeyState(0x02) < 0;
+                if (s_shift && s_moving && !s_aiming && stance != 0)
+                {
+                    stance = 0;
+                    multWant[1] = 1.0;
+                    Log.Info("stance stand (slide ended, still sprinting)");
+                    if (on) PushMults();
+                }
             }
             Socd.SetActive(cfg.Socd && (!cfg.SocdGameOnly || front));
             // (ไม่นับกระสุนข้ามชุดแล้ว: แต่ละครั้งที่กดยิงค้าง ตัวยิงหยุดดึงเองเมื่อครบขนาดแม็กของปืน + 2 นัด — แม็กหมดในเกมก็หยุดยิงเอง)
@@ -491,7 +544,10 @@ TopSwitch.IsChecked = cfg.TopMost;
             AutoPower(now);
             pubgSlotKeys = null;                      // อาจแก้ปุ่มในเกมมา → อ่านใหม่
             GameSettings.Reload();
+            stanceKeys = null;
             Array.Clear(slotInfo);                    // เกมใหม่ ปืนใหม่
+            hybridIs4x[1] = false;                    // รีเซ็ตโหมดไฮบริดกลับเป็น Red Dot (โหมดแรกตอนหยิบในเกม)
+            hybridIs4x[2] = false;
             if (now && cfg.AutoRes && !cfg.ResAlways) SwitchRes();
             else if (!now && resSwitched && !cfg.ResAlways) RestoreRes();
             if (!now) ShowDeferred();
@@ -809,14 +865,24 @@ TopSwitch.IsChecked = cfg.TopMost;
                 // กด Tab/I ภายใน 1.5 วิ และก่อนกดเพิ่งเห็นว่ากำลังเล่น (ไม่มีเคอร์เซอร์) — ล็อบบี้ไม่เคยซ่อนเคอร์เซอร์ = ไม่นับ
                 //   (ไม่ใช้ "เคอร์เซอร์เพิ่งโผล่" แล้ว: กด Tab ปิด-เปิดรัวๆ เคอร์เซอร์อาจหายแค่เฟรมเดียว ตัวจับเวลา 30 ms มองไม่ทัน)
                 if (!invSession && now - invKeyAt < TimeSpan.FromSeconds(1.5) && invKeyAt - lastHiddenAt < TimeSpan.FromSeconds(1.5))
-                { invSession = true; invCloseKeyAt = DateTime.MinValue; sessionStartAt = now; firstOpenScanDone = false; }
+                {
+                    invSession = true;
+                    invKeyAt = DateTime.MinValue;      // ล้างทันทีที่เข้า session ป้องกัน cursor จากเมนูอื่นสวมรอย
+                    invCloseKeyAt = DateTime.MinValue;
+                    sessionStartAt = now;
+                    firstOpenScanDone = false;
+                }
                 hiddenIdleSince = now;
             }
             else if (invSession)
             {
                 bool closeKey = now - invCloseKeyAt < TimeSpan.FromMilliseconds(400);    // กดปิดแล้วเปิดใหม่เร็วๆ: เกินนี้ถือว่ากระเป๋ายังเปิดอยู่
                 if (!closeKey && KeyHook.GetAsyncKeyState(0x01) < 0) hiddenIdleSince = now;     // กำลังลากของ
-                else if (closeKey || now - hiddenIdleSince > TimeSpan.FromMilliseconds(600)) invSession = false;
+                else if (closeKey || now - hiddenIdleSince > TimeSpan.FromMilliseconds(600))
+                {
+                    invSession = false;
+                    invKeyAt = DateTime.MinValue;
+                }
             }
             cursorPrev = front && cursor;
         }
@@ -853,17 +919,7 @@ TopSwitch.IsChecked = cfg.TopMost;
 
         void TriggerCloseScan()
         {
-            try
-            {
-                // สแกนตอนปิดกระเป๋า: จับภาพหน้าจอทันที ณ เสี้ยววินาทีที่กดปุ่มปิด (< 1ms) ก่อนที่เกมจะปิดหน้ากระเป๋าลง
-                var shot = ScopeDetect.CaptureArea(cfg, out var origin);
-                if (shot != null)
-                {
-                    closeScanPending = true;
-                    _ = ScanScopesAsync(shot, origin, "tab close");
-                }
-            }
-            catch (Exception ex) { Log.Error("trigger close scan", ex); }
+            // ปิดกระเป๋า: ไม่จับภาพตอนแผงกำลังหุบ/เฟดออก เพื่อกันภาพเบลอหลอนค่าปืน ใช้ผลสแกนที่แม่นยำขณะเปิดกระเป๋าแทน
         }
 
         void WatchScope(bool front, bool cursor)
@@ -884,10 +940,10 @@ TopSwitch.IsChecked = cfg.TopMost;
 
             if (!inv || locating) return;
 
-            // สแกนรอบแรกทันทีตอนเปิดกระเป๋า: รอ 35ms ให้เกมวาดแผงไอเท็มครบ แล้วสแกนทันที
+            // สแกนรอบแรกทันทีตอนเปิดกระเป๋า: รอ 160ms ให้เกมวาดแผงไอเท็มครบและนิ่ง แล้วสแกนทันที
             if (!firstOpenScanDone)
             {
-                if (now - invOpenedAt < TimeSpan.FromMilliseconds(35)) return;
+                if (now - invOpenedAt < TimeSpan.FromMilliseconds(160)) return;
                 firstOpenScanDone = true;
                 lastScan = now;
                 scanBusy = true;
@@ -895,7 +951,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
 
-            if (scanBusy || now - lastScan < TimeSpan.FromMilliseconds(90)) return;
+            if (scanBusy || now - lastScan < TimeSpan.FromMilliseconds(280)) return;
 
             // ยังไม่รู้ตำแหน่งแผงปืนของความละเอียดนี้ → หาเองจากชื่อปืน (ไม่ต้องแคป/ลากจุด)
             var size = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Size;
@@ -964,9 +1020,24 @@ TopSwitch.IsChecked = cfg.TopMost;
                         if (shot == null) return null;
                         var res = ScopeDetect.Read(cfg, shot, origin, w, h);
                         var boxes = ScopeDetect.Boxes(cfg, w, h);
+                        var ci = new CURSORINFO { cbSize = Marshal.SizeOf<CURSORINFO>() };
+                        System.Drawing.Point? cursorPos = (GetCursorInfo(ref ci) && (ci.flags & 1) != 0) ? new System.Drawing.Point(ci.x, ci.y) : null;
                         for (int i = 0; i < 2; i++)
                         {
                             var p = res[i];
+                            if (cursorPos.HasValue)
+                            {
+                                var hoverZone = boxes[i].icon;
+                                hoverZone.Inflate(24, 24);
+                                if (hoverZone.Contains(cursorPos.Value)) p.Obscured = true;
+
+                                for (int k = 0; k < 4; k++)
+                                {
+                                    var ar = RecoilCalc.SlotRect(cfg, w, h, i, k);
+                                    ar.Inflate(16, 16);
+                                    if (ar.Contains(cursorPos.Value)) p.Obscured = true;
+                                }
+                            }
                             if (p.Slot == 0)
                             {
                                 // ป้ายเลขโดนบัง แต่รูปปืนตรงกับปืนที่จำไว้ → ยังเป็นช่องนี้ ปืนนี้
@@ -982,7 +1053,12 @@ TopSwitch.IsChecked = cfg.TopMost;
                             using var crop = ScopeDetect.Crop(shot, nb);
                             var (gunKey, gunName, raw) = await ScopeDetect.ReadGun(crop);
                             p.Name = gunName ?? "";                                          // ชื่อจริงของปืน ไม่ใช่ตัวหนังสือที่ OCR อ่านได้
-                            if (gunKey != null && !(raw ?? "").EndsWith("(shape)")) ScopeDetect.LearnGunPic(p.Pic, gunKey);   // อ่านชื่อออกจริง → จำรูปปืน
+                            // อ่านชื่อออกตรงทุกตัวอักษร → จำรูปปืน (อ่านได้แค่ "คล้าย" ไม่จำ: เคยจำรูป Mini14 ไว้ในชื่อ Mk14)
+                            if (gunKey != null && !(raw ?? "").EndsWith("(shape)"))
+                            {
+                                string rawText = raw.EndsWith(" (tight)") ? raw[..^8] : raw;
+                                if (RecoilCalc.ExactGun(rawText, gunKey)) ScopeDetect.LearnGunPic(p.Pic, gunKey);
+                            }
                             else if (gunKey == null && ScopeDetect.MatchGunPic(p.Pic) is string pk2)
                             {
                                 p.Name = RecoilCalc.GunNames.First(g => g.key == pk2).name;   // ชื่อโดนบัง (ชื่อคนฆ่ากัน ฯลฯ) → รู้จากรูปปืน
@@ -1009,74 +1085,173 @@ TopSwitch.IsChecked = cfg.TopMost;
                         continue;
                     }
                     if (RecoilCalc.GunKey(p.Name) == null) p.Name = slotInfo[p.Slot].Name;     // อ่านชื่อรอบนี้ไม่ชัด ใช้ชื่อเดิม
+                    // ชื่อปืนเปลี่ยนจากที่รู้อยู่ → ต้องอ่านได้ชื่อใหม่เดิมซ้ำ 2 รอบติดก่อนถึงจะเชื่อ รอบนี้คงข้อมูลเดิมของช่องไว้ทั้งชุด
+                    //   (เดิมการยืนยันชื่ออยู่ในเงื่อนไข "ปืนเดิม" เลยไม่เคยทำงาน: อ่านผิดเฟรมเดียวตอนแผงกำลังเฟดเข้า
+                    //    ก็เปลี่ยนปืนทันที + ล้างสโคป/ของแต่งของปืนจริงทิ้ง เช่น Mini14 → Mk14 → Mini14 ภายใน 0.3 วิ)
+                    if (slotInfo[p.Slot] is ScopeDetect.Panel known && RecoilCalc.GunKey(known.Name) is string knownKey)
+                    {
+                        string readKey = RecoilCalc.GunKey(p.Name);
+                        if (readKey == knownKey) ClearPending(p.Slot + ":gun");
+                        else if (!isClose && !Confirmed(p.Slot, "gun", knownKey, readKey))
+                        {
+                            p.Icon?.Dispose();
+                            if (p.AttIcons != null) foreach (var ai in p.AttIcons) ai?.Dispose();
+                            continue;
+                        }
+                    }
                     // ปืนที่เจอครั้งแรก → เพิ่มในหน้าคำนวณแรงดีด (×1) ให้ปรับทีหลังได้
                     if (RecoilCalc.GunKey(p.Name) is string gk && (cfg.Calc ??= new CalcSettings()).Guns.TryAdd(gk, 1)) cfg.Save();
                     // ปืนชัดแล้ว → กรองและปรับของแต่งให้ตรงตามชนิดปืนจริง (เช่น M24 บังคับลดแสง DMR, AUG ไม่มีพานท้าย)
                     if (RecoilCalc.GunKey(p.Name) is string rk) RecoilCalc.RefineAttachmentsForGun(p, rk);
                     var old = slotInfo[p.Slot];
-                    // ถ้าเดิมมีสโคปอยู่แล้ว (old.Set > 0 หรือ old.Set == -2 เช่น 6x, 4x, 3x)
-                    // แล้วเฟรมปัจจุบันกำลังเปิด/ปิดกระเป๋า (tab open / tab close) หรือช่องโดนบัง (คิวฟีด) หรืออ่านไม่ชัด (p.Set == -1)
-                    // หรืออ่านเป็น "ไม่มีสโคป" (p.Set == 0) ระหว่างอนิเมชันเปิด/ปิดกระเป๋า:
-                    // ห้ามล้างสโคปเด็ดขาด! ให้จำสโคปเดิมไว้ทันที ป้องกันแรงดึงตกวูบไปเป็น Red Dot/ศูนย์เหล็ก
-                    if (old != null && (old.Set > 0 || old.Set == -2))
+                    bool isSameGun = old != null && RecoilCalc.GunKey(old.Name) == RecoilCalc.GunKey(p.Name);
+                    if (old != null && !isSameGun)
                     {
-                        if (p.Set == -1 || ((isClose || trigger == "tab open" || p.Obscured || p.PanelKf) && p.Set == 0))
+                        // สลับปืน/เปลี่ยนปืนใหม่ในช่องเดิม: ห้ามสืบทอดสโคปและของแต่งของปืนเก่าเด็ดขาด!
+                        ClearPending(p.Slot + ":name");
+                        ClearPending(p.Slot + ":scope");
+                        ClearPending(p.Slot + ":scope_empty");
+                        for (int k = 0; k < 4; k++) ClearPending(p.Slot + ":att" + k);
+                    }
+
+                    // ถ้าช่องโดนบัง (เมาส์ชี้ / คิลฟีดบัง) ขณะที่เดิมมีของแต่งหรือสโคปอยู่แล้ว → คงค่าเดิมไว้ 100%
+                    if (isSameGun && old != null)
+                    {
+                        if (p.Obscured)
                         {
                             p.Set = old.Set;
                             p.ScopeLabel = old.ScopeLabel;
                             p.Score = old.Score;
                             if (p.Name == "") p.Name = old.Name;
+                            if (p.Att != null && old.Att != null)
+                                for (int k = 0; k < 4; k++)
+                                {
+                                    p.Att[k] = old.Att[k];
+                                    if (p.AttId != null && old.AttId != null) p.AttId[k] = old.AttId[k];
+                                }
                         }
                     }
-                    else if (p.Set == -1 && old != null && old.Set != -1 && (old.Name == p.Name || p.Name == ""))
+
+                    // ป้องกัน p.Set == -1 ทุกกรณี: ปืนใน PUBG ทุกกระบอกถ้าไม่มีสโคปหรือไม่รู้จัก = ศูนย์เหล็ก (Set = 0)
+                    if (p.Set == -1)
                     {
-                        p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
-                        if (p.Name == "") p.Name = old.Name;
+                        if (isSameGun && old != null && old.Set >= 0)
+                        {
+                            p.Set = old.Set;
+                            p.ScopeLabel = old.ScopeLabel;
+                            p.Score = old.Score;
+                        }
+                        else
+                        {
+                            p.Set = 0;
+                            p.ScopeLabel = "ไม่มีสโคป";
+                            p.Score = 1;
+                        }
                     }
-                    if (p.AttUnsure != null && old?.Att != null && old.Name == p.Name)
+                    if (p.AttUnsure != null && isSameGun && old?.Att != null)
                         for (int k = 0; k < 4; k++)
                             if (p.AttUnsure[k]) { p.Att[k] = old.Att[k]; p.AttId[k] = old.AttId?[k]; }
-                    // ค่าใหม่ต้องเห็นซ้ำ 2 รอบติดกันก่อนเชื่อ (เว้นแต่สโคปมั่นใจ ให้เชื่อทันทีแบบ Zero-Latency)
-                    if (old != null)
+
+                    if (isSameGun && old != null)
                     {
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
 
-                        // สโคปจริงใหม่ (Set > 0 หรือ Set == -2 เช่น 3x, 6x): ถ้าคะแนนมั่นใจ (Score >= 0.58 และไม่โดนบัง) หรือตอนปิดกระเป๋า ให้เชื่อทันที Zero-Latency
-                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= 0.58 && !p.Obscured));
+                        // สโคปจริงใหม่ (Set > 0 หรือ Set == -2 เช่น 3x, 6x, Holo): ถ้าตอนปิดกระเป๋า หรือคะแนน >= 0.50 และไม่โดนบัง ให้เชื่อทันที
+                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= 0.50 && !p.Obscured));
 
-                        // ปลดเป็น "ไม่มีสโคป" (Set == 0): ถ้าเดิมมีสโคปอยู่ ต้องเห็นช่องว่างจริง 2 รอบติด (ห้ามปลดตอนปิด/เปิดกระเป๋าหรือคิวฟีดบัง)
-                        bool emptyConfirmed = p.Set == 0 && !isClose && trigger != "tab open" && !p.Obscured && !p.PanelKf && Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0");
+                        // ปลดเป็น "ไม่มีสโคป" (Set == 0): ตอนปิดกระเป๋าเชื่อทันที (isClose), หรือถ้าเปิดกระเป๋าอยู่ให้ยืนยัน 3 รอบติด (~1 วินาที)
+                        bool emptyConfirmed = p.Set == 0 && !p.Obscured && (isClose || Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0", requiredRounds: 3));
 
                         if ((old.Set > 0 || old.Set == -2) && p.Set == 0 && !emptyConfirmed)
                         {
                             p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         }
-                        else if (!newScopeSure && (p.Set > 0 || p.Set == -2) && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}"))
+                        else if (!newScopeSure && (p.Set > 0 || p.Set == -2) && !Confirmed(p.Slot, "scope", $"{old.Set}|{old.ScopeLabel}", $"{p.Set}|{p.ScopeLabel}", requiredRounds: 2))
                         {
                             p.Set = old.Set; p.ScopeLabel = old.ScopeLabel; p.Score = old.Score;
                         }
                         else
                         {
-                            pendingRead.Remove(p.Slot + ":scope");
-                            pendingRead.Remove(p.Slot + ":scope_empty");
+                            ClearPending(p.Slot + ":scope");
+                            ClearPending(p.Slot + ":scope_empty");
                         }
+
                         if (p.Att != null && old.Att != null)
                             for (int k = 0; k < 4; k++)
                             {
-                                bool attSure = !isClose && trigger != "tab open" && (p.AttId?[k] != null);
-                                if (!attSure && !Confirmed(p.Slot, "att" + k, old.Att[k] ? old.AttId?[k] ?? "1" : "0", p.Att[k] ? p.AttId?[k] ?? "1" : "0"))
-                                { p.Att[k] = old.Att[k]; if (p.AttId != null) p.AttId[k] = old.AttId?[k]; }
+                                string oldAttStr = old.Att[k] ? old.AttId?[k] ?? "1" : "0";
+                                string newAttStr = p.Att[k] ? p.AttId?[k] ?? "1" : "0";
+                                if (oldAttStr == newAttStr)
+                                {
+                                    ClearPending(p.Slot + ":att" + k);
+                                    continue;
+                                }
+
+                                if (isClose)
+                                {
+                                    ClearPending(p.Slot + ":att" + k);
+                                    continue;
+                                }
+
+                                if (trigger == "tab open")
+                                {
+                                    if (!old.Att[k] && p.Att[k])
+                                    {
+                                        // หยิบของแต่งใหม่มาแล้วเปิดกระเป๋า: รับทันที
+                                        ClearPending(p.Slot + ":att" + k);
+                                        continue;
+                                    }
+                                    if (old.Att[k] && !p.Att[k])
+                                    {
+                                        // จังหวะเพิ่งเปิดกระเป๋า ภาพอาจยังไม่นิ่ง: คงของแต่งเดิมไว้ก่อน ให้รอบถัดไปยืนยัน
+                                        p.Att[k] = old.Att[k];
+                                        if (p.AttId != null) p.AttId[k] = old.AttId?[k];
+                                        continue;
+                                    }
+                                }
+
+                                // ระหว่างเปิดกระเป๋าค้าง (scan):
+                                // ถ้าถอดของแต่งออก (เดิมมี แต่รอบนี้มองไม่เห็น): ต้องยืนยัน 3 รอบติด (~1 วินาที)
+                                // ถ้าใส่ของแต่งใหม่ (เดิมไม่มี แต่รอบนี้ใส่): ต้องยืนยัน 2 รอบติด
+                                // ป้องกันภาพกระตุกหรือเมาส์เลื่อนผ่านแล้วค่าสลับไปมา
+                                int req = (old.Att[k] && !p.Att[k]) ? 3 : 2;
+                                if (p.Obscured || !Confirmed(p.Slot, "att" + k, oldAttStr, newAttStr, requiredRounds: req))
+                                {
+                                    p.Att[k] = old.Att[k];
+                                    if (p.AttId != null) p.AttId[k] = old.AttId?[k];
+                                }
                                 else
                                 {
-                                    pendingRead.Remove(p.Slot + ":att" + k);
+                                    ClearPending(p.Slot + ":att" + k);
                                 }
                             }
                     }
+                    else if (old != null && !isSameGun)
+                    {
+                        ClearPending(p.Slot + ":scope");
+                        ClearPending(p.Slot + ":scope_empty");
+                    }
+
+                    // ตรวจความเข้ากันได้ตามระบบปืน PUBG รอบสุดท้ายก่อนบันทึก (กันหลอน 8x/6x ติดมา)
+                    if (RecoilCalc.GunKey(p.Name) is string finalRk) RecoilCalc.RefineAttachmentsForGun(p, finalRk);
                     string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info($"scope scan ({trigger}): " + p + " att " + attSig(p));
                     else if (attSig(old) != attSig(p)) Log.Info($"scope scan ({trigger}): slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");
                     old?.Icon?.Dispose();
                     if (old?.AttIcons != null) foreach (var ai in old.AttIcons) ai?.Dispose();
+                    // ติดสโคปไฮบริดใหม่ หรือเปลี่ยนปืน: ใน PUBG เริ่มต้นด้วย Red Dot (โหมด 1) เสมอ
+                    if (p.ScopeLabel == "hybrid")
+                    {
+                        if (old == null || old.ScopeLabel != "hybrid" || old.Name != p.Name)
+                        {
+                            hybridIs4x[p.Slot] = false;
+                            Log.Info($"hybrid auto-reset: slot {p.Slot} {p.Name} equipped with hybrid scope → reset to Red Dot (mode 1)");
+                        }
+                    }
+                    else
+                    {
+                        hybridIs4x[p.Slot] = false;
+                    }
                     slotInfo[p.Slot] = p;
                 }
                 foreach (var p in panels) if (p.Slot is not (1 or 2)) p.Icon?.Dispose();
@@ -1097,6 +1272,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                         slotInfo[s] = null;
                     }
                     slotEmpty[s] = true;
+                    hybridIs4x[s] = false;
                     // ถือช่องที่ว่างไม่ได้ในเกม → ถ้าอีกช่องมีปืน แปลว่าถือปืนนั้นอยู่
                     int o = 3 - s;
                     if (magSlot == s && !slotEmpty[o] && slotInfo[o] != null) { Log.Info($"slot {s} empty → holding slot {o}"); MagSlotTo(o); }
@@ -1131,13 +1307,31 @@ TopSwitch.IsChecked = cfg.TopMost;
 
         // ค่าที่รอยืนยัน: ช่อง:ส่วน → ค่าใหม่ที่เห็นรอบก่อน
         readonly Dictionary<string, string> pendingRead = new();
+        readonly Dictionary<string, int> pendingCount = new();
 
-        bool Confirmed(int slot, string field, string oldV, string newV)
+        void ClearPending(string key)
+        {
+            pendingRead.Remove(key);
+            pendingCount.Remove(key);
+        }
+
+        bool Confirmed(int slot, string field, string oldV, string newV, int requiredRounds = 2)
         {
             string k = slot + ":" + field;
-            if (oldV == newV) { pendingRead.Remove(k); return true; }
-            if (pendingRead.TryGetValue(k, out var pv) && pv == newV) { pendingRead.Remove(k); return true; }
-            pendingRead[k] = newV;                               // เห็นครั้งแรก → รอรอบหน้า
+            if (oldV == newV) { ClearPending(k); return true; }
+            if (pendingRead.TryGetValue(k, out var pv) && pv == newV)
+            {
+                int count = (pendingCount.TryGetValue(k, out var c) ? c : 1) + 1;
+                if (count >= requiredRounds)
+                {
+                    ClearPending(k);
+                    return true;
+                }
+                pendingCount[k] = count;
+                return false;
+            }
+            pendingRead[k] = newV;
+            pendingCount[k] = 1;
             return false;
         }
 
@@ -1146,36 +1340,43 @@ TopSwitch.IsChecked = cfg.TopMost;
         {
             if (!cfg.ScopeAuto || vals == null) return;
             var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
-            if (p == null || p.Set == -1) return;                // ไม่รู้จักสโคป = ไม่เปลี่ยน
+            if (p == null) return;
+            if (p.Set == -1)
+            {
+                p.Set = 0;
+                p.ScopeLabel = "ไม่มีสโคป";
+                p.Score = 1;
+            }
             var (set, scopeMult, via, mult, parts) = Plan(p);
             bool setChanged = set >= 1 && set <= vals.Length && set != gun;
             bool multChanged = LiveLink.MultCode(mult) != LiveLink.MultCode(multWant[0]);
             multWant[0] = mult;
             LiveDirty();
             // สโคปเปลี่ยนแต่ค่าเท่าเดิม (เช่น Holo ↔ Red Dot = 1x ความไวเดียวกัน) → ยังบอกบนป้ายว่าตรวจเจอแล้ว
-            string seen = $"{heldSlot}|{p.Name}|{p.Set}|{p.ScopeLabel}";
+            string seen = $"{heldSlot}|{p.Name}|{p.Set}|{p.ScopeLabel}|{(p.ScopeLabel == "hybrid" ? hybridIs4x[Math.Clamp(heldSlot, 1, 2)] : false)}";
             bool scopeChanged = seen != lastScopeSeen;
             lastScopeSeen = seen;
+            string scopeDesc = p.Set == 0 ? "ศูนย์เหล็ก" : p.ScopeLabel == "hybrid" ? $"ไฮบริด ({(hybridIs4x[Math.Clamp(heldSlot, 1, 2)] ? "4x" : "Red Dot")})" : ScopeName(p.ScopeLabel);
             if (!setChanged && !multChanged)
             {
                 if (why == "unholster" || why == "weapon key")
                 {
                     string n = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
-                    PopOsd($"{n} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+                    PopOsd($"{n} · {scopeDesc}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
                     PushMults();
                 }
                 else if (scopeChanged)
                 {
-                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}");
+                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name)} · {scopeDesc}");
                 }
                 UpdateTray();
                 return;
             }
-            Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {p.ScopeLabel} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
+            Log.Info($"scope auto ({why}): slot {heldSlot} {p.Name} {(p.ScopeLabel == "hybrid" ? $"hybrid({(hybridIs4x[Math.Clamp(heldSlot, 1, 2)] ? "4x" : "reddot")})" : p.ScopeLabel)} → set {set}{(via != null && scopeMult != 1 ? $" via {via}" : "")} ×{mult:0.000} [{parts}]");
             if (setChanged) SelectGun(set);
             PushMults();
             string name = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {heldSlot}" : p.Name;
-            PopOsd($"{name} · {(p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel))}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
+            PopOsd($"{name} · {scopeDesc}{(Math.Abs(mult - 1) > 0.005 ? $"  ×{mult:0.00}" : "")}");
             UpdateTray();
         }
 
@@ -1265,7 +1466,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         static bool InVehicle()
         {
             var now = DateTime.Now;
-            if (now - lastVehicleCheck < TimeSpan.FromMilliseconds(250)) return lastInVehicle;
+            if (now - lastVehicleCheck < TimeSpan.FromMilliseconds(500)) return lastInVehicle;
             lastVehicleCheck = now;
             try
             {
@@ -1286,11 +1487,18 @@ TopSwitch.IsChecked = cfg.TopMost;
                         int mx = Math.Max(p.R, Math.Max(p.G, p.B)), mn = Math.Min(p.R, Math.Min(p.G, p.B));
                         if (mn > 170 && mx - mn < 25) whiteUi++;
                     }
-                lastInVehicle = whiteUi > 30;
+                // ต้องมีพิกเซล UI สีขาวคมชัดสูงมากพอ (เกจ์ความเร็ว/ผังที่นั่ง > 250 พิกเซล) ถึงจะถือว่าอยู่ในรถ
+                // ป้องกันแสงสะท้อนพื้นหญ้า/หิน/อาคาร (<200) หลอนเป็นรถแล้วรีเซ็ตท่าย่อ
+                lastInVehicle = whiteUi > 250;
                 return lastInVehicle;
             }
             catch { return false; }
         }
+
+        DateTime lastStanceKeyAt = DateTime.MinValue;
+        int lastStanceVk = 0;
+        DateTime lastCrouchAt = DateTime.MinValue;
+        bool isSlideActive;
 
         void StanceKey(int vk)
         {
@@ -1299,10 +1507,8 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (c == null || !c.On || !GameInFront() || CursorShown()) return;
             stanceKeys ??= ReadStanceKeys();
             int was = stance;
+            var now = DateTime.Now;
             bool Held(int k) => KeyHook.GetAsyncKeyState(k) < 0;
-
-            // ถ้ากดปุ่ม Ctrl ค้างอยู่ (เช่น Ctrl+1..4 เปลี่ยนที่นั่งในรถ หรือเดินย่อง) → ไม่เปลี่ยน Stance
-            if (Held(0x11) || Held(0xA2) || Held(0xA3)) return;
 
             // ถ้าอยู่ในรถ: ท่าเป็นยืน (neutral x1.00) เสมอ และไม่รับปุ่ม C (เปลี่ยนที่นั่ง) หรือ Space (เบรกมือ) มาเป็นท่าย่อ
             if (InVehicle())
@@ -1310,6 +1516,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                 if (stance != 0)
                 {
                     stance = 0;
+                    isSlideActive = false;
                     multWant[1] = 1.0;
                     Log.Info("stance vehicle (neutral x1.00)");
                     if (on) PushMults();
@@ -1317,15 +1524,73 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
 
-            if (vk == stanceKeys[0]) stance = stance == 1 ? 0 : 1;
-            else if (vk == stanceKeys[1]) stance = stance == 2 ? 0 : 2;
-            else if (vk == 0x20) stance = 0;        // Space: กระโดด = ยืนเสมอ (ทั้งจากย่อและหมอบ)
-            // ย่อหรือหมอบอยู่แล้ววิ่ง (Shift ซ้าย + W ไม่ได้เล็ง) = เกมให้ลุกยืนวิ่งทันที
-            else if (stance != 0 && !Held(0x02) && ((vk == 0xA0 && Held(0x57)) || (vk == 0x57 && Held(0xA0)))) stance = 0;
+            bool shift = Held(0x10) || Held(0xA0) || Held(0xA1);
+            bool ctrl = Held(0x11) || Held(0xA2) || Held(0xA3);
+            bool alt = Held(0x12) || Held(0xA4) || Held(0xA5);
+            bool isMoving = Held(0x57) || Held(0x41) || Held(0x53) || Held(0x44); // W, A, S, D
+            bool isSprinting = shift && isMoving;
+
+            var gs = GameSettings.Current;
+            bool isCrouchKey = (gs.CrouchBindings != null && gs.CrouchBindings.Any(b => b.Matches(vk, shift, ctrl, alt)))
+                               || (!ctrl && !alt && vk == stanceKeys[0]);
+
+            bool isProneKey = (gs.ProneBindings != null && gs.ProneBindings.Any(b => b.Matches(vk, shift, ctrl, alt)))
+                              || (!ctrl && !alt && vk == stanceKeys[1]);
+
+            // สไลด์: กดปุ่มย่อในขณะที่กำลังกด Shift หรือวิ่งอยู่ (หรือเป็นปุ่มที่ระบุ Shift ไว้ในเกม เช่น Shift+S)
+            bool isSlide = isCrouchKey && (shift || (gs.CrouchBindings != null && gs.CrouchBindings.Any(b => b.Shift && b.Vk == vk)));
+
+            // กรอง Keyboard Auto-repeat: ถ้ากดปุ่มเดิมค้างไว้ ป้องกันไม่ให้ toggle ย่อ/ยืน สลับไปมา
+            if ((isCrouchKey || isProneKey) && vk == lastStanceVk && (now - lastStanceKeyAt).TotalMilliseconds < 250)
+            {
+                return;
+            }
+
+            if (isSlide)
+            {
+                // วิ่งแล้วกดย่อ = สไลด์: ใน PUBG จะเข้าสู่ท่าย่อ/สไลด์เสมอ ไม่ใช่ toggle ยืน
+                lastStanceKeyAt = now;
+                lastStanceVk = vk;
+                lastCrouchAt = now;
+                isSlideActive = true;
+                stance = 1; // บังคับเข้าท่าย่อเสมอ
+            }
+            else if (isCrouchKey)
+            {
+                lastStanceKeyAt = now;
+                lastStanceVk = vk;
+                stance = stance == 1 ? 0 : 1;
+                if (stance == 1) lastCrouchAt = now;
+                isSlideActive = false;
+            }
+            else if (isProneKey)
+            {
+                lastStanceKeyAt = now;
+                lastStanceVk = vk;
+                stance = stance == 2 ? 0 : 2;
+                isSlideActive = false;
+            }
+            else if (vk == 0x20)
+            {
+                stance = 0;        // Space: กระโดด = ยืนเสมอ (ทั้งจากย่อและหมอบ)
+                isSlideActive = false;
+            }
+            // ย่อหรือหมอบอยู่แล้วกดวิ่ง (Shift + ปุ่มเดิน โดยไม่ได้เล็ง):
+            //   ถ้าไม่ได้เพิ่งกดสไลด์ (< 1.3 วิ) → ตัวละครใน PUBG จะลุกขึ้นยืนเพื่อวิ่งทันที
+            else if (stance != 0 && !Held(0x02) && isSprinting &&
+                     (vk == 0x10 || vk == 0xA0 || vk == 0xA1 || vk == 0x57 || vk == 0x41 || vk == 0x53 || vk == 0x44))
+            {
+                if (!isSlideActive || (now - lastCrouchAt).TotalMilliseconds > 1300)
+                {
+                    stance = 0;
+                    isSlideActive = false;
+                }
+            }
             else return;
+
             if (stance == was) return;
             multWant[1] = stance == 1 ? 1 + c.CrouchPct / 100 : stance == 2 ? 1 + c.PronePct / 100 : 1;
-            Log.Info($"stance {(stance == 0 ? "stand" : stance == 1 ? "crouch" : "prone")} ×{multWant[1]:0.00}");
+            Log.Info($"stance {(stance == 0 ? "stand" : stance == 1 ? "crouch" : "prone")} ×{multWant[1]:0.00} (key=0x{vk:X2} shift={shift} ctrl={ctrl} slide={isSlide})");
             if (on) PushMults();
         }
 
@@ -1371,6 +1636,58 @@ TopSwitch.IsChecked = cfg.TopMost;
             if (now - lastWheel < TimeSpan.FromMilliseconds(180)) return;    // หมุนหลายแก๊กติดกัน = เปลี่ยนครั้งเดียว
             lastWheel = now;
             SlotTo(slot == 1 ? 2 : 1);
+        }
+
+        void OnRightDown()
+        {
+            try
+            {
+                // ถ้าหุบปืนอยู่ (กด X / เก็บปืน / มือเปล่า / ถือมีด / ระเบิด: magSlot เป็น 0) หรือไม่ได้ถือปืน = ไม่สลับสโคป
+                if (magSlot is not (1 or 2)) return;
+                if (slotEmpty != null && slotEmpty[magSlot]) return;
+                if (!Playing()) return;
+
+                // Alt + คลิกขวา: ใน PUBG ใช้สลับศูนย์เล็งเอียง (Canted Sight) หรือสลับโหมด Hybrid (1x Red Dot ↔ 4x)
+                bool alt = (KeyHook.GetAsyncKeyState(0x12) & 0x8000) != 0
+                        || (KeyHook.GetAsyncKeyState(0xA4) & 0x8000) != 0
+                        || (KeyHook.GetAsyncKeyState(0xA5) & 0x8000) != 0;
+                if (!alt) return;
+
+                int slot = magSlot;
+                var p = slotInfo[slot];
+                if (p == null || p.ScopeLabel != "hybrid") return;
+
+                if (DateTime.Now - lastHybridToggle < TimeSpan.FromMilliseconds(250)) return;
+                lastHybridToggle = DateTime.Now;
+
+                heldSlot = slot;
+
+                // ตรวจว่ากด Ctrl ด้วยหรือไม่ (Ctrl + Alt + RMB = บังคับรีเซ็ตกลับเป็น Red Dot (โหมด 1) ทันที)
+                bool ctrl = (KeyHook.GetAsyncKeyState(0x11) & 0x8000) != 0
+                         || (KeyHook.GetAsyncKeyState(0xA2) & 0x8000) != 0
+                         || (KeyHook.GetAsyncKeyState(0xA3) & 0x8000) != 0;
+
+                if (ctrl)
+                {
+                    hybridIs4x[slot] = false;
+                }
+                else
+                {
+                    hybridIs4x[slot] = !hybridIs4x[slot];
+                }
+
+                bool is4x = hybridIs4x[slot];
+
+                ApplyScope("hybrid toggle");
+                LiveDirty();
+
+                string mode = is4x ? "4x" : "Red Dot";
+                string gunName = string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {slot}" : p.Name;
+                PopOsd(ctrl ? $"{gunName} · ไฮบริด รีเซ็ตเป็น Red Dot" : $"{gunName} · ไฮบริด ({mode})");
+                Sfx.Play(is4x ? Sfx.Up : Sfx.Down, cfg.Sound);
+                Log.Info($"hybrid toggle: slot {slot} {p.Name} switched to {(is4x ? "4x" : "Red Dot")}{(ctrl ? " (forced reset)" : "")}");
+            }
+            catch (Exception ex) { Log.Error("hybrid toggle", ex); }
         }
 
         // ---------------------------------------------------------------- จูนด้วยตา
@@ -1614,6 +1931,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         void OnKey(int vk)
         {
             if (capturing) { CaptureKey(vk); return; }
+            if (DateTime.Now - lastCapturedKeyAt < TimeSpan.FromMilliseconds(350) && lastCapturedVk == vk) return;
             if (eye != null && eye.Key(vk)) return;          // จูนด้วยตา: ลูกศรตอบคำถามบนป้าย
 
             if (lootWin?.Capturing == true || scopeWin?.Capturing == true) return;   // กำลังตั้งปุ่มในหน้าต่างย่อย
@@ -1625,15 +1943,43 @@ TopSwitch.IsChecked = cfg.TopMost;
             //   ถ้าโปรแกรมยังนับ = เปลี่ยนปืน/ท่า/โหมดเองทั้งที่ในเกมไม่เปลี่ยน → ไม่นับปุ่มพวกนี้ตอนหน้าต่างเกมไม่ใช่ภาษาอังกฤษ
             if (game && vk >= 0x30 && vk <= 0x5A && !GameKeyboardEnglish()) game = false;
             if (game) StanceKey(vk);                             // ย่อ/หมอบ: ดูอย่างเดียว ไม่กินปุ่ม
-            if (game && (vk == 0x09 || vk == 0x49 || vk == 0x1B))   // Tab / I / Esc
+            // Esc = เมนูระบบ / การตั้งค่า / ยกเลิก / ปิดเมนู — ห้ามสแกนจอเด็ดขาด และห้ามเปิด session กระเป๋า
+            if (game && vk == 0x1B)
+            {
+                if (Loot.Busy) Loot.Cancel();
+                invKeyAt = DateTime.MinValue;          // ล้างคิวเปิดกระเป๋า ไม่ให้เคอร์เซอร์จากเมนู Esc กลายเป็น invSession
+                invCloseKeyAt = DateTime.MinValue;
+                closeScanPending = false;
+                if (invSession)
+                {
+                    invSession = false;               // ปิด session ทันที ไม่ถ่ายภาพใหม่
+                    if (cfg.ScopeAuto) ApplyScope("esc closed inventory");
+                }
+                if (vk == cfg.HotKey) { ToggleOn(); return; }
+                return;
+            }
+
+            // M = แผนที่ — มีเคอร์เซอร์แต่ไม่ใช่กระเป๋า ห้ามให้เคอร์เซอร์แผนที่ถูกนับเป็นกระเป๋า
+            if (game && vk == 0x4D)
+            {
+                invKeyAt = DateTime.MinValue;
+            }
+
+            // Tab / I = เปิด/ปิดกระเป๋า
+            if (game && (vk == 0x09 || vk == 0x49))
             {
                 if (Loot.Busy) Loot.Cancel();
                 if (invSession)
                 {
-                    invCloseKeyAt = DateTime.Now;      // ปิดกระเป๋า
-                    if (cfg.ScopeAuto) TriggerCloseScan();
+                    // ปิดกระเป๋า: นำค่าสโคปและของแต่งที่สแกนชัดเจนไว้แล้วขณะเปิดกระเป๋ามาใช้งานทันที
+                    // ไม่ถ่ายภาพตอนแผงกำลังหุบ/เฟดออก เพื่อป้องกันภาพเบลอทำให้ค่าปืนหลอนหรือหลุด
+                    invCloseKeyAt = DateTime.Now;
+                    invSession = false;
+                    invKeyAt = DateTime.MinValue;
+                    closeScanPending = false;
+                    if (cfg.ScopeAuto) ApplyScope("inventory closed");
                 }
-                else if (vk != 0x1B) invKeyAt = DateTime.Now;      // เปิด — นับเฉพาะถ้าเคอร์เซอร์เพิ่งโผล่ตามมา (ล็อบบี้มีเคอร์เซอร์อยู่แล้ว = ไม่นับ)
+                else invKeyAt = DateTime.Now;          // เปิด — รอเคอร์เซอร์โผล่แล้วสแกนขณะกระเป๋าเปิดอยู่
             }
             if (vk == cfg.HotKey) { ToggleOn(); return; }
             // ในตัว: ไม่มีปุ่มเลือกชุด/จูนในเกม (Back/Forward) — ทุกอย่างออโต้จากหน้ากระเป๋า
@@ -2359,16 +2705,23 @@ TopSwitch.IsChecked = cfg.TopMost;
 
         static bool HotkeyAllowed(int vk) =>
             !(vk == VK_NUM || vk == VK_SCROLL                  // ใช้ส่งสถานะให้ G Hub
-              || (vk >= 0x10 && vk <= 0x12) || (vk >= 0xA0 && vk <= 0xA5) || vk == 0x5B || vk == 0x5C
+              || vk == 0x5B || vk == 0x5C                      // Windows keys
               || (vk >= 0x7C && vk <= 0x87)                    // F13-F24 ที่ G Hub ส่งมา
-              || (vk < 0x08 && vk != 4 && vk != 5 && vk != 6));   // 4-6 = ปุ่มเมาส์กลาง/Back/Forward ใช้ได้
+              || (vk < 0x08 && vk != 2 && vk != 4 && vk != 5 && vk != 6));   // 2 = คลิกขวา, 4-6 = ปุ่มเมาส์กลาง/Back/Forward ใช้ได้
 
         internal static string KeyName(int vk)
         {
-            string s = KeyInterop.KeyFromVirtualKey(vk).ToString();
+            if (vk == 2) return "เมาส์คลิกขวา";
             if (vk == 4) return "เมาส์ปุ่มกลาง";
             if (vk == 5) return "เมาส์ Back";
             if (vk == 6) return "เมาส์ Forward";
+            if (vk == 0x10 || vk == 0xA0) return "Shift ซ้าย";
+            if (vk == 0xA1) return "Shift ขวา";
+            if (vk == 0x11 || vk == 0xA2) return "Ctrl ซ้าย";
+            if (vk == 0xA3) return "Ctrl ขวา";
+            if (vk == 0x12 || vk == 0xA4) return "Alt ซ้าย";
+            if (vk == 0xA5) return "Alt ขวา";
+            string s = KeyInterop.KeyFromVirtualKey(vk).ToString();
             if (s.Length == 2 && s[0] == 'D' && char.IsDigit(s[1])) return s.Substring(1);
             if (s.StartsWith("NumPad")) return "Num " + s.Substring(6);
             switch (s)
@@ -2390,6 +2743,15 @@ TopSwitch.IsChecked = cfg.TopMost;
                 case "Prior": return "Page Up";
                 case "Next": return "Page Down";
                 case "Snapshot": return "Print Screen";
+                case "Space": return "Spacebar";
+                case "Tab": return "Tab";
+                case "Escape": return "Esc";
+                case "LeftShift": return "Shift ซ้าย";
+                case "RightShift": return "Shift ขวา";
+                case "LeftCtrl": return "Ctrl ซ้าย";
+                case "RightCtrl": return "Ctrl ขวา";
+                case "LeftAlt": return "Alt ซ้าย";
+                case "RightAlt": return "Alt ขวา";
                 default: return s;
             }
         }
@@ -2740,7 +3102,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         {
             const int VK_DELETE = 0x2E, VK_BACK = 0x08;
             if (vk == VK_ESC) { capturing = false; UpdateHotkeyText(); return; }
-            if (captureFor >= 3 && (vk == VK_DELETE || vk == VK_BACK))
+            if (captureFor >= 3 && captureFor <= 5 && (vk == VK_DELETE || vk == VK_BACK))
             {
                 capturing = false;
                 ScopeKeys[captureFor - 3] = 0;
@@ -2758,6 +3120,16 @@ TopSwitch.IsChecked = cfg.TopMost;
                 Flash("ปิดปุ่มลัดสลับโปรไฟล์แล้ว");
                 return;
             }
+            if (captureFor == 6 && (vk == VK_DELETE || vk == VK_BACK))
+            {
+                capturing = false;
+                cfg.LootKey = 0;
+                cfg.Save();
+                UpdateHotkeyText();
+                UpdateLootPage();
+                Flash("ปิดปุ่มเก็บของเร็วแล้ว");
+                return;
+            }
             if (captureFor == 7 && (vk == VK_DELETE || vk == VK_BACK))
             {
                 capturing = false;
@@ -2768,19 +3140,28 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
             if (!HotkeyAllowed(vk)) { Flash("ใช้ปุ่มนี้ไม่ได้ ลองปุ่มอื่น"); return; }
-            var allKeys = new[] { cfg.HotKey, cfg.PresetKey, cfg.CycleKey, ScopeKeys.ElementAtOrDefault(0), ScopeKeys.ElementAtOrDefault(1), ScopeKeys.ElementAtOrDefault(2), cfg.LootKey, cfg.ToggleMenuKey };
-            var taken = allKeys.Where((k, i) => i != captureFor && k != 0);
-            if (taken.Contains(vk) || (vk >= 4 && vk <= 6 && cfg.CycleKey == 0 && cfg.CycleMouse == vk - 1 && captureFor != 2))
-            {
-                Flash("ปุ่มนี้ใช้กับอีกอย่างอยู่แล้ว (เช่น ปุ่มในเกม) ลองปุ่มอื่น");
-                return;
-            }
             if (cfg.SlotSwitch > 0 && (vk == 0x31 || vk == 0x32))
             {
                 Flash("ปุ่ม 1 / 2 ใช้สลับปืนตามช่องอยู่ — ลองปุ่มอื่น หรือปิด \"สลับปืนตามช่อง\" ก่อน");
                 return;
             }
+
+            // ถ้าปุ่มนี้เคยถูกใช้กับการตั้งค่าอื่นอยู่ ให้ปลดออกอัตโนมัติ (Reassign)
+            if (captureFor != 0 && cfg.HotKey == vk) cfg.HotKey = 0;
+            if (captureFor != 1 && cfg.PresetKey == vk) cfg.PresetKey = 0;
+            if (captureFor != 2 && cfg.CycleKey == vk) cfg.CycleKey = 0;
+            if (captureFor != 2 && vk >= 4 && vk <= 6 && cfg.CycleMouse == vk - 1) cfg.CycleMouse = 0;
+            for (int i = 0; i < ScopeKeys.Length; i++)
+            {
+                if (captureFor != 3 + i && ScopeKeys[i] == vk) ScopeKeys[i] = 0;
+            }
+            if (captureFor != 6 && cfg.LootKey == vk) cfg.LootKey = 0;
+            if (captureFor != 7 && cfg.ToggleMenuKey == vk) cfg.ToggleMenuKey = 0;
+
             capturing = false;
+            lastCapturedKeyAt = DateTime.Now;
+            lastCapturedVk = vk;
+            Log.Info($"hotkey captured: {KeyName(vk)} (vk=0x{vk:X2}) for target {captureFor}");
             if (captureFor == 6)
             {
                 cfg.LootKey = vk;
@@ -2791,7 +3172,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                 return;
             }
             if (captureFor == 2) { SetCycle(0, vk); UpdateHotkeyText(); return; }
-            if (captureFor >= 3)
+            if (captureFor >= 3 && captureFor <= 5)
             {
                 ScopeKeys[captureFor - 3] = vk;
                 cfg.Save();
@@ -3244,10 +3625,10 @@ TopSwitch.IsChecked = cfg.TopMost;
                 var p1 = slotInfo[1];
                 var p2 = slotInfo[2];
                 string s1 = p1 != null && !string.IsNullOrEmpty(p1.Name)
-                    ? $"ช่อง 1: {p1.Name} ({ScopeName(p1.ScopeLabel)})"
+                    ? $"ช่อง 1: {p1.Name} ({(p1.ScopeLabel == "hybrid" ? $"Hybrid {(hybridIs4x[1] ? "4x" : "Red Dot")}" : ScopeName(p1.ScopeLabel))})"
                     : "ช่อง 1: ว่าง";
                 string s2 = p2 != null && !string.IsNullOrEmpty(p2.Name)
-                    ? $"ช่อง 2: {p2.Name} ({ScopeName(p2.ScopeLabel)})"
+                    ? $"ช่อง 2: {p2.Name} ({(p2.ScopeLabel == "hybrid" ? $"Hybrid {(hybridIs4x[2] ? "4x" : "Red Dot")}" : ScopeName(p2.ScopeLabel))})"
                     : "ช่อง 2: ว่าง";
 
                 if (p1 == null && p2 == null)
@@ -3300,10 +3681,10 @@ TopSwitch.IsChecked = cfg.TopMost;
                 var p1 = slotInfo[1];
                 var p2 = slotInfo[2];
                 string s1 = p1 != null && !string.IsNullOrEmpty(p1.Name)
-                    ? $"{p1.Name}({ScopeName(p1.ScopeLabel)})"
+                    ? $"{p1.Name}({(p1.ScopeLabel == "hybrid" ? $"Hyb {(hybridIs4x[1] ? "4x" : "RD")}" : ScopeName(p1.ScopeLabel))})"
                     : "-";
                 string s2 = p2 != null && !string.IsNullOrEmpty(p2.Name)
-                    ? $"{p2.Name}({ScopeName(p2.ScopeLabel)})"
+                    ? $"{p2.Name}({(p2.ScopeLabel == "hybrid" ? $"Hyb {(hybridIs4x[2] ? "4x" : "RD")}" : ScopeName(p2.ScopeLabel))})"
                     : "-";
 
                 if (p1 == null && p2 == null)
@@ -3418,6 +3799,7 @@ TopSwitch.IsChecked = cfg.TopMost;
             cfg.Save();
             StreamModeHelper.SetMode(on);
             StreamModeHelper.Apply(this, on);
+            if (osd != null) osd.ApplyAffinity();
             if (StreamBadge != null)
                 StreamBadge.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
             Log.Info("stream mode " + (on ? "ON (hidden from capture/stream)" : "OFF"));

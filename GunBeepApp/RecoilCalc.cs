@@ -38,6 +38,7 @@ namespace GunBeep
         public Dictionary<string, int> LearnN { get; set; } = new();
         public Dictionary<string, double> LearnX { get; set; } = new();     // ปืน → ซ้าย/ขวาที่เรียนรู้ (+ = ดึงขวา)
         public Dictionary<string, double> LearnKick { get; set; } = new();  // ปืนเคาะ → แรงต่อนัดที่เรียนรู้ (คูณ)
+        public double SemiFactor { get; set; } = 0.18;                      // อัตราทดแรงดึงปืนเคาะเทียบสเปรย์ (PUBG คืนเป้าอัตโนมัติ ~75-80% เหลือดีดจริง ~18%)
         public Dictionary<string, double> LearnScope { get; set; } = new(); // สโคป → แรงดึงที่เรียนรู้ของสโคปนั้น (คูณ) แยกทุกสโคป
         public Dictionary<string, double> ViewK { get; set; } = new();      // สโคป → px ต่อ count ที่วัดได้ (ตัววัดภาพ)
         public bool LearnLocked { get; set; }                               // ล็อกค่า: ใช้ค่าที่เรียนแล้วต่อ แต่ไม่ปรับเพิ่ม
@@ -134,7 +135,7 @@ namespace GunBeep
             ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.05, ["GROZA"] = 1.10,
             ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
-            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.75, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
+            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.36, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
             ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
@@ -164,7 +165,7 @@ namespace GunBeep
             ["K2"] = 1.02, ["FAMAS"] = 1.05, ["M16A4"] = 0.90, ["BERYL"] = 1.20, ["AKM"] = 1.02, ["GROZA"] = 1.10,
             ["MK47"] = 1.10, ["UMP"] = 0.75, ["VECTOR"] = 0.70, ["MICRO"] = 0.60, ["UZI"] = 0.60, ["TOMMY"] = 0.80,
             ["MP5K"] = 0.75, ["PP19"] = 0.65, ["BIZON"] = 0.65, ["P90"] = 0.60, ["JS9"] = 0.65, ["MP9"] = 0.60,
-            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.75, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
+            ["DP28"] = 0.75, ["RPD"] = 0.75, ["M249"] = 0.75, ["MG3"] = 0.36, ["MINI14"] = 0.70, ["SKS"] = 1.00, ["SLR"] = 1.12,
             ["MK12"] = 0.80, ["QBU"] = 0.75, ["VSS"] = 0.60, ["MK14"] = 1.30, ["DRAGUNOV"] = 1.20,
         };
 
@@ -300,7 +301,8 @@ namespace GunBeep
                         string aj = string.Concat(aw);
                         double v = Sim(w[0], aj);                                                   // คำเดียว (หรืออ่านติดกัน)
                         if (w.Length >= 2) v = Math.Max(v, Sim(w[0] + w[1], aj));                   // สองคำแรก
-                        if (aj.Length <= 3 && v < 1) v = 0;                                         // ชื่อสั้นต้องตรงเป๊ะ
+                        // ชื่อสั้น (≤ 4 ตัว) ต้องตรงเป๊ะ: ผิดตัวเดียว = 75% ซึ่งเคยทำให้ "Mini14" ที่อ่านขาด (Mi14 / Mm14) กลายเป็น Mk14
+                        if (aj.Length <= 4 && v < 1) v = 0;
                         s = Math.Max(s, v);
                     }
                     if (s > bs) { if (best.key != g.key) second = Math.Max(second, bs); best = (g.key, g.name); bs = s; }
@@ -313,23 +315,73 @@ namespace GunBeep
 
         public static string GunKey(string name) => MatchGun(name).key;
 
+        // OCR อ่านได้ตรงชื่อปืนนี้ทุกตัวอักษร (ไม่ใช่แค่ "คล้าย") — ใช้ตัดสินว่าควรจำหน้าตาชื่อ/รูปปืนไว้ไหม
+        //   เดิมจำทุกครั้งที่เดาชื่อได้ → อ่านผิดครั้งเดียว ต้นแบบของปืนผิดกระบอกถูกบันทึกถาวร แล้วครั้งต่อไปก็ผิดซ้ำ
+        public static bool ExactGun(string ocr, string key)
+        {
+            if (string.IsNullOrWhiteSpace(ocr) || key == null) return false;
+            var w = Words(ocr);
+            if (w.Length == 0) return false;
+            foreach (var g in GunNames)
+            {
+                if (g.key != key) continue;
+                foreach (var alias in new[] { g.name }.Concat(g.alias ?? Array.Empty<string>()))
+                {
+                    string aj = string.Concat(Words(alias));
+                    if (w[0] == aj || (w.Length >= 2 && w[0] + w[1] == aj)) return true;
+                }
+            }
+            return false;
+        }
+
         // แยกหมวดหมู่ปืนและช่องของแต่งตามระบบ PUBG
         public static bool IsAr(string key) => key is "AKM" or "M416" or "BERYL" or "SCAR" or "AUG" or "ACE32" or "QBZ" or "G36C" or "K2" or "FAMAS" or "GROZA" or "M16A4" or "MK47";
         public static bool IsDmr(string key) => key is "SLR" or "SKS" or "MINI14" or "MK12" or "MK14" or "QBU" or "DRAGUNOV" or "VSS";
         public static bool IsSr(string key) => key is "KAR98K" or "M24" or "AWM" or "MOSIN" or "LYNX" or "WIN94";
         public static bool IsSmg(string key) => key is "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "PP19" or "MICRO" or "JS9" or "MP9" or "P90";
+        public static bool IsLmg(string key) => key is "M249" or "DP28" or "MG3" or "RPD";
+        public static bool IsShotgun(string key) => key is "S12K" or "S1897" or "S686" or "DBS" or "O12" or "SAWED";
+        public static bool IsHandgun(string key) => key is "P92" or "P1911" or "P18C" or "R1895" or "R45" or "DEAGLE" or "SKORPION";
+
+        public static bool CanEquip8x(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            string k = key.ToUpperInvariant();
+            if (k is "M16A4" or "MK47") return true; // PUBG Update 20.1: M16A4 และ Mk47 Mutant ติด 8x และ 15x ได้
+            return (IsDmr(k) || IsSr(k)) && k is not ("VSS" or "WIN94" or "LYNX");
+        }
+
+        public static bool HasScopeSlot(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return true;
+            string k = key.ToUpperInvariant();
+            return k is not ("PANZERFAUST" or "MORTAR" or "M79" or "MGL" or "S686" or "S1897" or "SAWED" or "VSS" or "WIN94" or "LYNX");
+        }
+
+        public static bool CanEquipScope(string key, string scopeLabel)
+        {
+            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(scopeLabel) || scopeLabel == "?" || scopeLabel == "ไม่มีสโคป") return true;
+            string k = key.ToUpperInvariant();
+            string sl = scopeLabel.ToLowerInvariant();
+            if (!HasScopeSlot(k)) return false;
+            if (sl is "8x" or "15x") return CanEquip8x(k);
+            if (k == "DP28" && (sl is "6x" or "8x" or "15x")) return false;
+            if ((k is "TOMMY" or "MICRO" or "UZI") && (sl is not ("reddot" or "holo"))) return false;
+            if (IsHandgun(k) && (sl is not ("reddot" or "holo"))) return false;
+            return true;
+        }
 
         public static bool HasMuzzleSlot(string key) =>
-            key is not ("VSS" or "M249" or "DP28" or "MG3" or "RPD" or "LYNX" or "WIN94" or "DBS" or "P90" or "PANZERFAUST" or "M79" or "CROSSBOW");
+            key is not ("VSS" or "M249" or "DP28" or "MG3" or "RPD" or "LYNX" or "WIN94" or "DBS" or "P90" or "PANZERFAUST" or "M79" or "CROSSBOW" or "MP9");
 
         public static bool HasGripSlot(string key) =>
             key is "M416" or "BERYL" or "AUG" or "SCAR" or "ACE32" or "QBZ" or "G36C" or "MK47" or "SKS" or "MK12" or "VECTOR" or "MP5K" or "UMP" or "TOMMY" or "O12";
 
         public static bool HasMagSlot(string key) =>
-            key is not ("DP28" or "MG3" or "RPD" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW");
+            key is not ("DP28" or "MG3" or "RPD" or "PP19" or "BIZON" or "KAR98K" or "MOSIN" or "WIN94" or "LYNX" or "S1897" or "S686" or "DBS" or "PANZERFAUST" or "M79" or "CROSSBOW" or "P90");
 
         public static bool HasStockSlot(string key) =>
-            key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "M24" or "KAR98K" or "AWM" or "MOSIN" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
+            key is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "MP5K" or "MICRO" or "UZI" or "M249" or "M24" or "AWM" or "KAR98K" or "MOSIN" or "WIN94" or "SLR" or "SKS" or "MK14" or "DRAGUNOV" or "VSS";
 
         // ---------------------------------------------------------------- ของแต่ง (แถวล่างของแผงปืน)
         // ช่อง: 0 ปากกระบอก, 1 กริป, 2 แม็ก (ไม่คิด), 3 พานท้าย — ห่างจากกล่องเลข (สัดส่วนความสูงจอ)
@@ -473,6 +525,39 @@ namespace GunBeep
                         p.Att[i] = false;
                         p.AttId[i] = null;
                     }
+                }
+            }
+
+            // 5. ตรวจสอบสโคปให้ตรงตามที่ปืนใส่ได้จริงใน PUBG (กันหลอน 8x บน M249/AR หรือ 6x บน Panzerfaust)
+            if (!HasScopeSlot(gunKey))
+            {
+                p.Set = 0;
+                p.ScopeLabel = "ไม่มีสโคป";
+                p.Score = 1;
+            }
+            else if ((gunKey is "GROZA" or "M16A4" or "FAMAS" or "DP28" or "M249") && p.ScopeLabel == "6x" && p.Score < 0.72)
+            {
+                // รางหูหิ้ว/ศูนย์หลังของปืนเหล่านี้ตอนไม่ได้ใส่สโคป อาจมีลวดลายคล้ายกล้อง 6x อ่อนๆ (~0.50-0.54)
+                // สโคป 6x จริงบนปืนเหล่านี้จะได้คะแนน >= 0.76 (M16A4 จริงได้ 0.91)
+                p.Set = 0;
+                p.ScopeLabel = "ไม่มีสโคป";
+                p.Score = 1;
+            }
+            else if (p.Set == -1)
+            {
+                // ปืนที่มีช่องสโคป แต่ไม่มีสโคปติดอยู่ → ใน PUBG คือศูนย์เหล็ก (ไม่มีสโคป)
+                p.Set = 0;
+                p.ScopeLabel = "ไม่มีสโคป";
+                p.Score = 1;
+            }
+            else if (p.ScopeLabel != null && p.ScopeLabel != "?" && p.ScopeLabel != "ไม่มีสโคป")
+            {
+                if (!CanEquipScope(gunKey, p.ScopeLabel))
+                {
+                    Log.Info($"scope filter: slot {p.Slot} {gunKey} cannot equip scope '{p.ScopeLabel}' in PUBG -> reset to ไม่มีสโคป");
+                    p.Set = 0;
+                    p.ScopeLabel = "ไม่มีสโคป";
+                    p.Score = 1;
                 }
             }
         }

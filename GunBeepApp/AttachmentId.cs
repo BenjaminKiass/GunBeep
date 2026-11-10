@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -127,7 +127,7 @@ namespace GunBeep
                 if (isAr) return itemId.EndsWith("_ar");      // AR ใส่ได้เฉพาะปาก AR
                 if (isSmg) return itemId.EndsWith("_smg");    // SMG ใส่ได้เฉพาะปาก SMG
                 if (isDmr) return itemId.EndsWith("_dmr") || itemId.EndsWith("_ar"); // DMR ใส่ได้ทั้ง AR และ DMR
-                return true;
+                return false;
             }
 
             // 1. กริป (slot 1)
@@ -158,7 +158,7 @@ namespace GunBeep
                 if (gunKey == "MP5K") return itemId is "tactical" or "heavy" or "folding";
                 // M416, ACE32, M16A4, Mk47, Vector, M249 ใส่พานท้ายยุทธวิธี หรือพานท้ายขนาดใหญ่
                 if (gunKey is "M416" or "ACE32" or "M16A4" or "MK47" or "VECTOR" or "M249") return itemId is "tactical" or "heavy";
-                return true;
+                return false;
             }
 
             return true;

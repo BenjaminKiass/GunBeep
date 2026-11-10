@@ -61,7 +61,7 @@ namespace GunBeep
         public Overlay()
         {
             WindowStyle = WindowStyle.None;
-            AllowsTransparency = false;
+            AllowsTransparency = true;
             Background = Brushes.Transparent;
             Topmost = true;
             ShowInTaskbar = false;
@@ -114,6 +114,18 @@ namespace GunBeep
             SourceInitialized += (s, e) =>
             {
                 var h = new WindowInteropHelper(this).Handle;
+                InitHwnd(h);
+            };
+
+            var initH = new WindowInteropHelper(this).EnsureHandle();
+            InitHwnd(initH);
+        }
+
+        void InitHwnd(IntPtr h)
+        {
+            if (h == IntPtr.Zero) return;
+            try
+            {
                 var src = HwndSource.FromHwnd(h);
                 if (src?.CompositionTarget != null)
                     src.CompositionTarget.BackgroundColor = Colors.Transparent;
@@ -123,8 +135,23 @@ namespace GunBeep
 
                 int ex = GetWindowLong(h, GWL_EXSTYLE);
                 SetWindowLong(h, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
-                if (StreamModeHelper.Active) StreamModeHelper.Apply(h, true);
-            };
+                ApplyAffinity();
+            }
+            catch { }
+        }
+
+        public void ApplyAffinity()
+        {
+            try
+            {
+                var h = new WindowInteropHelper(this).Handle;
+                if (h != IntPtr.Zero)
+                {
+                    // ป้ายบนจอเกม: ซ่อนจากการแชร์จอ / สตรีม (Discord / OBS) เสมอ ให้เห็นเฉพาะคนเล่นบนหน้าจอจริง
+                    StreamModeHelper.Apply(h, true);
+                }
+            }
+            catch { }
         }
 
         public void Configure(int newMode, int newCorner)
@@ -193,6 +220,8 @@ namespace GunBeep
                 Show();
                 topTimer.Start();
             }
+            var h = new WindowInteropHelper(this).Handle;
+            InitHwnd(h);
             BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
             BringToTop();
         }

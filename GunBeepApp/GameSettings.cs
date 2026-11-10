@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 
@@ -10,6 +11,25 @@ namespace GunBeep
     // อ่านการตั้งค่าของ PUBG จากไฟล์บนดิสก์ (GameUserSettings.ini) — อ่านอย่างเดียว ไม่แก้ไฟล์เกม ไม่แตะตัวเกม
     //   ความไว (ทั่วไป / เล็ง / แต่ละสโคป), ความไวเดียวทุกสโคป, ตัวคูณแนวตั้ง, โหมดเล็ง, ปุ่มเลือกอาวุธ / ย่อ / หมอบ
     //   ตรวจจับการเปลี่ยนแปลงแบบ Real-time ด้วย FileSystemWatcher ทันทีที่กด Apply ในเกม PUBG
+    public sealed class StanceBinding
+    {
+        public int Vk;
+        public bool Shift;
+        public bool Ctrl;
+        public bool Alt;
+
+        public bool Matches(int vk, bool shift, bool ctrl, bool alt)
+        {
+            if (Vk != vk || Ctrl != ctrl || Alt != alt) return false;
+            // ถ้าปุ่มในเกมระบุว่าต้องกด Shift (เช่น Shift + S) -> ต้องกด Shift
+            // ถ้าปุ่มไม่ได้ระบุ Shift (เช่น C ปกติ) -> กด C เดี่ยวๆ หรือกด Shift+C (ตอนวิ่งสไลด์) ให้นับเป็นการย่อทั้งคู่
+            return Shift ? shift : true;
+        }
+
+        public override string ToString() =>
+            $"{(Ctrl ? "Ctrl+" : "")}{(Alt ? "Alt+" : "")}{(Shift ? "Shift+" : "")}{(Vk >= 0x41 && Vk <= 0x5A ? ((char)Vk).ToString() : $"0x{Vk:X2}")}";
+    }
+
     public sealed class GameSettings
     {
         public bool Found;
@@ -19,6 +39,8 @@ namespace GunBeep
         public string AdsMode = "Hold";
         public int Slot1 = 0x31, Slot2 = 0x32, Pistol = 0x33, Melee = 0x34, Throwable = 0x35, Holster = 0x58,
                    Crouch = 'C', Prone = 'Z', HoldBreath = 0xA0, ReloadKey = 'R';
+        public readonly List<StanceBinding> CrouchBindings = new();
+        public readonly List<StanceBinding> ProneBindings = new();
 
         public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                                                       "TslGame", "Saved", "Config", "WindowsNoEditor", "GameUserSettings.ini");
@@ -154,8 +176,42 @@ namespace GunBeep
                 g.Melee = Key("Weapon_4", g.Melee);
                 g.Throwable = Key("Weapon_5", g.Throwable);
                 g.Holster = Key("UnarmedAll", Key("HolsterWeapon", g.Holster));
-                g.Crouch = Key("ToggleCrouch", g.Crouch);
-                g.Prone = Key("ToggleProne", g.Prone);
+                List<StanceBinding> Bindings(string action, int defVk)
+                {
+                    var list = new List<StanceBinding>();
+                    var m = Last(s, $@"ActionName=""{action}"",Keys=\((.+?\)\))(?=\)|\z)");
+                    if (m != null)
+                    {
+                        foreach (Match p in Regex.Matches(m.Groups[1].Value, @"\(([^)]*Key=\w+[^)]*)\)"))
+                        {
+                            var km = Regex.Match(p.Groups[1].Value, @"Key=(\w+)");
+                            if (km.Success && Vk(km.Groups[1].Value) is int vk && vk > 0)
+                            {
+                                bool sh = p.Groups[1].Value.Contains("bShift=True");
+                                bool ct = p.Groups[1].Value.Contains("bCtrl=True");
+                                bool al = p.Groups[1].Value.Contains("bAlt=True");
+                                list.Add(new StanceBinding { Vk = vk, Shift = sh, Ctrl = ct, Alt = al });
+                            }
+                        }
+                    }
+                    if (list.Count == 0 && defVk > 0)
+                        list.Add(new StanceBinding { Vk = defVk, Shift = false, Ctrl = false, Alt = false });
+                    return list;
+                }
+
+                void AddUniqueBindings(List<StanceBinding> target, List<StanceBinding> source)
+                {
+                    foreach (var b in source)
+                        if (!target.Any(x => x.Vk == b.Vk && x.Shift == b.Shift && x.Ctrl == b.Ctrl && x.Alt == b.Alt))
+                            target.Add(b);
+                }
+
+                AddUniqueBindings(g.CrouchBindings, Bindings("ToggleCrouch", g.Crouch));
+                AddUniqueBindings(g.CrouchBindings, Bindings("HoldCrouch", 0));
+                AddUniqueBindings(g.ProneBindings, Bindings("ToggleProne", g.Prone));
+                AddUniqueBindings(g.ProneBindings, Bindings("HoldProne", 0));
+                if (g.CrouchBindings.Count > 0) g.Crouch = g.CrouchBindings[0].Vk;
+                if (g.ProneBindings.Count > 0) g.Prone = g.ProneBindings[0].Vk;
                 g.HoldBreath = Key("HoldBreath", g.HoldBreath);
                 g.ReloadKey = Key("Reload", g.ReloadKey);
             }

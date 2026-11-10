@@ -15,12 +15,33 @@ namespace GunBeep
         struct INPUT { public uint type; public MOUSEINPUT mi; }
         [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+        [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+        [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
 
         const uint MOVE = 0x1, LEFTDOWN = 0x2, LEFTUP = 0x4, ABSOLUTE = 0x8000;
         const long MAGIC_v1 = 0x47424545;               // ลายเซ็นเดิม v1 ("GBEE")
         const long MAGIC = 0;                           // v2: Stealth - ล้าง extra info เป็น 0
 
-        static readonly int[][] Delays = { new[] { 45, 30 }, new[] { 28, 18 }, new[] { 20, 16 } };   // [รอหลังขยับ, รอหลังกด/ปล่อย] ms
+        // ควบคุมทุกสเต็ปของ Slate Engine ใน PUBG: Settle, Down, Drag(Nudge), Drop, Up (ms)
+        // เพื่อให้ติด 100% แน่นอนในทุกเฟรมเรต โดยใช้เวลาน้อยที่สุด
+        struct Timing
+        {
+            public int Settle; // รอหลังเลื่อนไปช่องของ
+            public int Down;   // รอหลังคลิกซ้ายลง
+            public int Drag;   // รอหลังสะกิดเริ่มลาก (Micro-nudge trigger)
+            public int Drop;   // รอหลังลากถึงจุดปล่อย (กระเป๋า/ตัวละคร)
+            public int Up;     // รอหลังปล่อยคลิกซ้าย
+            public Timing(int s, int d, int dg, int dp, int u)
+            { Settle = s; Down = d; Drag = dg; Drop = dp; Up = u; }
+        }
+
+        static readonly Timing[] Speeds = {
+            new(24, 18, 18, 22, 18), // 0: ช้า (ปลอดภัยสุด / จอ 60Hz / ปิงสูง) ~100ms
+            new(14, 10, 10, 12, 10), // 1: กลาง ~56ms
+            new(8, 6, 6, 8, 6),      // 2: เร็ว ~34ms
+            new(5, 5, 4, 6, 5),      // 3: เทอร์โบ (ติด 100% แนะนำ) ~25ms (7 ช่องแค่ 0.17 วิ!)
+            new(3, 3, 3, 4, 3)       // 4: ซิ่งสุด (God Speed 144Hz+) ~16ms (7 ช่องแค่ 0.11 วิ!)
+        };
 
         static int busy;
         public static bool Busy => busy != 0;
@@ -33,12 +54,13 @@ namespace GunBeep
             if (Interlocked.Exchange(ref busy, 1) != 0) { cancel = true; return false; }
             cancel = false;
             int n = Math.Clamp(cfg.LootSlots, 1, 15);
-            var d = Delays[Math.Clamp(cfg.LootSpeed, 0, 2)];
+            var sp = Speeds[Math.Clamp(cfg.LootSpeed, 0, Speeds.Length - 1)];
             double[] a = cfg.LootStart, b = cfg.LootStep, drop = cfg.LootDrop, center = cfg.LootCenter;
             var t = new Thread(() =>
             {
                 int moved = 0;
                 bool held = false;
+                timeBeginPeriod(1);
                 try
                 {
                     bool topDown = cfg.LootDirection == 1;
@@ -49,11 +71,24 @@ namespace GunBeep
                         {
                             if (cancel || !stillOk()) break;
                             double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
-                            Move(x, y); Thread.Sleep(d[0]);
-                            Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
-                            Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);
-                            Move(drop[0], drop[1]); Thread.Sleep(d[0]);
-                            Send(LEFTUP); held = false; Thread.Sleep(d[1]);
+                            // 1. ไปช่องของ
+                            Move(x, y);
+                            Thread.Sleep(sp.Settle);
+                            // 2. คลิกซ้ายค้าง
+                            Send(LEFTDOWN);
+                            held = true;
+                            Thread.Sleep(sp.Down);
+                            // 3. สะกิดขวาเล็กน้อยเพื่อบังคับ Slate Engine ให้สร้าง DragDrop 100%
+                            double nudgeX = Math.Min(x + 0.035, (x + drop[0]) / 2);
+                            Move(nudgeX, y);
+                            Thread.Sleep(sp.Drag);
+                            // 4. ลากเข้าสู่เป้าหมาย (กระเป๋า/ตัวละคร)
+                            Move(drop[0], drop[1]);
+                            Thread.Sleep(sp.Drop);
+                            // 5. ปล่อยคลิกซ้าย
+                            Send(LEFTUP);
+                            held = false;
+                            Thread.Sleep(sp.Up);
                             moved++;
                         }
                     }
@@ -64,11 +99,24 @@ namespace GunBeep
                         {
                             if (cancel || !stillOk()) break;
                             double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
-                            Move(x, y); Thread.Sleep(d[0]);
-                            Send(LEFTDOWN); held = true; Thread.Sleep(d[1]);
-                            Move((x * 2 + drop[0]) / 3, (y * 2 + drop[1]) / 3); Thread.Sleep(d[1]);   // ขยับผ่านกลางทางให้เกมรู้ว่าลาก
-                            Move(drop[0], drop[1]); Thread.Sleep(d[0]);
-                            Send(LEFTUP); held = false; Thread.Sleep(d[1]);
+                            // 1. ไปช่องของ
+                            Move(x, y);
+                            Thread.Sleep(sp.Settle);
+                            // 2. คลิกซ้ายค้าง
+                            Send(LEFTDOWN);
+                            held = true;
+                            Thread.Sleep(sp.Down);
+                            // 3. สะกิดขวาเล็กน้อยเพื่อบังคับ Slate Engine ให้สร้าง DragDrop 100%
+                            double nudgeX = Math.Min(x + 0.035, (x + drop[0]) / 2);
+                            Move(nudgeX, y);
+                            Thread.Sleep(sp.Drag);
+                            // 4. ลากเข้าสู่เป้าหมาย (กระเป๋า/ตัวละคร)
+                            Move(drop[0], drop[1]);
+                            Thread.Sleep(sp.Drop);
+                            // 5. ปล่อยคลิกซ้าย
+                            Send(LEFTUP);
+                            held = false;
+                            Thread.Sleep(sp.Up);
                             moved++;
                         }
                     }
@@ -78,6 +126,7 @@ namespace GunBeep
                 finally
                 {
                     if (held) Send(LEFTUP);                    // กันปุ่มซ้ายค้างถ้าพังกลางทาง
+                    timeEndPeriod(1);
                     Interlocked.Exchange(ref busy, 0);
                     done?.Invoke(moved);
                 }

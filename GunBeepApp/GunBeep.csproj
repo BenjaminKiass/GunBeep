@@ -11,9 +11,9 @@
     <AssemblyName>GunBeep</AssemblyName>
     <RootNamespace>GunBeep</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>2.0.90</Version>
-    <AssemblyVersion>2.0.90.0</AssemblyVersion>
-    <FileVersion>2.0.90.0</FileVersion>
+    <Version>2.1.04</Version>
+    <AssemblyVersion>2.1.04.0</AssemblyVersion>
+    <FileVersion>2.1.04.0</FileVersion>
     <Product>GunBeep</Product>
   </PropertyGroup>
 

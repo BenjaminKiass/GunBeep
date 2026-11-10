@@ -16,7 +16,7 @@ namespace GunBeep
                               Text = Frozen("#E6EDF8"), Muted = Frozen("#8A9BB8"), Accent = Frozen("#1D6BFF"), Gold = Frozen("#C9A54A"),
                               Orange = Frozen("#F2A516"), Green = Frozen("#19C37D"), Cyan = Frozen("#22C3EE");
         static readonly int[] SlotChoices = { 3, 5, 8, 10, 15 };
-        static readonly string[] SpeedNames = { "ช้า", "กลาง", "เร็ว" };
+        static readonly string[] SpeedNames = { "ช้า", "กลาง", "เร็ว", "เทอร์โบ", "ซิ่งสุด" };
 
         static Brush Frozen(string hex) { var b = (Brush)new BrushConverter().ConvertFromString(hex); b.Freeze(); return b; }
 
@@ -31,7 +31,7 @@ namespace GunBeep
         readonly Canvas canvas = new();
         readonly TextBlock hint = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         readonly Button keyBtn = new(), power = new();
-        readonly Button[] slotBtns = new Button[SlotChoices.Length], speedBtns = new Button[3];
+        readonly Button[] slotBtns = new Button[SlotChoices.Length], speedBtns = new Button[SpeedNames.Length];
         double W = 1920, H = 1080;
         bool capturing;
         public bool Capturing => capturing;
@@ -103,7 +103,7 @@ namespace GunBeep
                 row2.Children.Add(slotBtns[i]);
             }
             row2.Children.Add(new TextBlock { Text = "ความเร็ว", Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0) });
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < SpeedNames.Length; i++)
             {
                 int sp = i;
                 speedBtns[i] = MakeButton(SpeedNames[i]);
@@ -271,7 +271,7 @@ namespace GunBeep
             keyBtn.Content = capturing ? "กดปุ่ม / ปุ่มเมาส์... (Esc = ยกเลิก)" : "ปุ่ม: " + (cfg.LootKey == 0 ? "–" : keyName(cfg.LootKey));
             if (capturing) keyBtn.BorderBrush = Accent;
             for (int i = 0; i < SlotChoices.Length; i++) Mark(slotBtns[i], cfg.LootSlots == SlotChoices[i]);
-            for (int i = 0; i < 3; i++) Mark(speedBtns[i], cfg.LootSpeed == i);
+            for (int i = 0; i < SpeedNames.Length; i++) Mark(speedBtns[i], cfg.LootSpeed == i);
             if (!capturing)
             {
                 hint.Foreground = Muted;

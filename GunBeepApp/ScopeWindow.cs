@@ -376,7 +376,7 @@ namespace GunBeep
                     top.Children.Add(new Image { Source = ToSource(ic), Width = 56, Height = 56, Margin = new Thickness(0, 0, 8, 0) });
                 var info = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
                 string slot = p.Slot == 0 ? "ไม่มีปืน / อ่านเลขไม่ออก" : $"ปืนช่อง {p.Slot}";
-                string scope = p.Set < 0 ? $"สโคป: ยังไม่รู้จัก ({p.Score:0.00})" : p.Set == 0 ? "สโคป: ไม่มี" : $"สโคป: {p.ScopeLabel} → ชุด {p.Set} ({p.Score:0.00})";
+                string scope = p.Set == -1 ? $"สโคป: ยังไม่รู้จัก ({p.Score:0.00})" : p.Set == 0 ? "สโคป: ไม่มี" : p.Set == -2 ? $"สโคป: {p.ScopeLabel} (แปลงผ่านการ์ดใกล้เคียง) ({p.Score:0.00})" : $"สโคป: {p.ScopeLabel} → ชุด {p.Set} ({p.Score:0.00})";
                 info.Text = $"{(i == 0 ? "แผงบน" : "แผงล่าง")} · {slot}\n{scope}";
                 top.Children.Add(info);
                 stack.Children.Add(top);

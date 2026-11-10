@@ -170,7 +170,15 @@ namespace GunBeep
             int set = p.Set;
             double scopeMult = 1;
             string via = null;
-            if (p.Set == 0) set = cfg.ScopeNoneSet;
+            if (p.ScopeLabel == "hybrid")
+            {
+                int s = Math.Clamp(p.Slot, 1, 2);
+                string target = hybridIs4x[s] ? "4x" : "reddot";
+                set = ScopeDetect.SetFor(target, cfg.Names);
+                if (set <= 0 || set == -2)
+                    (set, scopeMult, via) = RecoilCalc.ForScope(target, cfg.Names.Take(n).ToArray());
+            }
+            else if (p.Set == 0) set = cfg.ScopeNoneSet;
             else if (p.Set == -2) (set, scopeMult, via) = RecoilCalc.ForScope(p.ScopeLabel, cfg.Names.Take(n).ToArray());
             var calc = cfg.Calc ??= new CalcSettings();
             var (mult, parts) = calc.On ? RecoilCalc.Gear(calc, RecoilCalc.GunKey(p.Name), scopeMult, p.Att, p.AttId) : (1.0, "");
@@ -184,9 +192,9 @@ namespace GunBeep
             return (set, scopeMult, via, mult, parts);
         }
 
-        // สโคปที่ใช้คำนวณ/เรียนรู้: ศูนย์เหล็ก = "iron", ไฮบริด = เรดดอท, ไม่รู้จัก = null
-        static string ScopeKey(ScopeDetect.Panel p) =>
-            p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? "reddot" : p.ScopeLabel;
+        // สโคปที่ใช้คำนวณ/เรียนรู้: ศูนย์เหล็ก = "iron", ไฮบริด = เรดดอท หรือ 4x ตามโหมด, ไม่รู้จัก = null
+        string ScopeKey(ScopeDetect.Panel p) =>
+            p == null || p.Set == -1 ? null : p.Set == 0 ? "iron" : p.ScopeLabel == "hybrid" ? (hybridIs4x[Math.Clamp(p.Slot, 1, 2)] ? "4x" : "reddot") : p.ScopeLabel;
 
         // กด Shift (กลั้นหายใจ / ซูมศูนย์ 1x) ของสโคปนี้ คูณแรงดึงเพิ่มเท่าไหร่ (เรียนรู้จากชุดที่กด Shift ตลอด)
         double BreathOf(ScopeDetect.Panel p)
@@ -208,7 +216,12 @@ namespace GunBeep
         string HeldScopeText()
         {
             var p = slotInfo[Math.Clamp(heldSlot, 1, 2)];
-            if (cfg.ScopeAuto && p != null && p.Set != -1) return p.Set == 0 ? "ศูนย์เหล็ก" : "สโคป " + ScopeName(p.ScopeLabel);
+            if (cfg.ScopeAuto && p != null && p.Set != -1)
+            {
+                if (p.Set == 0) return "ศูนย์เหล็ก";
+                if (p.ScopeLabel == "hybrid") return $"สโคป ไฮบริด ({(hybridIs4x[Math.Clamp(heldSlot, 1, 2)] ? "4x" : "Red Dot")})";
+                return "สโคป " + ScopeName(p.ScopeLabel);
+            }
             return "ชุด " + cfg.Names[Math.Clamp(gun, 1, cfg.Names.Length) - 1];
         }
 
@@ -423,7 +436,19 @@ namespace GunBeep
         UIElement ScopeTeachRow(int s, ScopeDetect.Panel p)
         {
             var wrap = new WrapPanel { Margin = new Thickness(2, -4, 0, 8) };
-            if (p.Set != -1 && !teachOpen[s])
+            if (p.ScopeLabel == "hybrid")
+            {
+                bool is4x = hybridIs4x[s];
+                wrap.Children.Add(Pill(is4x ? "โหมด: 4x (Alt+RMB สลับ)" : "โหมด: Red Dot (Alt+RMB สลับ)", is4x ? PGold : PCyan, () =>
+                {
+                    hybridIs4x[s] = !hybridIs4x[s];
+                    ApplyScope("hybrid toggle ui");
+                    LiveDirty();
+                    PopOsd($"{(string.IsNullOrEmpty(p.Name) ? $"ปืนช่อง {s}" : p.Name)} · ไฮบริด ({(hybridIs4x[s] ? "4x" : "Red Dot")})");
+                    Sfx.Play(hybridIs4x[s] ? Sfx.Up : Sfx.Down, cfg.Sound);
+                }));
+            }
+            if (!teachOpen[s])
             {
                 wrap.Children.Add(Pill("สโคปผิด? แก้", PFaint, () => { teachOpen[s] = true; liveSig = null; LiveDirty(); }));
                 return wrap;
@@ -431,7 +456,7 @@ namespace GunBeep
             wrap.Children.Add(new TextBlock { Text = "สโคปนี้คือ:", FontSize = 11.5, Foreground = PMuted, Margin = new Thickness(0, 4, 8, 6) });
             foreach (var (label, text) in ScopeChoices)
                 wrap.Children.Add(Pill(text, label == p.ScopeLabel ? PCyan : PText, () => TeachScope(s, label)));
-            if (p.Set != -1) wrap.Children.Add(Pill("ยกเลิก", PFaint, () => { teachOpen[s] = false; liveSig = null; LiveDirty(); }));
+            wrap.Children.Add(Pill("ยกเลิก", PFaint, () => { teachOpen[s] = false; liveSig = null; LiveDirty(); }));
             return wrap;
         }
 
@@ -446,7 +471,8 @@ namespace GunBeep
                 return;
             }
             int set = ScopeDetect.SetFor(label, cfg.Names);
-            if (set <= 0 && label == "hybrid") set = ScopeDetect.SetFor("reddot", cfg.Names);
+            if (set <= 0 && label == "hybrid") set = ScopeDetect.SetFor("4x", cfg.Names);
+            if (label == "hybrid") hybridIs4x[s] = true;
             ScopeDetect.Teach(p.Icon, set, label);
             p.Set = set;
             p.ScopeLabel = label;
@@ -504,13 +530,25 @@ namespace GunBeep
             string setName = setOk ? cfg.Names[set - 1] : "ชุดเดิม";
 
             // สโคป
-            string scopeTitle = p.Set == 0 ? "ไม่มีสโคป (ศูนย์เหล็ก)" : p.Set == -1 ? "ยังไม่รู้จัก — เลือกด้านล่างครั้งเดียว จำให้เอง" : ScopeName(p.ScopeLabel);
+            bool isHybrid = p.ScopeLabel == "hybrid";
+            bool is4x = isHybrid && hybridIs4x[s];
+            bool hasRealScope = (p.Set > 0 || p.Set == -2) && !string.IsNullOrEmpty(p.ScopeLabel) && p.ScopeLabel != "ไม่มีสโคป";
+            string scopeTitle = !hasRealScope ? "ไม่มีสโคป (ศูนย์เหล็ก)"
+                : isHybrid ? $"Hybrid ({(is4x ? "4x" : "Red Dot")})"
+                : ScopeName(p.ScopeLabel);
             double scopeAll = scopeMult * ScopeLearned(p);
-            string scopeNm = p.Set == 0 ? "ศูนย์เหล็ก" : ScopeName(p.ScopeLabel);
-            string scopeSub = p.Set == -1 ? "ยังใช้ค่าเดิมไปก่อน" : !setOk ? "ใช้ค่าที่เลือกอยู่"
-                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {(p.ScopeLabel == "hybrid" ? "Red Dot" : scopeNm)} ในเกม" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "")
+            string scopeNm = !hasRealScope ? "ศูนย์เหล็ก"
+                : isHybrid ? $"Hybrid ({(is4x ? "4x" : "Red Dot")})"
+                : ScopeName(p.ScopeLabel);
+            string viaNote = (via != null && Math.Abs(scopeMult - 1) > 0.005) ? $" (แปลงผ่าน {via} ×{scopeMult:0.00})" : "";
+            string scopeSub = !hasRealScope ? (!setOk ? "ใช้ค่าที่เลือกอยู่" : "แรงดึงของศูนย์เหล็ก คำนวณจากความไวในเกม")
+                : isHybrid ? $"โหมดปัจจุบัน: {(is4x ? "4x (กำลังขยายสูง)" : "Red Dot (โหมด 1)")} · กด Alt+คลิกขวาในเกม หรือกด [-] Red Dot / [+] 4x เพื่อสลับ"
+                : $"แรงดึงของ {scopeNm} คำนวณจากความไว {scopeNm} ในเกม{viaNote}" + (Math.Abs(ScopeLearned(p) - 1) > 0.005 ? $" · เรียนรู้แล้ว ×{ScopeLearned(p):0.00}" : "")
                   + (Math.Abs(BreathOf(p) - 1) > 0.005 ? $" · กด Shift ×{BreathOf(p):0.00}" : "");
-            root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeAll, PBlue, null, null, p.Set == -1, p.Set > 0 || p.Set == -2 ? ArtOf("att", ScopeKey(p) == "reddot" && p.ScopeLabel == "hybrid" ? "hybrid" : p.ScopeLabel) : null));
+            root.Children.Add(Row("", "สโคป", scopeTitle, scopeSub, scopeAll, PBlue,
+                                  isHybrid ? () => SetHybrid(s, false) : null,
+                                  isHybrid ? () => SetHybrid(s, true) : null,
+                                  !hasRealScope, hasRealScope ? ArtOf("att", isHybrid ? "hybrid" : p.ScopeLabel) : null));
             root.Children.Add(ScopeTeachRow(s, p));
 
             // แรงดึง: ตัวคูณรวม | กราฟ | ท่าทาง
@@ -521,7 +559,7 @@ namespace GunBeep
             var left = new StackPanel();
             bool isNoPull = gk != null && RecoilCalc.NoPull.Contains(gk);
             left.Children.Add(Stat("ตัวคูณ", isNoPull ? "ปิดดึง" : "×" + mult.ToString("0.00"), isNoPull ? "No Pull" : Pct(mult)));
-            left.Children.Add(Stat("สโคป", p.Set == -1 ? "?" : scopeNm, Pct(scopeAll)));
+            left.Children.Add(Stat("สโคป", scopeNm, Pct(scopeAll)));
             mid.Children.Add(left);
             var graph = Graph(setOk && !isNoPull ? vals[set - 1] : null, mult, gk, ArtOf("guns", gk) ?? PicOf(p), gk != null && c.Learn.TryGetValue(gk, out var lc) ? lc : null, isNoPull);
             Grid.SetColumn(graph, 1);
@@ -538,14 +576,24 @@ namespace GunBeep
             string magTxt = gk != null && RecoilCalc.GunInfo.TryGetValue(gk, out var gInfo)
                 ? $" · แม็ก {(p.ExtMag ? gInfo.ext + " (ขยาย)" : gInfo.mag.ToString())} นัด" : "";
             if (gk != null && RecoilCalc.FireModes.TryGetValue(gk, out var fm))
-                magTxt += $" · โหมด{ModeName(FireMode(s))}" + (fm.Length > 1 ? " (กด B ในเกม)" : "") + (IsSemi(s) ? ": ดึงทีละคลิก" : "");
+                magTxt += $" · โหมด{ModeName(gk, FireMode(s))}" + (fm.Length > 1 ? " (กด B ในเกม)" : "") + (IsSemi(s) ? ": ดึงทีละคลิก" : "");
             else if (magTxt != "") magTxt += $" → ดึงสูงสุด {MagCap(s) + 2} นัด/ชุด";
             if (p.Att != null && p.Att[2] && !p.ExtMag) magTxt += " · แม็ก QuickDraw";
             string learnTxt = isNoPull ? " · ปืนยิงทีละนัด (ปิดดึงเมาส์อัตโนมัติ)" :
                 gk != null && c.LearnN.TryGetValue(gk, out int ln) ? $" · เรียนรู้แล้ว {ln} ชุด" : " · ยังไม่ได้เรียนรู้ (ยิงค้างตอนเล็งแล้วปรับเอง)";
-            string subTxt = gk == null ? "ใช้ ×1" : isNoPull ? "ปืนยิงทีละนัด (ไม่ดึงแรงดีด)" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(c.Guns.TryGetValue(gk, out double u) && Math.Abs(u - 1) > 0.001 ? $" × ปรับ {u:0.00}" : "")}{magTxt}{learnTxt}";
+            double currentMult = 1.0;
+            bool isFastMg3 = gk == "MG3" && FireMode(s) == 'F';
+            if (isFastMg3)
+            {
+                currentMult = c.Guns.TryGetValue("MG3_990", out double fg) ? fg : 0.40;
+            }
+            else if (gk != null && c.Guns.TryGetValue(gk, out double u))
+            {
+                currentMult = u;
+            }
+            string subTxt = gk == null ? "ใช้ ×1" : isNoPull ? "ปืนยิงทีละนัด (ไม่ดึงแรงดีด)" : $"แรงดีดเทียบ {c.RefGun ?? "AUG"}{(Math.Abs(currentMult - 1) > 0.001 || isFastMg3 ? $" × ปรับ {currentMult:0.00}" : "")}{magTxt}{learnTxt}";
             root.Children.Add(Row("", "ปืน", gk ?? "ไม่รู้จักชื่อปืน", subTxt,
-                                  isNoPull ? 0 : gf, PGold, gk == null || isNoPull ? null : () => AdjustGun(gk, -0.05), gk == null || isNoPull ? null : () => AdjustGun(gk, +0.05), gk == null || isNoPull));
+                                  isNoPull ? 0 : gf * (isFastMg3 ? currentMult : 1.0), PGold, gk == null || isNoPull ? null : () => AdjustGun(gk, -0.05), gk == null || isNoPull ? null : () => AdjustGun(gk, +0.05), gk == null || isNoPull));
 
             // ของแต่ง
             int n = p.Att == null ? 0 : (p.Att[0] ? 1 : 0) + (p.Att[1] ? 1 : 0) + (p.Att[3] ? 1 : 0);
@@ -569,14 +617,29 @@ namespace GunBeep
             return root;
         }
 
+        void SetHybrid(int slot, bool is4x)
+        {
+            if (slot is not (1 or 2)) return;
+            if (hybridIs4x[slot] == is4x) return;
+            hybridIs4x[slot] = is4x;
+            ApplyScope("hybrid ui toggle");
+            LiveDirty();
+            PopOsd($"ไฮบริดช่อง {slot} · สลับเป็น {(is4x ? "4x" : "Red Dot")}");
+            Sfx.Play(is4x ? Sfx.Up : Sfx.Down, cfg.Sound);
+        }
+
         void AdjustGun(string gk, double d)
         {
             var c = cfg.Calc;
-            double u = c.Guns.TryGetValue(gk, out double v) ? v : 1;
-            c.Guns[gk] = Math.Round(Math.Clamp(u + d, 0.3, 3), 2);
+            string key = gk;
+            if (gk == "MG3" && FireMode(magSlot) == 'F') key = "MG3_990";
+            double def = key == "MG3_990" ? 0.40 : 1.0;
+            double u = c.Guns.TryGetValue(key, out double v) ? v : def;
+            c.Guns[key] = Math.Round(Math.Clamp(u + d, 0.1, 3), 2);
             cfg.Save();
             CalcChanged();
             LiveDirty();
+            if (key == "MG3_990") PopOsd($"MG3 · 990 RPM = {c.Guns[key]:0.00}");
         }
 
         Border Row(string glyph, string tag, string title, string sub, double mult, Brush accentBrush, Action minus, Action plus, bool dim,
@@ -891,6 +954,8 @@ namespace GunBeep
             LootSpeed0.IsChecked = cfg.LootSpeed == 0;
             LootSpeed1.IsChecked = cfg.LootSpeed == 1;
             LootSpeed2.IsChecked = cfg.LootSpeed == 2;
+            LootSpeed3.IsChecked = cfg.LootSpeed == 3;
+            LootSpeed4.IsChecked = cfg.LootSpeed == 4;
             LootTabAuto.IsChecked = cfg.LootAutoTab;
             LootTabSelf.IsChecked = !cfg.LootAutoTab;
             LootDirBottom.IsChecked = cfg.LootDirection == 0;
@@ -941,6 +1006,9 @@ namespace GunBeep
             if (lootUi) return;
             cfg.LootSpeed = int.Parse((string)((FrameworkElement)sender).Tag);
             cfg.Save();
+            string[] names = { "ช้า (~100ms)", "กลาง (~56ms)", "เร็ว (~34ms)", "เทอร์โบ (ติด 100% ~25ms)", "ซิ่งสุด (144Hz+ ~16ms)" };
+            string spName = cfg.LootSpeed >= 0 && cfg.LootSpeed < names.Length ? names[cfg.LootSpeed] : cfg.LootSpeed.ToString();
+            Flash($"ความเร็วเก็บของ: {spName}");
         }
 
         void LootDir_Checked(object sender, RoutedEventArgs e)
@@ -1217,9 +1285,31 @@ namespace GunBeep
             return modeBy[slot];
         }
 
-        double FastGear() => FireMode(magSlot) == 'F' ? 1.5 : 1;
+        double FastGear()
+        {
+            string gk = SlotGunKey(magSlot);
+            if (gk == "MG3")
+            {
+                if (FireMode(magSlot) == 'F')
+                {
+                    double fast = cfg.Calc != null && cfg.Calc.Guns.TryGetValue("MG3_990", out double fg) ? fg : 0.40;
+                    return fast;
+                }
+                return 1.0;
+            }
+            return FireMode(magSlot) == 'F' ? 1.15 : 1.0;
+        }
 
-        static string ModeName(char m) => m switch { 'S' => "ทีละนัด", 'B' => "ยิงชุด", 'F' => "ออโต้เร็ว", _ => "ออโต้" };
+        static string ModeName(string gk, char m)
+        {
+            if (gk == "MG3")
+            {
+                return m == 'F' ? "อัตโนมัติ (990 RPM)" : "อัตโนมัติ (660 RPM)";
+            }
+            return m switch { 'S' => "ทีละนัด", 'B' => "ยิงชุด", 'F' => "ออโต้เร็ว", _ => "ออโต้" };
+        }
+
+        static string ModeName(char m) => ModeName(null, m);
 
         // กด B ในเกม = เปลี่ยนโหมดยิงของปืนที่ถือ (วนตามโหมดที่ปืนมี)
         void FireModeKey()
@@ -1229,9 +1319,13 @@ namespace GunBeep
             if (gk == null || !RecoilCalc.FireModes.TryGetValue(gk, out var modes) || modes.Length < 2) return;
             char cur = FireMode(slot);
             modeBy[slot] = modes[(modes.IndexOf(cur) + 1) % modes.Length];
-            Log.Info($"fire mode {gk}: {ModeName(cur)} → {ModeName(modeBy[slot])}");
-            PopOsd($"{SlotPanelOf(slot)?.Name ?? gk} · {ModeName(modeBy[slot])}");
+            Log.Info($"fire mode {gk}: {ModeName(gk, cur)} → {ModeName(gk, modeBy[slot])}");
+            double mult = gk == "MG3" && modeBy[slot] == 'F' ? (cfg.Calc != null && cfg.Calc.Guns.TryGetValue("MG3_990", out double fg) ? fg : 0.40) : 1.0;
+            string multStr = gk == "MG3" ? $" [ดึง {mult:0.00}]" : "";
+            PopOsd($"{SlotPanelOf(slot)?.Name ?? gk} · {ModeName(gk, modeBy[slot])}{multStr}");
+            Sfx.Play(modeBy[slot] == 'F' ? Sfx.Up : Sfx.Down, cfg.Sound);
             PushMults();
+            UpdateGuns();
             liveSig = null;
             LiveDirty();
         }
@@ -1240,7 +1334,9 @@ namespace GunBeep
         bool IsSemi(int slot) => FireMode(slot) is 'S' or 'B';
 
         // แรงต่อนัดของปืนเคาะ (ก่อนคูณสโคป/ของแต่ง/ท่า ซึ่งตัวยิงคูณเอง):
-        //   แรงที่ตารางชุดค่านี้ดึงใน 1 นัดของปืนออโต้ (เวลาต่อนัดของ AUG) × ความแรงปืนเคาะ / ตัวคูณปืน (อยู่ในตัวคูณรวมแล้ว) × ที่เรียนรู้
+        //   PUBG มีระบบ Camera Recoil Recovery คืนเป้าอัตโนมัติ ~75% ต่อนัด
+        //   แรงดีดจริงที่ต้องชดเชย = ~18% ของแรงดึงสะสมสเปรย์ (SemiFactor)
+        //   คูณความแรงปืนเคาะ KickOf(gk) และปรับแต่งตามปุ่ม [-] [+] ของผู้ใช้
         void PushSemi()
         {
             if (engine == null) return;
@@ -1256,7 +1352,17 @@ namespace GunBeep
             for (int k = 0; k < steps; k++) perShot += st[Math.Min(k, st.Length - 1)] + v.Base;
             var c = cfg.Calc ??= new CalcSettings();
             double learned = c.AutoLearn && c.LearnKick.TryGetValue(gk, out double lk) ? lk : 1;
-            double kick = perShot * RecoilCalc.KickOf(gk) / Math.Max(0.2, RecoilCalc.GunFactor(c, gk)) * learned;
+
+            // ปืนเคาะทีละนัด (S) ใช้ SemiFactor (~0.18 ชดเชยการคืนเป้าอัตโนมัติของเกม)
+            // ยิงชุด (B) ยิงกระสุนติดกัน n นัดไม่มีการคืนเป้า ใช้ 0.55
+            double semiScale = mode == 'S' ? (c.SemiFactor > 0 ? c.SemiFactor : 0.18) : 0.55;
+
+            // ฐานเปรียบเทียบปืนแบบ Builtin (ไม่รวมตัวคูณ user เพื่อให้ปุ่ม [-] [+] ใน UI ส่งผลกับแรงเคาะจริง)
+            double builtinGun = gk != null && (RecoilCalc.BuiltinGun.TryGetValue(gk, out double bg) || RecoilCalc.BuiltinGun_v1.TryGetValue(gk, out bg)) ? bg : 1.0;
+            double builtinRef = (RecoilCalc.BuiltinGun.TryGetValue(c.RefGun ?? "AUG", out double br) || RecoilCalc.BuiltinGun_v1.TryGetValue(c.RefGun ?? "AUG", out br)) ? br : 1.0;
+            double baseFactor = Math.Max(0.2, builtinGun / builtinRef);
+
+            double kick = perShot * semiScale * RecoilCalc.KickOf(gk) / baseFactor * learned;
             // ยิงชุด: แรงทั้งชุด (n นัด) กระจายตามเวลาที่ปืนยิงครบชุด
             int n = mode == 'B' && RecoilCalc.BurstN.TryGetValue(gk, out int bn) ? bn : 1;
             engine.SetSemiKick(kick * n);
@@ -1339,7 +1445,8 @@ namespace GunBeep
             stanceKeys = null;
             var g = GameSettings.Current;
             Log.Info($"pubg settings: ads {g.Ads} mag {g.AdsMagnified} universal {g.Universal} vertical {g.Vertical} adsMode {g.AdsMode} " +
-                     $"keys {KeyName(g.Slot1)}/{KeyName(g.Slot2)}/{KeyName(g.Pistol)}/{KeyName(g.Melee)}/{KeyName(g.Throwable)}");
+                     $"keys {KeyName(g.Slot1)}/{KeyName(g.Slot2)}/{KeyName(g.Pistol)}/{KeyName(g.Melee)}/{KeyName(g.Throwable)} " +
+                     $"crouch [{(g.CrouchBindings.Count > 0 ? string.Join(", ", g.CrouchBindings) : KeyName(g.Crouch))}]");
             BuildKeyCards();
             BuildGameCard();
             if (cfg.Calc != null) CalcChanged();

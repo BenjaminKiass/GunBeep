@@ -13,3 +13,9 @@
 GunBeepApp/bin/
 GunBeepApp/obj/
 GunBeepApp/out/
+
+# ไฟล์สำรองที่แก้มือ (.bak*, .pre_fix) ไม่ขึ้น repo
+*.bak
+*.bak_*
+*.pre_fix
+*.old

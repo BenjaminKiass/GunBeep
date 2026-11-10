@@ -183,10 +183,11 @@ namespace GunBeep
             {
                 string n = (names[i] ?? "").ToLowerInvariant().Replace(" ", "");
                 if (n.Split('/', ',', '+', '|', '·').Any(p => p == l || p == l.Replace("x", "")) || n.Contains(l)) return i + 1;
-                if ((l == "reddot" && n.Contains("red")) || (l == "holo" && n.Contains("holo"))) return i + 1;
-                if (l == "hybrid" && (n.Contains("red") || n.Contains("dot") || n.Contains("hybrid"))) return i + 1;
+                if ((l is "reddot" or "holo") && (n.Contains("red") || n.Contains("dot") || n.Contains("holo") || n.Contains("1x"))) return i + 1;
+                if (l == "hybrid" && (n.Contains("4x") || n.Contains("hybrid"))) return i + 1;
             }
-            if (l == "hybrid") return SetFor("reddot", names);
+            if (l == "hybrid") return SetFor("4x", names);
+            if (l == "holo") return SetFor("reddot", names);
             return -2;
         }
 
@@ -198,7 +199,7 @@ namespace GunBeep
             List<Template> list;
             lock (gate) list = Templates.ToList();
             var user = Best(f, list);
-            if (user.best != null && user.score >= 0.55) return user;
+            if (user.best != null && (user.score >= 0.52 || (user.score >= 0.48 && user.margin >= 0.03))) return user;
             var bi = Best(f, Builtins.Select(b => new Template { Label = b.Label, Feature = b.Feature, Set = SetFor(b.Label, names) }).ToList());
             return bi.best != null && bi.score > user.score ? bi : user;
         }
@@ -485,7 +486,7 @@ namespace GunBeep
                 string raw = await ReadName(crop, mode, scale);
                 first ??= raw;
                 var m = RecoilCalc.MatchGun(raw);
-                if (m.key != null) { LearnNameShape(crop, m.key); return (m.key, m.name, raw); }
+                if (m.key != null) { if (RecoilCalc.ExactGun(raw, m.key)) LearnNameShape(crop, m.key); return (m.key, m.name, raw); }
             }
             // ตัดกรอบเฉพาะตัวหนังสือก่อน (ชื่อสั้นอย่าง "MP9" มีที่ว่างรอบเยอะ OCR เลยไม่อ่าน — ตัดแล้วอ่านออกทุกภาพที่ทดสอบ)
             using (var tight = TightText(crop))
@@ -494,7 +495,7 @@ namespace GunBeep
                     {
                         string raw = await ReadName(tight, mode, scale);
                         var m = RecoilCalc.MatchGun(raw);
-                        if (m.key != null) { LearnNameShape(crop, m.key); return (m.key, m.name, raw + " (tight)"); }
+                        if (m.key != null) { if (RecoilCalc.ExactGun(raw, m.key)) LearnNameShape(crop, m.key); return (m.key, m.name, raw + " (tight)"); }
                     }
             var s = MatchNameShape(crop);
             return s != null ? (s, RecoilCalc.GunNames.First(g => g.key == s).name, first + " (shape)") : (null, null, first);
@@ -654,27 +655,29 @@ namespace GunBeep
             return n > 0 && (double)l / n > 0.3;
         }
 
-        // ตรวจว่าบริเวณแถบแผงปืนมีแถบ Killfeed ลอยพาดผ่านไหม (นับพิกเซล Cyan, น้ำเงินสด, แดงสด)
+        // ตรวจว่าบริเวณแถบแผงปืนมีแถบ Killfeed ลอยพาดผ่านไหม (นับพิกเซล Cyan, น้ำเงินสดทีม และเช็คการกระจายแนวนอน)
         public static bool PanelHasKillfeed(Bitmap shot, int y0, int y1)
         {
             if (shot == null || shot.Width < 10) return false;
             int top = Math.Max(0, y0), bottom = Math.Min(shot.Height, y1);
             if (bottom <= top) return false;
             int kf = 0;
+            int minX = shot.Width, maxX = -1;
             for (int y = top; y < bottom; y += 2)
                 for (int x = 0; x < shot.Width; x += 2)
                 {
                     var p = shot.GetPixel(x, y);
-                    bool isCyan = p.G > 160 && p.B > 160 && p.R < 115;
-                    bool isBlue = p.B > 170 && p.B > p.R + 70 && p.G < 160;
-                    bool isRed = p.R > 180 && p.R > p.B + 70 && p.G < 120;
-                    if (isCyan || isBlue || isRed)
+                    bool isCyan = p.G > 165 && p.B > 165 && p.R < 130;
+                    bool isBlue = p.B > 170 && p.B > p.R + 60 && p.B > p.G + 40;
+                    if (isCyan || isBlue)
                     {
                         kf++;
-                        if (kf > 25) return true;     // สุ่มตรวจทุก 2 px เจอ > 25 จุด (~100 px จริง) = มี Killfeed พาดแน่นอน
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
                     }
                 }
-            return false;
+            int spanX = maxX >= minX ? (maxX - minX) : 0;
+            return kf > 35 && spanX > 70;     // แถบ Killfeed พาดผ่านแผงจริง (> 35 จุด และกว้าง > 70 px)
         }
 
         // เมาส์ชี้ / ป้ายรายละเอียดของบัง (สีขาว / เทาอ่อนสว่าง > 35%)
@@ -693,8 +696,8 @@ namespace GunBeep
             return n > 0 && (double)whiteHover / n > 0.35;
         }
 
-        // ตรวจว่าช่องนี้มีพิกเซลสี Killfeed ปนอยู่ไหม (Cyan, น้ำเงิน, แดง, เหลือง/ส้ม, ขาวสว่างขอบเงา)
-                public static bool HasKillfeedColors(Bitmap c)
+        // ตรวจว่าช่องสโคปนี้มีแถบ/ตัวหนังสือ Killfeed บดบังอยู่ไหม (Cyan, น้ำเงินสดทีม)
+        public static bool HasKillfeedColors(Bitmap c)
         {
             if (c == null || c.Width < 4 || c.Height < 4) return false;
             int n = 0, kf = 0;
@@ -703,12 +706,11 @@ namespace GunBeep
                 {
                     var p = c.GetPixel(x, y);
                     n++;
-                    bool isCyan = p.G > 150 && p.B > 150 && p.R < 130;
-                    bool isBlue = p.B > 165 && p.B > p.R + 60 && p.G < 165;
-                    bool isRed = p.R > 170 && p.R > p.B + 60 && p.G < 130;
-                    if (isCyan || isBlue || isRed) kf++;
+                    bool isCyan = p.G > 165 && p.B > 165 && p.R < 130;
+                    bool isBlue = p.B > 170 && p.B > p.R + 60 && p.B > p.G + 40;
+                    if (isCyan || isBlue) kf++;
                 }
-            return n > 0 && (double)kf / n > 0.012;
+            return n > 0 && (double)kf / n > 0.015;
         }
 
         // ลบพิกเซลสี Killfeed และตัวหนังสือทับออก ให้เป็นสีพื้นหลังมืด เพื่อให้เทียบ Template สโคปได้
@@ -771,6 +773,21 @@ namespace GunBeep
             return Math.Sqrt(Math.Max(0, sq / n - m * m));
         }
 
+        // นับพิกเซลสว่าง (> threshold) ในภาพ ใช้ช่วยยืนยันว่าช่องมีของแต่งจริงไม่ใช่ช่องว่าง
+        public static int BrightPixelCount(Bitmap c, int threshold = 120)
+        {
+            if (c == null || c.Width < 2 || c.Height < 2) return 0;
+            int count = 0;
+            for (int y = 0; y < c.Height; y += 2)
+                for (int x = 0; x < c.Width; x += 2)
+                {
+                    var p = c.GetPixel(x, y);
+                    double l = 0.299 * p.R + 0.587 * p.G + 0.114 * p.B;
+                    if (l > threshold) count++;
+                }
+            return count;
+        }
+
         // สัดส่วนพิกเซลสีฟ้าอมเขียวสด (สีไอคอนของในกระเป๋า PUBG)
         public static double TealShare(Bitmap c)
         {
@@ -787,6 +804,33 @@ namespace GunBeep
             return n == 0 ? 0 : (double)t / n;
         }
 
+        // ตรวจสอบว่าช่องสโคปนี้เป็นช่องว่างหรือไม่ (ไม่มีสโคปติดอยู่)
+        // สโคปทุกตัวใน PUBG (Red Dot, Holo, 2x, 3x, 4x, 6x, 8x, 15x, Hybrid) มีไอคอนคมชัดและสว่างที่บริเวณกลางช่อง
+        // ถ้าเป็นช่องว่าง บริเวณกลางช่องจะเป็นพื้นหลังเรียบมืดสนิท (แม้ขอบล่างอาจมีรางปืน Groza/M249 โผล่มาก็ตาม)
+        public static bool IsScopeEmpty(Bitmap ic)
+        {
+            if (ic == null || ic.Width < 10 || ic.Height < 10) return true;
+            int x0 = (int)(ic.Width * 0.15), x1 = (int)(ic.Width * 0.85);
+            int y0 = (int)(ic.Height * 0.15), y1 = (int)(ic.Height * 0.68);
+
+            double sum = 0, sum2 = 0;
+            int n = 0, bright = 0;
+            for (int y = y0; y <= y1; y++)
+            {
+                for (int x = x0; x <= x1; x++)
+                {
+                    var p = ic.GetPixel(x, y);
+                    double l = (p.R + p.G + p.B) / 765.0;
+                    sum += l; sum2 += l * l; n++;
+                    if (p.R > 125 || p.G > 125 || p.B > 125) bright++;
+                }
+            }
+            if (n == 0) return true;
+            double m = sum / n;
+            double sd = Math.Sqrt(Math.Max(0, sum2 / n - m * m));
+            return bright < 5 && sd < 0.035;
+        }
+
         public static Panel[] Read(Settings cfg, Bitmap shot, Point origin, int screenW, int screenH)
         {
             var boxes = Boxes(cfg, screenW, screenH);
@@ -798,15 +842,12 @@ namespace GunBeep
                 badge.Offset(-origin.X, -origin.Y);
                 icon.Offset(-origin.X, -origin.Y);
                 var p = new Panel();
-                int py0 = i == 0 ? Math.Max(0, (int)(0.015 * screenH)) : ySplit;
-                int py1 = i == 0 ? ySplit : shot.Height;
-                bool panelKf = PanelHasKillfeed(shot, py0, py1);
 
                 // ป้ายบนแผงปืนเขียนปุ่มที่ผู้ใช้ตั้ง (เครื่องนี้ = 3 กับ 2) ไม่ใช่เลขช่อง → ใช้แค่ว่ามีป้าย (มีปืน) ไหม
                 //   ช่องปืนดูจากตำแหน่ง: แผงบน = ปืน 1, แผงล่าง = ปืน 2 (เกมจัดแบบนี้เสมอ)
                 using (var b = Crop(shot, badge))
                 {
-                    bool obs = Obscured(b) || panelKf;
+                    bool obs = Obscured(b);
                     p.Slot = ReadSlot(b) != 0 ? i + 1 : (obs ? i + 1 : 0);
                     if (obs) p.Obscured = true;
                 }
@@ -814,50 +855,46 @@ namespace GunBeep
                 {
                     bool hovered = IsHovered(ic);
                     bool kfOnSlot = HasKillfeedColors(ic);
-                    if (hovered) p.Obscured = true;
+                    if (hovered || kfOnSlot) p.Obscured = true;
 
-                    using var cleanIc = kfOnSlot ? CleanKillfeed(ic) : null;
-                    var targetIc = cleanIc ?? ic;
+                    // ค้นหาว่าตรงกับสโคปไหน (Red Dot, Holo, 2x, 3x, 4x, 6x, 8x, 15x, Hybrid)
+                    int d = Math.Max(2, icon.Width / 14);
+                    (Template t, double s, double margin) best = (null, -1, 0);
+                    foreach (int ox in new[] { 0, -d, d })
+                        foreach (int oy in new[] { 0, -d, d })
+                        {
+                            var r = icon;
+                            r.Offset(ox, oy);
+                            using var c = (ox | oy) == 0 ? null : Crop(shot, r);
+                            var active = c ?? ic;
+                            var m = Match(active, cfg.Names);
+                            if (m.score > best.s) best = m;
 
-                    if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && Detail(targetIc) < 0.035)
+                            if (kfOnSlot)
+                            {
+                                using var cClean = CleanKillfeed(active);
+                                var mClean = Match(cClean, cfg.Names);
+                                if (mClean.score > best.s) best = mClean;
+                            }
+                        }
+                    p.Score = best.s;
+
+                    // ตรวจจับสโคปอัตโนมัติ: คะแนนสูงเด่น (>=0.58) หรือชนะสโคปอื่นชัดเจน (>=0.52 margin>=0.08 หรือ >=0.50 margin>=0.12)
+                    bool isSureScope = best.t != null && (
+                        (best.s >= 0.58) ||
+                        (best.s >= 0.52 && best.margin >= 0.08) ||
+                        (best.s >= 0.50 && best.margin >= 0.12)
+                    );
+                    if (isSureScope)
                     {
-                        p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
+                        p.Set = best.t.Set;
+                        p.ScopeLabel = best.t.Label;
                     }
                     else
                     {
-                        // ลองเลื่อนกรอบ ±2–4 px เผื่อตั้งจุดเพี้ยนนิดหน่อย เอาตำแหน่งที่ตรงที่สุด
-                        int d = Math.Max(2, icon.Width / 14);
-                        (Template t, double s, double margin) best = (null, -1, 0);
-                        foreach (int ox in new[] { 0, -d, d })
-                            foreach (int oy in new[] { 0, -d, d })
-                            {
-                                var r = icon;
-                                r.Offset(ox, oy);
-                                using var c = (ox | oy) == 0 ? null : Crop(shot, r);
-                                var active = c ?? ic;
-                                var m = Match(active, cfg.Names);
-                                if (m.score > best.s) best = m;
-
-                                if (kfOnSlot)
-                                {
-                                    using var cClean = CleanKillfeed(active);
-                                    var mClean = Match(cClean, cfg.Names);
-                                    if (mClean.score > best.s) best = mClean;
-                                }
-                            }
-                        p.Score = best.s;
-
-                        // ถ้ามี Killfeed พาดผ่าน เกณฑ์ผ่อนคลายลงเหลือ 0.56 ชนะสโคปอื่น 0.05
-                        double threshold = (kfOnSlot || panelKf) ? 0.56 : 0.62;
-                        if (best.t != null && best.s >= threshold && best.margin >= 0.05)
-                        {
-                            p.Set = best.t.Set;
-                            p.ScopeLabel = best.t.Label;
-                        }
-                        else if (!hovered && !kfOnSlot && !panelKf && !p.Obscured && BandSd(targetIc, 0.06, 0.40) < 13)
-                        {
-                            p.Set = 0; p.ScopeLabel = "ไม่มีสโคป"; p.Score = 1;
-                        }
+                        // ไม่ตรงกับสโคปไหนเลย (เช่น ช่องว่าง, ศูนย์เหล็ก, Tommy Gun, SLR ไม่มีสโคป) = ไม่มีสโคป
+                        p.Set = 0;
+                        p.ScopeLabel = "ไม่มีสโคป";
                     }
                     p.Icon = new Bitmap(ic);                      // เก็บไว้เรียนรู้ ถ้าผู้ใช้กดปุ่มเลือกสโคปเอง
                 }
@@ -871,7 +908,7 @@ namespace GunBeep
                 if (p.Slot != 0 || p.PicSharp >= GunArtSharp || p.Obscured)
                 {
                     p.Att = RecoilCalc.ReadAttachments(cfg, shot, origin, screenW, screenH, i, out p.AttId, out p.AttUnsure);
-                    if (panelKf && p.AttUnsure != null)
+                    if (p.Obscured && p.AttUnsure != null)
                     {
                         // ถ้าแถบ Killfeed พาดแผงนี้อยู่ ช่องของแต่งไหนที่อ่านไม่ชัด/ไม่เจอ ให้คงสถานะไม่แน่ใจไว้
                         for (int k = 0; k < 4; k++)

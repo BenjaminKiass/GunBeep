@@ -53,7 +53,7 @@ namespace GunBeep
         // เก็บของเร็ว: ตำแหน่งเป็นสัดส่วนของจอ (0–1) — ช่องของบนพื้นช่องแรก/ช่องถัดไป, จุดปล่อย (กระเป๋า), จุดกลับ
         public int LootKey { get; set; }                       // ปุ่มสั่งเก็บ (ตอนเปิดกระเป๋า), 0 = ไม่ใช้
         public int LootSlots { get; set; } = 8;                // เก็บกี่ช่องต่อครั้ง
-        public int LootSpeed { get; set; } = 1;                // 0 ช้า, 1 กลาง, 2 เร็ว
+        public int LootSpeed { get; set; } = 3;                // 0 ช้า, 1 กลาง, 2 เร็ว, 3 เทอร์โบ (Ultra), 4 ซิ่งสุด (Max 144Hz+)
         public bool LootAutoTab { get; set; } = true;          // กดปุ่มเก็บตอนกำลังเล่น: true = โปรแกรมกด Tab เปิด/ปิดให้, false = ต้องเปิดกระเป๋าเอง
         public int LootDirection { get; set; } = 0;            // ทิศทางเก็บ: 0 ล่างขึ้นบน (ค่าเดิม), 1 บนลงล่าง
         public double[] LootStart { get; set; } = { 0.110, 0.135 };
@@ -546,7 +546,8 @@ namespace GunBeep
             if (w == null) return false;
             try
             {
-                var h = new WindowInteropHelper(w).Handle;
+                var helper = new WindowInteropHelper(w);
+                var h = helper.Handle == IntPtr.Zero ? helper.EnsureHandle() : helper.Handle;
                 if (h != IntPtr.Zero)
                 {
                     bool ok = Apply(h, enable);
@@ -564,12 +565,7 @@ namespace GunBeep
             try
             {
                 uint affinity = enable ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
-                bool ok = SetWindowDisplayAffinity(hWnd, affinity);
-                if (!ok && enable)
-                {
-                    ok = SetWindowDisplayAffinity(hWnd, WDA_MONITOR);
-                }
-                return ok;
+                return SetWindowDisplayAffinity(hWnd, affinity);
             }
             catch { return false; }
         }
