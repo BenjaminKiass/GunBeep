@@ -445,3 +445,12 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   .
 - Known limit: a gun picked up with F (inventory never opened) leaves `slotEmpty` stale → "weapon key to empty slot" → no pull
   until Tab is opened once.
+
+## Game data update (2026-11-10, from PC patch notes up to 44.1 + pubg.wiki.gg)
+- 41.1 (Apr 2026): Tilted Grip (+12 % vertical) replaced the Angled Foregrip in world spawn → kept id "angled", renamed
+  "กริปเอียง (Tilted)". 42.1 (Jun 2026) removed Mosin, R45, DP-28, PP-19 Bizon, P1911, QBU from the game (tables kept).
+- 42.3 (Aug 2026): RPD = mag + stock slots (all AR/LMG), ext mag 110, no muzzle/grip. M249 ext mag 150.
+- Grip limits: Vector no thumb/angled, G36C no half/thumb. Recoil factors: VSS 0.66, SLR 1.06 (kick 1.6), Dragunov 0.96 (kick 1.36).
+- F while playing (no cursor) clears slotEmpty for both slots (gun may have been picked up without the inventory).
+- Still missing (needs the user's in-game "ผิด? แก้" teaching): real slot templates for comp_smg, flash_smg, supp_smg,
+  supp_dmr, folding; and the Tilted Grip may not look like the old angled icon (unverified).
