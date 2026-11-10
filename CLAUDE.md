@@ -460,3 +460,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   attachments instantly (old logs: Kar98k cheek 17/26, ACE32 heavy 6/7 reverted) and new scopes need score ≥ 0.75 there.
   Dragunov/SLR muzzle flips between flash_dmr / flash_ar / supp_ar on an identical icon (voting keeps the old value).
   GunBeep hides to tray on WM_CLOSE — CloseMainWindow does not exit it.
+- 2026-11-11: empty scope slot with gun art behind (rail / rear sight) read as a scope — Groza "6x" 0.94, ACE32 "holo" up to 0.88,
+  MP5K/UMP "6x" 0.51–0.60. ScopeDetect.Read now rejects a match when BandSd(icon, 0.06–0.40) < 9 (991 real panels: real
+  scopes ≥ 10.3, those false matches ≤ 7.7). Full replay of 2715 panels: 54 false scopes removed, no real scope lost.
+  SMG muzzle real-slot templates taught from the user's in-game screenshots (comp/flash/supp on UMP, Vector, MP5K) into
+  saved\attachments.json. Tilted Grip matches the old "angled" templates at 0.99. RefineAttachmentsForGun: sharp but
+  unidentified = unsure (was "not fitted"). saved\samples was full (1500) → moved to saved\samples_old_20261031 so new
+  panels are recorded again.
