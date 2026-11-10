@@ -109,6 +109,9 @@ namespace GunBeep
         public static bool IsCompatible(string gunKey, int slot, string itemId)
         {
             if (string.IsNullOrEmpty(gunKey)) return true;
+            // ช่องแม็กใช้ id "extended" / "quickdraw" ซึ่งไม่อยู่ในรายการของแต่ง → เดิม Get() = null → ถูกล้างทิ้งทุกครั้ง
+            //   (แม็กขยายไม่เคยถูกจำ หน้ามาโครโชว์แม็กปกติเสมอ, QuickDraw ไม่เคยรู้)
+            if (slot == 2) return RecoilCalc.HasMagSlot(gunKey) && itemId is "extended" or "quickdraw";
             var it = Get(itemId);
             if (it == null) return false;
 

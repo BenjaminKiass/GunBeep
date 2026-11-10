@@ -454,3 +454,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - F while playing (no cursor) clears slotEmpty for both slots (gun may have been picked up without the inventory).
 - Still missing (needs the user's in-game "ผิด? แก้" teaching): real slot templates for comp_smg, flash_smg, supp_smg,
   supp_dmr, folding; and the Tilted Grip may not look like the old angled icon (unverified).
+- 2026-11-10 later: offline harness (scratch, copies of saved\*.json, 1500 real panels) found: mag-slot ids were wiped by
+  IsCompatible (Get("extended") = null) → now slot 2 handled first; QuickDraw teal rule misread a 40-round ACE32 as
+  QuickDraw → mag slot filled = always "extended" (MagCap never shortens). "tab open" frame no longer accepts new
+  attachments instantly (old logs: Kar98k cheek 17/26, ACE32 heavy 6/7 reverted) and new scopes need score ≥ 0.75 there.
+  Dragunov/SLR muzzle flips between flash_dmr / flash_ar / supp_ar on an identical icon (voting keeps the old value).
+  GunBeep hides to tray on WM_CLOSE — CloseMainWindow does not exit it.

@@ -1157,7 +1157,9 @@ TopSwitch.IsChecked = cfg.TopMost;
                         if (!isClose && !Confirmed(p.Slot, "name", old.Name, p.Name)) p.Name = old.Name;
 
                         // สโคปจริงใหม่ (Set > 0 หรือ Set == -2 เช่น 3x, 6x, Holo): ถ้าตอนปิดกระเป๋า หรือคะแนน >= 0.50 และไม่โดนบัง ให้เชื่อทันที
-                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= 0.50 && !p.Obscured));
+                        //   ภาพแรกหลังเปิดกระเป๋า (แผงยังเฟดเข้า) เชื่อทันทีเฉพาะคะแนนสูง (≥ 0.75) ไม่งั้นรอยืนยันรอบถัดไป (~0.3 วิ)
+                        double sureScore = trigger == "tab open" ? 0.75 : 0.50;
+                        bool newScopeSure = (p.Set > 0 || p.Set == -2) && (isClose || (p.Score >= sureScore && !p.Obscured));
 
                         // ปลดเป็น "ไม่มีสโคป" (Set == 0): ตอนปิดกระเป๋าเชื่อทันที (isClose), หรือถ้าเปิดกระเป๋าอยู่ให้ยืนยัน 3 รอบติด (~1 วินาที)
                         bool emptyConfirmed = p.Set == 0 && !p.Obscured && (isClose || Confirmed(p.Slot, "scope_empty", $"{old.Set}", "0", requiredRounds: 3));
@@ -1195,12 +1197,8 @@ TopSwitch.IsChecked = cfg.TopMost;
 
                                 if (trigger == "tab open")
                                 {
-                                    if (!old.Att[k] && p.Att[k])
-                                    {
-                                        // หยิบของแต่งใหม่มาแล้วเปิดกระเป๋า: รับทันที
-                                        ClearPending(p.Slot + ":att" + k);
-                                        continue;
-                                    }
+                                    // ของแต่งใหม่ตอนเพิ่งเปิดกระเป๋า: เดิมรับทันที → log เก่า Kar98k "แผ่นรองแก้ม" 17/26 ครั้ง, ACE32 "พานท้ายใหญ่" 6/7 ครั้ง
+                                    //   หายไปเองใน 10 วิ (อ่านจากภาพที่แผงยังเฟดเข้า) → ตอนนี้ต้องเห็นซ้ำรอบถัดไปเหมือนตอนสแกนปกติ
                                     if (old.Att[k] && !p.Att[k])
                                     {
                                         // จังหวะเพิ่งเปิดกระเป๋า ภาพอาจยังไม่นิ่ง: คงของแต่งเดิมไว้ก่อน ให้รอบถัดไปยืนยัน
