@@ -1105,15 +1105,11 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="ความเร็ว" FontSize="12.5" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                                <RadioButton x:Name="LootSpeed0" Grid.Column="1" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="0" Checked="LootSpeed_Checked" Content="ช้า"/>
-                                                <RadioButton x:Name="LootSpeed1" Grid.Column="2" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="1" Checked="LootSpeed_Checked" Content="กลาง" Margin="4,0,0,0"/>
-                                                <RadioButton x:Name="LootSpeed2" Grid.Column="3" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="2" Checked="LootSpeed_Checked" Content="เร็ว" Margin="4,0,0,0"/>
-                                                <RadioButton x:Name="LootSpeed3" Grid.Column="4" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="3" Checked="LootSpeed_Checked" Content="เทอร์โบ" ToolTip="เทอร์โบ (~25ms/ชิ้น) ลากติด 100% แน่นอน (แนะนำ)" Margin="4,0,0,0"/>
-                                                <RadioButton x:Name="LootSpeed4" Grid.Column="5" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="4" Checked="LootSpeed_Checked" Content="ซิ่งสุด" ToolTip="ซิ่งสุด (~16ms/ชิ้น) ความเร็วระดับแข่ง สำหรับจอ 144Hz+" Margin="4,0,0,0"/>
+                                                <RadioButton x:Name="LootSpeed0" Grid.Column="1" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="0" Checked="LootSpeed_Checked" Content="ชัวร์" ToolTip="~80 ms/ชิ้น — เกมกระตุก / fps ต่ำ ก็ไม่หลุด"/>
+                                                <RadioButton x:Name="LootSpeed1" Grid.Column="2" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="1" Checked="LootSpeed_Checked" Content="เร็ว (แนะนำ)" ToolTip="~44 ms/ชิ้น (6 ช่อง ~0.3 วิ) — เกม 110 fps ขึ้นไป" Margin="4,0,0,0"/>
+                                                <RadioButton x:Name="LootSpeed2" Grid.Column="3" GroupName="lootspd" Style="{StaticResource SegRadio}" Tag="2" Checked="LootSpeed_Checked" Content="ซิ่ง" ToolTip="~26 ms/ชิ้น — เกมต้อง 200 fps ขึ้นไปตลอด ไม่งั้นหลุดบางชิ้น" Margin="4,0,0,0"/>
                                             </Grid>
                                             <Grid Margin="0,10,0,0">
                                                 <Grid.ColumnDefinitions>

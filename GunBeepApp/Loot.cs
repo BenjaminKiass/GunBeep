@@ -35,12 +35,13 @@ namespace GunBeep
             { Settle = s; Down = d; Drag = dg; Drop = dp; Up = u; }
         }
 
+        // เกมรับเมาส์ทีละเฟรม: ทุกขั้น (ชี้ → กด → เริ่มลาก → ชี้ที่กระเป๋า → ปล่อย) ต้องตกคนละเฟรม ไม่งั้นเกมเห็นแค่ขั้นสุดท้าย
+        //   แล้วของชิ้นนั้นไม่ถูกลาก. ซิ่งสุดเดิม 3 ms/ขั้น < 1 เฟรม (144 fps = 7 ms) → หลุดบางชิ้น
+        //   ขั้นที่ต้องรอนานสุด = ชี้ก่อนกด (Settle) กับชี้ที่กระเป๋าก่อนปล่อย (Drop); ปล่อยแล้วไปชิ้นต่อไปรอสั้นได้
         static readonly Timing[] Speeds = {
-            new(24, 18, 18, 22, 18), // 0: ช้า (ปลอดภัยสุด / จอ 60Hz / ปิงสูง) ~100ms
-            new(14, 10, 10, 12, 10), // 1: กลาง ~56ms
-            new(8, 6, 6, 8, 6),      // 2: เร็ว ~34ms
-            new(5, 5, 4, 6, 5),      // 3: เทอร์โบ (ติด 100% แนะนำ) ~25ms (7 ช่องแค่ 0.17 วิ!)
-            new(3, 3, 3, 4, 3)       // 4: ซิ่งสุด (God Speed 144Hz+) ~16ms (7 ช่องแค่ 0.11 วิ!)
+            new(18, 16, 16, 18, 12), // 0: ชัวร์ ~80 ms/ชิ้น (เกม ≥ 60 fps, 6 ช่อง ~0.5 วิ)
+            new(10, 9, 9, 10, 6),    // 1: เร็ว (แนะนำ) ~44 ms/ชิ้น (เกม ≥ ~110 fps, 6 ช่อง ~0.27 วิ)
+            new(6, 5, 5, 6, 4),      // 2: ซิ่ง ~26 ms/ชิ้น (เกมต้อง ≥ ~200 fps ตลอด)
         };
 
         static int busy;
@@ -54,7 +55,7 @@ namespace GunBeep
             if (Interlocked.Exchange(ref busy, 1) != 0) { cancel = true; return false; }
             cancel = false;
             int n = Math.Clamp(cfg.LootSlots, 1, 15);
-            var sp = Speeds[Math.Clamp(cfg.LootSpeed, 0, Speeds.Length - 1)];
+            var sp = Speeds[Math.Clamp(cfg.LootPace, 0, Speeds.Length - 1)];
             double[] a = cfg.LootStart, b = cfg.LootStep, drop = cfg.LootDrop, center = cfg.LootCenter;
             var t = new Thread(() =>
             {
@@ -67,10 +68,12 @@ namespace GunBeep
                     if (topDown)
                     {
                         // ลากจากช่องบนลงล่าง: เน้นเก็บของชิ้นบนสุด (ปืน, เสื้อเกราะ, หมวก) ก่อน
+                        //   เก็บช่องบนแล้วของที่เหลือเลื่อนขึ้นมาแทน → ลากช่องบนสุดทุกรอบ
+                        //   (เดิมลากช่อง 1, 2, 3 … ตามลำดับ → ข้ามทีละชิ้น ได้แค่ครึ่งเดียว)
                         for (int i = 0; i < n; i++)
                         {
                             if (cancel || !stillOk()) break;
-                            double x = a[0] + i * (b[0] - a[0]), y = a[1] + i * (b[1] - a[1]);
+                            double x = a[0], y = a[1];
                             // 1. ไปช่องของ
                             Move(x, y);
                             Thread.Sleep(sp.Settle);

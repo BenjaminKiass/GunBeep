@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,7 +16,7 @@ namespace GunBeep
                               Text = Frozen("#E6EDF8"), Muted = Frozen("#8A9BB8"), Accent = Frozen("#1D6BFF"), Gold = Frozen("#C9A54A"),
                               Orange = Frozen("#F2A516"), Green = Frozen("#19C37D"), Cyan = Frozen("#22C3EE");
         static readonly int[] SlotChoices = { 3, 5, 8, 10, 15 };
-        static readonly string[] SpeedNames = { "ช้า", "กลาง", "เร็ว", "เทอร์โบ", "ซิ่งสุด" };
+        static readonly string[] SpeedNames = { "ชัวร์", "เร็ว", "ซิ่ง" };
 
         static Brush Frozen(string hex) { var b = (Brush)new BrushConverter().ConvertFromString(hex); b.Freeze(); return b; }
 
@@ -109,7 +109,7 @@ namespace GunBeep
                 speedBtns[i] = MakeButton(SpeedNames[i]);
                 speedBtns[i].Margin = new Thickness(0, 0, 4, 0);
                 speedBtns[i].ToolTip = "เก็บไม่ติดบางชิ้น = ลองช้าลง";
-                speedBtns[i].Click += (s, e) => { cfg.LootSpeed = sp; Save(); };
+                speedBtns[i].Click += (s, e) => { cfg.LootPace = sp; Save(); };
                 row2.Children.Add(speedBtns[i]);
             }
             head.Children.Add(row2);
@@ -271,7 +271,7 @@ namespace GunBeep
             keyBtn.Content = capturing ? "กดปุ่ม / ปุ่มเมาส์... (Esc = ยกเลิก)" : "ปุ่ม: " + (cfg.LootKey == 0 ? "–" : keyName(cfg.LootKey));
             if (capturing) keyBtn.BorderBrush = Accent;
             for (int i = 0; i < SlotChoices.Length; i++) Mark(slotBtns[i], cfg.LootSlots == SlotChoices[i]);
-            for (int i = 0; i < SpeedNames.Length; i++) Mark(speedBtns[i], cfg.LootSpeed == i);
+            for (int i = 0; i < SpeedNames.Length; i++) Mark(speedBtns[i], cfg.LootPace == i);
             if (!capturing)
             {
                 hint.Foreground = Muted;

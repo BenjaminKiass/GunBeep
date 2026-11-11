@@ -481,3 +481,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   overwrote the voted values. Now that call uses reidentify:false (only clears slots the gun lacks / incompatible items).
   Vote simulation on 2472 panels from 2026-11-11: committed changes Mk12 79 → 11, M24 75 → 22, SKS 55 → 15, Kar98k 6 → 0,
   Beryl 12+6 → 5+0. Left: mag slot extended ↔ none flips (M24/Mk12; mag cap only, not the pull). Old DLL = GunBeep.dll.bak_20261112_vote.
+- 2026-11-12 fast loot (user: fast but never miss an item, fewer speed choices): 5 speeds → 3 (`cfg.LootPace` 0 ชัวร์ ~80 ms/item,
+  1 เร็ว ~44 ms (default), 2 ซิ่ง ~26 ms). Old `LootSpeed` migrated once in MigrateCalc (0 → ชัวร์, others → เร็ว) then set to -1.
+  The user ran ซิ่งสุด (3 ms per step < one game frame; PUBG in-game fps is Unlimited) and pressed loot 4× in 4 s (log 11-11).
+  Each step (hover, down, drag start, hover target, up) must land in a separate game frame. Top-down direction dragged slots
+  1, 2, 3 … while picked items vanish and the rest shift up → skipped every other item; now it drags the top slot every time
+  (a missed drag is retried naturally). Bottom-up unchanged. Not yet tried in game. Old DLL = GunBeep.dll.bak_20261112_loot.

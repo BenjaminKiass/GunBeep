@@ -53,7 +53,8 @@ namespace GunBeep
         // เก็บของเร็ว: ตำแหน่งเป็นสัดส่วนของจอ (0–1) — ช่องของบนพื้นช่องแรก/ช่องถัดไป, จุดปล่อย (กระเป๋า), จุดกลับ
         public int LootKey { get; set; }                       // ปุ่มสั่งเก็บ (ตอนเปิดกระเป๋า), 0 = ไม่ใช้
         public int LootSlots { get; set; } = 8;                // เก็บกี่ช่องต่อครั้ง
-        public int LootSpeed { get; set; } = 3;                // 0 ช้า, 1 กลาง, 2 เร็ว, 3 เทอร์โบ (Ultra), 4 ซิ่งสุด (Max 144Hz+)
+        public int LootSpeed { get; set; } = -1;               // เดิม 5 ระดับ (0 ช้า … 4 ซิ่งสุด) — ย้ายไป LootPace ตอนโหลด แล้วเป็น -1
+        public int LootPace { get; set; } = 1;                 // 0 ชัวร์, 1 เร็ว (แนะนำ), 2 ซิ่ง
         public bool LootAutoTab { get; set; } = true;          // กดปุ่มเก็บตอนกำลังเล่น: true = โปรแกรมกด Tab เปิด/ปิดให้, false = ต้องเปิดกระเป๋าเอง
         public int LootDirection { get; set; } = 0;            // ทิศทางเก็บ: 0 ล่างขึ้นบน (ค่าเดิม), 1 บนลงล่าง
         public double[] LootStart { get; set; } = { 0.110, 0.135 };
@@ -125,6 +126,9 @@ namespace GunBeep
         // ค่าเก่าที่ผมเดาไว้ (−15%, ปืนอ้างอิง M416) → ตัวเลขจากเกม และปืนที่ผู้ใช้จูนจริง (AUG)
         static void MigrateCalc(Settings s)
         {
+            // ความเร็วเก็บของ 5 ระดับ → 3 ระดับ: ช้า → ชัวร์, ที่เหลือ → เร็ว
+            //   (ซิ่งสุดเดิม 3 ms/ขั้น เร็วกว่า 1 เฟรมของเกม → ลากหลุดบางชิ้น ผู้ใช้กดเก็บซ้ำ 4 ครั้งใน log 2026-11-11)
+            if (s.LootSpeed >= 0) { s.LootPace = s.LootSpeed == 0 ? 0 : 1; s.LootSpeed = -1; }
             var c = s.Calc ??= new CalcSettings();
             if (c.Ver < 1)
             {

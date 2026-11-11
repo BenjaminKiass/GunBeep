@@ -951,11 +951,9 @@ namespace GunBeep
             LootKeyBtn.Content = cap ? "กดปุ่ม / ปุ่มเมาส์... (Esc = ยกเลิก)" : cfg.LootKey == 0 ? "ตั้งปุ่ม" : "ปุ่ม: " + KeyName(cfg.LootKey);
             if (cap) LootKeyBtn.BorderBrush = accent; else LootKeyBtn.ClearValue(BorderBrushProperty);
             LootSlotsText.Text = Math.Clamp(cfg.LootSlots, 1, 15).ToString();
-            LootSpeed0.IsChecked = cfg.LootSpeed == 0;
-            LootSpeed1.IsChecked = cfg.LootSpeed == 1;
-            LootSpeed2.IsChecked = cfg.LootSpeed == 2;
-            LootSpeed3.IsChecked = cfg.LootSpeed == 3;
-            LootSpeed4.IsChecked = cfg.LootSpeed == 4;
+            LootSpeed0.IsChecked = cfg.LootPace == 0;
+            LootSpeed1.IsChecked = cfg.LootPace == 1;
+            LootSpeed2.IsChecked = cfg.LootPace == 2;
             LootTabAuto.IsChecked = cfg.LootAutoTab;
             LootTabSelf.IsChecked = !cfg.LootAutoTab;
             LootDirBottom.IsChecked = cfg.LootDirection == 0;
@@ -1004,10 +1002,10 @@ namespace GunBeep
         void LootSpeed_Checked(object sender, RoutedEventArgs e)
         {
             if (lootUi) return;
-            cfg.LootSpeed = int.Parse((string)((FrameworkElement)sender).Tag);
+            cfg.LootPace = int.Parse((string)((FrameworkElement)sender).Tag);
             cfg.Save();
-            string[] names = { "ช้า (~100ms)", "กลาง (~56ms)", "เร็ว (~34ms)", "เทอร์โบ (ติด 100% ~25ms)", "ซิ่งสุด (144Hz+ ~16ms)" };
-            string spName = cfg.LootSpeed >= 0 && cfg.LootSpeed < names.Length ? names[cfg.LootSpeed] : cfg.LootSpeed.ToString();
+            string[] names = { "ชัวร์ (~80 ms/ชิ้น)", "เร็ว (~44 ms/ชิ้น, แนะนำ)", "ซิ่ง (~26 ms/ชิ้น, เกม 200 fps+)" };
+            string spName = cfg.LootPace >= 0 && cfg.LootPace < names.Length ? names[cfg.LootPace] : cfg.LootPace.ToString();
             Flash($"ความเร็วเก็บของ: {spName}");
         }
 
