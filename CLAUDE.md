@@ -476,3 +476,8 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Known: G36C/O12 empty mag slot reads "extended" (gun art) — UI only, MagCap already uses the extended size.
   Training ground has no Vector compensator / Micro UZI folding stock → those templates need real matches (panels are
   auto-saved to saved\samples). Deployed 01:00 (old DLL = GunBeep.dll.bak_20261111_kf).
+- 2026-11-12 (user: attachments unchanged but the gun value flips and comes back after Tab): log showed Mk12 muzzle flash_dmr ↔ none
+  every 0.1–0.3 s (×0.870 ↔ ×0.915). The final RefineAttachmentsForGun call after the vote re-identified the slot icons and
+  overwrote the voted values. Now that call uses reidentify:false (only clears slots the gun lacks / incompatible items).
+  Vote simulation on 2472 panels from 2026-11-11: committed changes Mk12 79 → 11, M24 75 → 22, SKS 55 → 15, Kar98k 6 → 0,
+  Beryl 12+6 → 5+0. Left: mag slot extended ↔ none flips (M24/Mk12; mag cap only, not the pull). Old DLL = GunBeep.dll.bak_20261112_vote.

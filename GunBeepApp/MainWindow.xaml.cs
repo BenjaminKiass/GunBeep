@@ -1242,7 +1242,7 @@ TopSwitch.IsChecked = cfg.TopMost;
                     }
 
                     // ตรวจความเข้ากันได้ตามระบบปืน PUBG รอบสุดท้ายก่อนบันทึก (กันหลอน 8x/6x ติดมา)
-                    if (RecoilCalc.GunKey(p.Name) is string finalRk) RecoilCalc.RefineAttachmentsForGun(p, finalRk);
+                    if (RecoilCalc.GunKey(p.Name) is string finalRk) RecoilCalc.RefineAttachmentsForGun(p, finalRk, reidentify: false);
                     string attSig(ScopeDetect.Panel x) => x?.Att == null ? "" : string.Join(",", Enumerable.Range(0, 4).Select(k => x.Att[k] ? x.AttId?[k] ?? "?" : "-"));
                     if (old == null || old.Set != p.Set || old.Name != p.Name) Log.Info($"scope scan ({trigger}): " + p + " att " + attSig(p));
                     else if (attSig(old) != attSig(p)) Log.Info($"scope scan ({trigger}): slot {p.Slot} {p.Name} attachments {attSig(old)} → {attSig(p)}");

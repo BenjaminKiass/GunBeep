@@ -454,7 +454,10 @@ namespace GunBeep
         }
 
         // ปรับแต่งและกรองของแต่งของ Panel ให้ตรงกับชนิดปืนจริง
-        public static void RefineAttachmentsForGun(ScopeDetect.Panel p, string gunKey)
+        // reidentify = false: แค่ล้างช่องที่ปืนนี้ไม่มี / ของที่ใส่ไม่ได้ ไม่อ่านภาพไอคอนซ้ำ
+        //   (ใช้หลังการโหวตใน MainWindow — เดิมอ่านภาพซ้ำทับค่าที่โหวตแล้ว: ปาก Mk12 สลับ flash_dmr ↔ ไม่ติด ทุก 0.1–0.3 วิ
+        //    ค่าดึงกระโดด ×0.870 ↔ ×0.915 ทั้งที่ของแต่งไม่ได้เปลี่ยน, log 2026-11-11)
+        public static void RefineAttachmentsForGun(ScopeDetect.Panel p, string gunKey, bool reidentify = true)
         {
             if (p == null || string.IsNullOrEmpty(gunKey)) return;
             p.Att ??= new bool[4];
@@ -502,7 +505,7 @@ namespace GunBeep
             }
 
             // 4. รันระบุของแต่งซ้ำด้วย gunKey ที่รู้แน่ชัด เพื่อให้ IsCompatible กรองเฉพาะของแต่งที่ปืนนี้ใส่ได้จริง
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 4 && reidentify; i++)
             {
                 if (i == 0 && !HasMuzzleSlot(gunKey)) continue;
                 if (i == 1 && !HasGripSlot(gunKey)) continue;
