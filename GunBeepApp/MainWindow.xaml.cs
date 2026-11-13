@@ -464,12 +464,14 @@ TopSwitch.IsChecked = cfg.TopMost;
                 Log.Info("stance vehicle (neutral x1.00)");
                 if (on) PushMults();
             }
+            // ปุ่มย่อที่จำว่ากดค้าง แต่จริงปล่อยแล้ว (หลุด key-up ตอนสลับหน้าต่าง) → ลืม ไม่งั้นกดครั้งหน้าไม่ถูกนับ
+            if (stanceDown.Count > 0) stanceDown.RemoveWhere(k => KeyHook.GetAsyncKeyState(k) >= 0);
             if (isSlideActive && (DateTime.Now - lastCrouchAt).TotalMilliseconds > 1300)
             {
                 isSlideActive = false;
                 // ถ้าสไลด์จบแล้วยังกด Shift + เดินค้างอยู่ (และไม่ได้เล็ง) ในเกม PUBG ตัวละครจะลุกยืนวิ่งต่ออัตโนมัติ
                 bool s_shift = KeyHook.GetAsyncKeyState(0x10) < 0 || KeyHook.GetAsyncKeyState(0xA0) < 0 || KeyHook.GetAsyncKeyState(0xA1) < 0;
-                bool s_moving = KeyHook.GetAsyncKeyState(0x57) < 0 || KeyHook.GetAsyncKeyState(0x41) < 0 || KeyHook.GetAsyncKeyState(0x53) < 0 || KeyHook.GetAsyncKeyState(0x44) < 0;
+                bool s_moving = KeyHook.GetAsyncKeyState(0x57) < 0;     // วิ่งต่อได้เฉพาะเดินหน้า
                 bool s_aiming = KeyHook.GetAsyncKeyState(0x02) < 0;
                 if (s_shift && s_moving && !s_aiming && stance != 0)
                 {
@@ -1508,6 +1510,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         int lastStanceVk = 0;
         DateTime lastCrouchAt = DateTime.MinValue;
         bool isSlideActive;
+        readonly HashSet<int> stanceDown = new();     // ปุ่มย่อ/หมอบที่กดค้างอยู่ (กรองปุ่มซ้ำจากการกดค้าง)
 
         void StanceKey(int vk)
         {
@@ -1537,7 +1540,8 @@ TopSwitch.IsChecked = cfg.TopMost;
             bool ctrl = Held(0x11) || Held(0xA2) || Held(0xA3);
             bool alt = Held(0x12) || Held(0xA4) || Held(0xA5);
             bool isMoving = Held(0x57) || Held(0x41) || Held(0x53) || Held(0x44); // W, A, S, D
-            bool isSprinting = shift && isMoving;
+            bool isSprinting = shift && Held(0x57);                 // PUBG วิ่ง (Shift) ได้เฉพาะตอนเดินหน้า W
+            _ = isMoving;
 
             var gs = GameSettings.Current;
             bool isCrouchKey = (gs.CrouchBindings != null && gs.CrouchBindings.Any(b => b.Matches(vk, shift, ctrl, alt)))
@@ -1546,13 +1550,16 @@ TopSwitch.IsChecked = cfg.TopMost;
             bool isProneKey = (gs.ProneBindings != null && gs.ProneBindings.Any(b => b.Matches(vk, shift, ctrl, alt)))
                               || (!ctrl && !alt && vk == stanceKeys[1]);
 
-            // สไลด์: กดปุ่มย่อในขณะที่กำลังกด Shift หรือวิ่งอยู่ (หรือเป็นปุ่มที่ระบุ Shift ไว้ในเกม เช่น Shift+S)
-            bool isSlide = isCrouchKey && (shift || (gs.CrouchBindings != null && gs.CrouchBindings.Any(b => b.Shift && b.Vk == vk)));
+            // สไลด์ = กดปุ่มย่อตอนกำลังวิ่งจริง (Shift + เดินหน้า W, ไม่ได้เล็ง) → เข้าท่าย่อเสมอ
+            //   เดิมนับทุกครั้งที่กดพร้อม Shift (รวมปุ่ม Shift+S ของผู้ใช้) ว่าสไลด์ → บังคับย่อ แต่ในเกม ToggleCrouch ตอนไม่ได้วิ่ง
+            //   ขณะย่ออยู่ = ลุกยืน → โปรแกรมค้าง "ย่อ ×0.72" ทั้งที่ยืน → ดึงน้อยไป ผู้ใช้ต้องกดลงเอง (2026-11-13)
+            bool isSlide = isCrouchKey && shift && Held(0x57) && !Held(0x02);
 
-            // กรอง Keyboard Auto-repeat: ถ้ากดปุ่มเดิมค้างไว้ ป้องกันไม่ให้ toggle ย่อ/ยืน สลับไปมา
-            if ((isCrouchKey || isProneKey) && vk == lastStanceVk && (now - lastStanceKeyAt).TotalMilliseconds < 250)
+            // กรอง Keyboard Auto-repeat: กดค้าง = Windows ส่งปุ่มลงซ้ำ → ไม่นับซ้ำจนกว่าจะปล่อยปุ่ม
+            //   (เดิมกรองด้วยเวลา 250 ms → กด C สองทีเร็วๆ ทีที่สองหาย ในเกมยืนแล้วแต่โปรแกรมยังย่อ)
+            if (isCrouchKey || isProneKey)
             {
-                return;
+                if (!stanceDown.Add(vk)) return;
             }
 
             if (isSlide)
@@ -1934,6 +1941,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         // ---------------------------------------------------------------- ปุ่มที่ดักได้
         void OnKeyUp(int vk)
         {
+            stanceDown.Remove(vk);
             // เลิกสแกนอัตโนมัติตอนกด Tab แล้ว: เดาปืนผิดแล้วเขียนทับค่า base เอง (0 ↔ 13) และการจับภาพจอเกมเสี่ยงโดนแบน
         }
 

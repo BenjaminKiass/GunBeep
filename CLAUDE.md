@@ -494,3 +494,9 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   cover the current work area (+ its own border) is SetWindowPos'd to it, keeping the maximized state, no activation.
   Verified on the user's PC: Chrome 1744×1056 → 1936×1056. OnClosing now also runs 3 layout passes (400 ms apart) itself,
   because the DispatcherTimer passes never ran when GunBeep was exiting. Old DLL = GunBeep.dll.bak_20261113_maxwin.
+- 2026-11-13 stance (user: needs to pull down by hand when STANDING after having pressed C or Shift+S): two desyncs left the app on
+  "crouch ×0.72" while the character stood. (1) Any crouch key with Shift held (incl. the user's Shift+S ToggleCrouch binding) was
+  treated as a slide and forced crouch; in game it toggles (crouched → stands). Now slide = crouch key while Shift + W held and not
+  ADS; otherwise a normal toggle. (2) Auto-repeat filter dropped a second C press within 250 ms (crouch spam) → now a key-down set
+  (`stanceDown`, cleared on key-up and by WatchMenu via GetAsyncKeyState). Sprint-stands-up rules use Shift + W only (PUBG sprints
+  forward only). Not yet tried in game. Old DLL = GunBeep.dll.bak_20261113_stance.
