@@ -519,3 +519,7 @@ Windows. README.md is the user-facing guide; this file is the technical context.
 - 2026-11-13 clean quit: `GunBeep.exe --quit` signals named event "GunBeep_quit" → running instance calls Close() (tray icon
   removed, display restored, file writes flushed); exits in ~0.2 s. DEPLOY WITH THIS, not Stop-Process -Force: killed processes
   left dead tray icons (user: icon vanishes on hover, can't pin). Fallback to Stop-Process only if it is still running after 15 s.
+- 2026-11-13 gun art: saved\art\guns were low-res tooltip crops upscaled (4–5 px stair-step edges + dotted halo), shown with WPF's
+  default Linear downscale → looked broken. Rebuilt all 48 with %TEMP%\gbui\art\tool (saturation mask → Gaussian → smoothstep edge,
+  2× bicubic, gold gradient + high-pass detail + bevel, no baked glow — the UI DropShadow adds it). Old set = saved\art\guns_backup_20261113
+  (and guns_backup_original). MacroPage Hq() = BitmapScalingMode.HighQuality on gun / attachment images.

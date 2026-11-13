@@ -657,7 +657,7 @@ namespace GunBeep
                 Width = 40, Height = 40, CornerRadius = new CornerRadius(10), Background = PInner, BorderBrush = PLine, BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Child = icon != null
-                    ? new System.Windows.Controls.Image { Source = icon, Stretch = Stretch.Uniform, Margin = new Thickness(3) }
+                    ? Hq(new System.Windows.Controls.Image { Source = icon, Stretch = Stretch.Uniform, Margin = new Thickness(3) })
                     : new TextBlock { Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 17, Foreground = accentBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
             });
             var mid = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -751,6 +751,13 @@ namespace GunBeep
             }
         };
 
+        // ย่อภาพแบบคุณภาพสูง (ค่าเริ่มต้นของ WPF = Linear → ย่อภาพ 600 px ลงเหลือ ~250 px แล้วขอบแตกเป็นจุด)
+        static T Hq<T>(T img) where T : UIElement
+        {
+            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+            return img;
+        }
+
         // กราฟแรงดึงของชุดค่า (× ตัวคูณ) 3 วินาทีแรก
         static System.Windows.Media.Imaging.BitmapSource PicOf(ScopeDetect.Panel p)
         {
@@ -777,11 +784,11 @@ namespace GunBeep
         {
             var g = new Grid();
             if (pic != null)
-                g.Children.Add(new Image
+                g.Children.Add(Hq(new Image
                 {
                     Source = pic, Stretch = Stretch.Uniform, Margin = new Thickness(10, 22, 10, 30), Opacity = 0.95,
                     Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = isNoPull ? Color.FromRgb(0xFA, 0xAF, 0x20) : Color.FromRgb(0xFF, 0xBD, 0x2E), BlurRadius = 16, ShadowDepth = 0, Opacity = 0.72 }
-                });
+                }));
             var cap = new DockPanel { Margin = new Thickness(10, 7, 10, 0), VerticalAlignment = VerticalAlignment.Top };
             var r = T(gk == null ? "" : isNoPull ? "NO PULL" : "MUL " + mult.ToString("0.00"), 9, PFaint, FontWeights.Bold, Mono);
             DockPanel.SetDock(r, Dock.Right);
