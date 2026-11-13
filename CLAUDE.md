@@ -523,3 +523,5 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   default Linear downscale → looked broken. Rebuilt all 48 with %TEMP%\gbui\art\tool (saturation mask → Gaussian → smoothstep edge,
   2× bicubic, gold gradient + high-pass detail + bevel, no baked glow — the UI DropShadow adds it). Old set = saved\art\guns_backup_20261113
   (and guns_backup_original). MacroPage Hq() = BitmapScalingMode.HighQuality on gun / attachment images.
+  Straightened (same tool): RANSAC line on the top edge (barrel / pistol slide), rotate to level if 0.5–20° and the line covers ≥ 20 %
+  of the length; then crop + centre at 88 %. PUBG tooltip art is tilted ~3–6° (pistols 10–14°). PCA of the shape was wrong for pistols.
