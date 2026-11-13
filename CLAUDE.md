@@ -487,3 +487,10 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   Each step (hover, down, drag start, hover target, up) must land in a separate game frame. Top-down direction dragged slots
   1, 2, 3 … while picked items vanish and the rest shift up → skipped every other item; now it drags the top slot every time
   (a missed drag is retried naturally). Bottom-up unchanged. Not yet tried in game. Old DLL = GunBeep.dll.bak_20261112_loot.
+- 2026-11-13 (user screenshot: after leaving PUBG, Chrome only filled the left 1728 px of the 1920 screen): maximized windows kept
+  the 1728×1080 maximized size after Display.Restore. RestoreLayout re-applied SetWindowPlacement(SW_SHOWMAXIMIZED) to a window that
+  is already maximized → Windows does nothing; windows maximized during the game were never saved at all. New Display.FixMaximized
+  (called at the end of every RestoreLayout pass): every visible maximized top-level window on the primary monitor that does not
+  cover the current work area (+ its own border) is SetWindowPos'd to it, keeping the maximized state, no activation.
+  Verified on the user's PC: Chrome 1744×1056 → 1936×1056. OnClosing now also runs 3 layout passes (400 ms apart) itself,
+  because the DispatcherTimer passes never ran when GunBeep was exiting. Old DLL = GunBeep.dll.bak_20261113_maxwin.

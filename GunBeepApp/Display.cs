@@ -177,7 +177,7 @@ namespace GunBeep
         // วางกลับที่เดิม (เฉพาะหน้าต่างบนจอหลัก)
         public static int RestoreLayout()
         {
-            if (layout == null) return 0;
+            if (layout == null) return FixMaximized();
             int n = 0;
             int primW = Math.Max(100, GetSystemMetrics(0));
 
@@ -197,10 +197,44 @@ namespace GunBeep
                 SetWindowPos(s.H, IntPtr.Zero, s.R.L, s.R.T, s.R.R - s.R.L, s.R.B - s.R.T, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                 n++;
             }
-            return n;
+            return n + FixMaximized();
         }
 
         public static void ForgetLayout() => layout = null;
+
+        // หน้าต่างที่ขยายเต็มจอ (เช่น Chrome) ตอนจอเป็น 1728 → คืนจอเป็น 1920 แล้วยังกว้าง 1728 (ขอบขวาดำ, ผู้ใช้ 2026-11-13)
+        //   SetWindowPlacement "ขยายเต็มจอ" ใส่หน้าต่างที่ขยายอยู่แล้ว Windows ไม่ทำอะไร → ตั้งขนาดตามพื้นที่จอปัจจุบันเอง
+        //   (คงสถานะขยายไว้ ไม่ดึงหน้าต่างขึ้นหน้า) ทำทุกหน้าต่างบนจอหลัก รวมที่เปิดระหว่างเล่นเกม
+        [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetMonitorInfo(IntPtr mon, ref MONITORINFO mi);
+        [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public int dwFlags; }
+
+        public static int FixMaximized()
+        {
+            var skip = System.Diagnostics.Process.GetProcessesByName("TslGame").Select(p => { int id = p.Id; p.Dispose(); return (uint)id; }).ToHashSet();
+            skip.Add((uint)Environment.ProcessId);
+            int n = 0;
+            EnumWindows((hw, l) =>
+            {
+                if (!IsWindowVisible(hw) || !IsZoomed(hw) || GetWindow(hw, 4 /* GW_OWNER */) != IntPtr.Zero) return true;
+                GetWindowThreadProcessId(hw, out uint pid);
+                if (skip.Contains(pid)) return true;
+                if ((GetWindowLong(hw, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) return true;
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (!GetMonitorInfo(MonitorFromWindow(hw, 2 /* NEAREST */), ref mi) || (mi.dwFlags & 1) == 0) return true;   // จอหลักเท่านั้น
+                if (!GetWindowRect(hw, out var r)) return true;
+                // ขอบที่ยื่นออกนอกพื้นที่จอของหน้าต่างขยาย (ปกติ 7–8 px, Chrome 0) — ใช้ค่าเดิมของหน้าต่างเอง
+                int b = Math.Clamp(mi.rcWork.L - r.L, 0, 16);
+                int x = mi.rcWork.L - b, y = mi.rcWork.T - b;
+                int w = mi.rcWork.R - mi.rcWork.L + 2 * b, h = mi.rcWork.B - mi.rcWork.T + 2 * b;
+                if (Math.Abs(r.L - x) <= 1 && Math.Abs(r.T - y) <= 1 && Math.Abs(r.R - r.L - w) <= 1 && Math.Abs(r.B - r.T - h) <= 1) return true;
+                SetWindowPos(hw, IntPtr.Zero, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+                n++;
+                return true;
+            }, IntPtr.Zero);
+            return n;
+        }
 
         // คืนขนาดหน้าต่างก่อน/หลัง (ไว้ลง log) หรือ null ถ้าไม่เจอหน้าต่างเกม
         public static string FitWindow(string process, int w, int h)

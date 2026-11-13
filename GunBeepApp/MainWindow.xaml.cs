@@ -3873,7 +3873,12 @@ TopSwitch.IsChecked = cfg.TopMost;
             calibWin?.Close();
             visionWin?.Close();
             eye?.Dispose();
-            if (resSwitched) RestoreRes();
+            if (resSwitched)
+            {
+                RestoreRes();
+                // ตัวจับเวลาวางหน้าต่างซ้ำจะไม่ได้ทำงานเพราะโปรแกรมปิดแล้ว → วางซ้ำตรงนี้ (~1.2 วิ, Windows จัดหน้าต่างหลังเปลี่ยนจอช้า)
+                for (int i = 0; i < 3; i++) { System.Threading.Thread.Sleep(400); Display.RestoreLayout(); }
+            }
             if (tray != null) { tray.Visible = false; tray.Dispose(); }
             base.OnClosing(e);
         }
