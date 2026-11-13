@@ -516,3 +516,6 @@ Windows. README.md is the user-facing guide; this file is the technical context.
     (reproduced with a test window; re-setting 0x11 alone or via WDA_MONITOR does not help). StreamModeHelper.Apply now sets
     NONE → 0x11, and HookShow re-applies 150 ms after every WM_SHOWWINDOW. Probe: transparent after repeated hide/show.
     User had stream mode OFF at install time — real-app check pending. Old DLL = GunBeep.dll.bak_20261113_ui.
+- 2026-11-13 clean quit: `GunBeep.exe --quit` signals named event "GunBeep_quit" → running instance calls Close() (tray icon
+  removed, display restored, file writes flushed); exits in ~0.2 s. DEPLOY WITH THIS, not Stop-Process -Force: killed processes
+  left dead tray icons (user: icon vanishes on hover, can't pin). Fallback to Stop-Process only if it is still running after 15 s.
