@@ -49,7 +49,10 @@ namespace GunBeep
         {
             int i = int.Parse((string)((FrameworkElement)sender).Tag);
             var pages = new FrameworkElement[] { PageMacro, PageTune, PageLoot, PageSettings };
+            if (pages.Any(p => p == null)) return;                  // ระหว่าง InitializeComponent (ยังสร้างหน้าไม่ครบ)
+            bool changed = pages[i].Visibility != Visibility.Visible;
             for (int k = 0; k < pages.Length; k++) pages[k].Visibility = k == i ? Visibility.Visible : Visibility.Collapsed;
+            if (changed && IsLoaded) Ambient.PageIn(pages[i]);      // จางเข้า + เลื่อนขึ้นนิดๆ
             if (cfg.Page != i) { cfg.Page = i; cfg.Save(); }
             if (i == 0) LiveDirty();
         }

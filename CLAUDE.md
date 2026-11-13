@@ -500,3 +500,19 @@ Windows. README.md is the user-facing guide; this file is the technical context.
   ADS; otherwise a normal toggle. (2) Auto-repeat filter dropped a second C press within 250 ms (crouch spam) → now a key-down set
   (`stanceDown`, cleared on key-up and by WatchMenu via GetAsyncKeyState). Sprint-stands-up rules use Shift + W only (PUBG sprints
   forward only). Not yet tried in game. Old DLL = GunBeep.dll.bak_20261113_stance.
+- 2026-11-13 UI motion + window lock + stream black box:
+  - Ambient.cs: always-on ambient animations while the window is visible (also when inactive), paused (AnimationClock Pause/Resume,
+    no jump) when hidden / minimized / PUBG foreground (WatchMenu → gameFrontNow). 30 fps. Edge spin, 3 drifting aurora blobs
+    (RadialGradientBrush, AuroraT1-3), logo glow, power glow (GlowBrush radial, colour follows ON/OFF, pulse + scale when ON),
+    hero scan ring (HeroSpin) + HeroHalo, LIVE dot pulse when ON. BlurEffect/DropShadow on animated parts replaced by gradients.
+    Cards #D80D1322 (glass) + hover border; sidebar #D0080D19. Page switch = fade + 14 px slide (Ambient.PageIn).
+    Measured (offscreen probe of the real XAML, %TEMP%\gbui\probe): ~0.1 % of all cores animating, ~0 paused; real app visible
+    0.5–0.8 % = same as the old DLL (rest is background timers).
+  - WindowFit.cs: Normal size locked to 1210×800 × FitScale(work area) (1080p = 1.0, floor 0.05, 0.6–1.6; whole UI scaled by
+    Root.LayoutTransform). WM_WINDOWPOSCHANGING forces that size (snap / drag / other apps), ResizeBorderThickness 0, maximize only
+    via the square button (other maximize → reverted; title double-click does nothing; no drag while maximized). WM_GETMINMAXINFO =
+    monitor work area (maximized no longer covers the taskbar). Verified in the probe.
+  - Stream mode black box: on Windows 10 a WDA_EXCLUDEFROMCAPTURE window that is hidden and shown again is captured as BLACK
+    (reproduced with a test window; re-setting 0x11 alone or via WDA_MONITOR does not help). StreamModeHelper.Apply now sets
+    NONE → 0x11, and HookShow re-applies 150 ms after every WM_SHOWWINDOW. Probe: transparent after repeated hide/show.
+    User had stream mode OFF at install time — real-app check pending. Old DLL = GunBeep.dll.bak_20261113_ui.

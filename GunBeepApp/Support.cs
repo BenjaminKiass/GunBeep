@@ -556,6 +556,7 @@ namespace GunBeep
                 {
                     bool ok = Apply(h, enable);
                     SetAltTabHidden(h, enable);
+                    HookShow(w, h);
                     return ok;
                 }
             }
@@ -568,11 +569,40 @@ namespace GunBeep
             if (hWnd == IntPtr.Zero) return false;
             try
             {
-                uint affinity = enable ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
-                return SetWindowDisplayAffinity(hWnd, affinity);
+                if (!enable) return SetWindowDisplayAffinity(hWnd, WDA_NONE);
+                // ล้างก่อนแล้วตั้งใหม่: ตั้งซ้ำค่าเดิมเฉยๆ (หรือผ่าน WDA_MONITOR) ไม่แก้กล่องดำ — ทดสอบแล้ว (2026-11-13)
+                SetWindowDisplayAffinity(hWnd, WDA_NONE);
+                return SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE);
             }
             catch { return false; }
         }
+
+        // Windows 10: หน้าต่างที่ตั้ง "ไม่ให้จับภาพ" แล้วถูกซ่อน (ลงถาด) แล้วเปิดใหม่ → ในภาพอัด/สตรีม/สกรีนช็อต
+        //   กลายเป็นกล่องดำแทนที่จะโปร่งใส (เห็นจอข้างหลัง). ทดลองซ้ำได้ทุกครั้ง; ตั้งค่าใหม่หลังหน้าต่างขึ้นจอแล้วหาย.
+        //   → ทุกครั้งที่หน้าต่างโผล่ (WM_SHOWWINDOW) รอ 150 ms ให้วาดเสร็จ แล้วตั้งค่าใหม่
+        static readonly HashSet<IntPtr> hooked = new();
+
+        static void HookShow(Window w, IntPtr h)
+        {
+            if (!hooked.Add(h)) return;
+            var src = HwndSource.FromHwnd(h);
+            if (src == null) return;
+            src.AddHook((IntPtr hwnd, int msg, IntPtr wp, IntPtr lp, ref bool handled) =>
+            {
+                const int WM_SHOWWINDOW = 0x0018;
+                if (msg == WM_SHOWWINDOW && wp != IntPtr.Zero && Active)
+                {
+                    var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+                    t.Tick += (s, e) => { t.Stop(); if (Active && IsWindowVisible(hwnd)) Apply(hwnd, true); };
+                    t.Start();
+                }
+                return IntPtr.Zero;
+            });
+            w.Closed += (s, e) => hooked.Remove(h);
+        }
+
+        [DllImport("user32.dll")]
+        static extern bool IsWindowVisible(IntPtr hWnd);
 
         public static void SetAltTabHidden(IntPtr hWnd, bool hide)
         {

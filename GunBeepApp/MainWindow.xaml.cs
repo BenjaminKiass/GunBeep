@@ -31,6 +31,7 @@ namespace GunBeep
 
         readonly Settings cfg = Settings.Load();
         readonly SolidColorBrush powerBrush = new SolidColorBrush(OFF);
+        readonly RadialGradientBrush glowBrush = Ambient.GlowBrush(OFF);
         readonly Border[] cards = new Border[GUNS];
         readonly Border[] badges = new Border[GUNS];
         readonly TextBlock[] nameTexts = new TextBlock[GUNS];
@@ -98,6 +99,10 @@ namespace GunBeep
             };
 Loaded += (s, e) => AnimateIn();
 
+            // ขนาดหน้าต่างล็อกให้พอดีจอ (WindowFit.cs) — ขยายเต็มจอได้เฉพาะปุ่มสี่เหลี่ยม
+            fit = new WindowFit(this, Root);
+            var fitSize = fit.NormalSize;
+
             if (cfg.Left.HasValue && cfg.Top.HasValue
                 && cfg.Left.Value >= 0
                 && cfg.Left.Value < SystemParameters.PrimaryScreenWidth - 200
@@ -111,12 +116,13 @@ Loaded += (s, e) => AnimateIn();
             else
             {
                 WindowStartupLocation = WindowStartupLocation.Manual;
-                Left = Math.Max(50, (SystemParameters.PrimaryScreenWidth - 960) / 2);
-                Top = Math.Max(50, (SystemParameters.PrimaryScreenHeight - 650) / 2);
+                var wa = SystemParameters.WorkArea;
+                Left = Math.Max(wa.Left, wa.Left + (wa.Width - fitSize.Width) / 2);
+                Top = Math.Max(wa.Top, wa.Top + (wa.Height - fitSize.Height) / 2);
             }
 
             Ring.Stroke = powerBrush;
-            Glow.Fill = powerBrush;
+            Glow.Fill = glowBrush;
             PowerIcon.Foreground = powerBrush;
             PowerText.Foreground = powerBrush;
 
@@ -447,6 +453,7 @@ TopSwitch.IsChecked = cfg.TopMost;
         void WatchMenu()
         {
             bool front = GameInFront();
+            if (front != gameFrontNow) { gameFrontNow = front; UpdateAmbient(); }
             bool cursor = CursorShown();
             engine?.SetFront(front);
             TrackInventory(front, cursor);
@@ -3413,46 +3420,25 @@ TopSwitch.IsChecked = cfg.TopMost;
             var dur = firstPower ? TimeSpan.Zero : TimeSpan.FromMilliseconds(320);
             firstPower = false;
             powerBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(on ? ON : OFF, dur));
+            Ambient.GlowTo(glowBrush, on ? ON : OFF, dur);
 
             PowerText.Text = on ? "ON" : "OFF";
             StatusText.Text = on ? "มาโครทำงานอยู่" : "มาโครปิดอยู่";
 
-            ambientOn = null;                // ให้ UpdateAmbient ตั้งเรืองแสงของปุ่มใหม่ตามสถานะ
             UpdateAmbient();
             UpdateTray();
         }
 
-        bool? ambientOn;
-
-        static T Slow<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, 24); return t; }
+        // แอนิเมชันวนตลอด (Ambient.cs): ขยับตลอดเวลาที่มองเห็นหน้าต่าง (ถึงจะไม่ได้คลิกเลือกอยู่ก็ตาม)
+        //   หยุดเมื่อซ่อนไปถาด / ย่อ / PUBG อยู่หน้าสุด → ระหว่างเล่นเกมไม่กินเครื่องเลย. 30 เฟรม/วินาที ไม่มี Blur ที่ขยับ
+        Ambient ambient;
+        bool gameFrontNow;
 
         void UpdateAmbient()
         {
-            bool run = IsVisible && IsActive && WindowState != WindowState.Minimized;
-            if (ambientOn == run) return;
-            ambientOn = run;
-            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-            if (run)
-            {
-                EdgeSpin.BeginAnimation(RotateTransform.AngleProperty, Slow(new DoubleAnimation(EdgeSpin.Angle, EdgeSpin.Angle + 360,
-                    TimeSpan.FromSeconds(9)) { RepeatBehavior = RepeatBehavior.Forever }));
-                LogoGlow.BeginAnimation(OpacityProperty, Slow(new DoubleAnimation(0.25, 0.65, TimeSpan.FromSeconds(1.8))
-                    { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }));
-                Glow.BeginAnimation(OpacityProperty, on
-                    ? Slow(new DoubleAnimation(0.35, 0.75, TimeSpan.FromSeconds(1.4))
-                        { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease })
-                    : new DoubleAnimation(0.18, TimeSpan.FromMilliseconds(300)));
-            }
-            else
-            {
-                // หยุดนิ่งตรงตำแหน่งปัจจุบัน
-                double angle = EdgeSpin.Angle;
-                EdgeSpin.BeginAnimation(RotateTransform.AngleProperty, null);
-                EdgeSpin.Angle = angle % 360;
-                LogoGlow.BeginAnimation(OpacityProperty, null);
-                LogoGlow.Opacity = 0.45;
-                Glow.BeginAnimation(OpacityProperty, new DoubleAnimation(on ? 0.6 : 0.18, TimeSpan.FromMilliseconds(300)));
-            }
+            ambient ??= new Ambient(this);
+            bool run = IsVisible && WindowState != WindowState.Minimized && !gameFrontNow;
+            ambient.Set(run, on);
         }
 
         void BuildCards()
@@ -3765,30 +3751,15 @@ TopSwitch.IsChecked = cfg.TopMost;
 
         void Title_Drag(object sender, MouseButtonEventArgs e)
         {
-            if (e.ClickCount == 2)
-            {
-                ToggleMaximize();
-                return;
-            }
-            if (e.ButtonState == MouseButtonState.Pressed)
-            {
-                if (WindowState == WindowState.Maximized)
-                {
-                    var p = PointToScreen(e.GetPosition(this));
-                    ToggleMaximize();
-                    Left = Math.Max(0, p.X - Width / 2);
-                    Top = Math.Max(0, p.Y - 20);
-                }
+            // ขยาย/ย่อได้เฉพาะปุ่มสี่เหลี่ยม (ผู้ใช้ขอ): ดับเบิลคลิกแถบหัวไม่ทำอะไร, ตอนเต็มจอลากแถบหัวไม่ได้
+            if (e.ClickCount == 2) return;
+            if (e.ButtonState == MouseButtonState.Pressed && WindowState == WindowState.Normal)
                 DragMove();
-            }
         }
 
-        void Max_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+        WindowFit fit;
 
-        void ToggleMaximize()
-        {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-        }
+        void Max_Click(object sender, RoutedEventArgs e) => fit?.ToggleMaximize();
 
         void OnWindowStateChanged()
         {
